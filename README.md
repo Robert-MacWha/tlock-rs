@@ -174,6 +174,7 @@ Handlers are functions plugins can implement for the host. Handler patterns:
 | `eip155:account_create` | Create new accounts for EVM chains |
 | `eip155:account_list`   | Lists all accounts for EVM chains  |
 | `eip155:sign`           | Sign messages and transactions     |
+| `ui:*`                  | Generic UI handler                 |
 
 ### Hooks
 Hooks are observable events plugins can connect to that do not include a 
