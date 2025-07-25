@@ -1,10 +1,17 @@
 # Tlock-rs
 
-Wasm-powered wallet client focused on security and extendability.
+Tlock is designed as a modular-focused wallet framework.  It is designed to, as much as possible, get out of the way while providing a framework that allows plugins to securely and effectively perform tasks.  Its priorities are:
+
+1. Modularity. Unless there's a very good reason, modular plugins should be responsible for all functionality.
+
+2. Security. Modularity cannot mean a decrease in security for the user's machine, privacy, or money.
+
+3. Portability. Tlock should be usable across arbitrary platforms, with arbitrary public interfaces.
 
 This document contains a system overview.
-- See [problems.md](./docs/problems.md) for problems I have with the current status quo.
+- See [status-quo.md](./docs/status-quo.md) for problems I have with the current status quo.
 - See [design-considerations.md](./docs/design-considerations.md) for problems I have this this proposal.
+
 
 ## System Components
 

@@ -1,9 +1,4 @@
-# Problems
-
-Tlock is designed as a modular-focused wallet framework.  It is designed to, as much as possible, get out of the way while providing a framework that allows plugins to securely and effectively perform tasks.  Its priorities are:
-1. Modularity.  Unless there's a very good reason, modular plugins should be responsible for all functionality.
-2. Portability.  Tlock should be usable across arbitrary platforms, with arbitrary public interfaces.
-3. Security.  Modularity should not mean a decrease in security for the user's machine, privacy, or money.  Plugins must be well-isolated and constrained.
+# Status Quo
 
 ## Current Solutions
 
@@ -29,11 +24,11 @@ Tlock is designed as a modular-focused wallet framework.  It is designed to, as 
   - +Sandboxed
   - +No Walled garden
 
-### Why do this?
+## Why do this?
 
 Currently all mainstream wallets are built as monoliths. There are none which gives users optionality, allowing them to smoothly add new features, increase privacy or security, or take control over their experience.  Furthermore, the functionality which is provided by most wallets is unacceptable.  It forces users into inconvenient, insecure patterns of behavior. 
 
-### Example issues I have
+## Example issues I have
 
 1. Wallets are tied to their UIs.  The core of a wallet should be the management of cryptographic accounts and signed messages.  That may mean signing eth transactions when interacting with a dapp, but it may also mean operating in a CLI, or on a server in production.  Generic secret management.  Why do I need to export my private key to send transactions with it via forge?
 

@@ -3,14 +3,14 @@
 This document captures open questions, design trade-offs, and areas where the current architecture may need refinement.
 
 ## Open Questions
+- How prescriptive should we be on security and privacy? 
+  - Both should ideally be very high by default, and only reduced when the user has a rational reason to decrease them. 
 - Should plugins be able to communicate directly with each other?
 - How do we handle plugin dependencies and service discovery?
 - Should there be quotas on CPU, memory, network requests or storage usage?
 - Testing frameworks for plugin interactions
-- Plugin lazy loading and async ops
 - Plugin code signing and verification
-- Runtime security monitoring
-- Audit trails for sensitive operations
+
 
 ## Design Trade-offs
 
@@ -32,7 +32,7 @@ Strict typing is a requirement for me - typescript sucks, let alone pure JS or p
 - -Requires host updates for new UI patterns
 
 **Why No UI Permissions?**
-UI interactions (displaying information, requesting input) don't create meaningful security boundaries. A malicious plugin with UI access can't do anything more harmful than what it could already do through legitimate UI interactions - phishing attempts or UI spoofing are possible regardless of permission granularity.
+UI interactions (displaying information, requesting input) don't create meaningful security boundaries. A malicious plugin with UI access can't do anything more harmful than what it could already do through regular UI interactions - phishing attempts or UI spoofing are possible regardless of permission granularity. A single permission is enough.
 
 ### Frontend Trust Model
 **Current Choice:** Frontends have unrestricted host access
@@ -42,7 +42,7 @@ UI interactions (displaying information, requesting input) don't create meaningf
 - -Requires users to trust their chosen frontend completely
 - -Malicious frontends have full system access
 
-**Security Implication:** Since frontends present all UI to users, they could fake permission dialogs or capture sensitive input regardless of restrictions. The trust boundary is therefore between user and frontend, not between frontend and host.
+**Security Implication:** Since frontends present all UI to users, they could fake permission dialogs or capture sensitive input regardless of restrictions. The trust boundary is between user and frontend, not between frontend and host.
 
 ### Plugin Sandboxing
 
@@ -59,6 +59,8 @@ UI interactions (displaying information, requesting input) don't create meaningf
 - -Harder to secure and audit
 
 Also could use other sandboxing tools / make the plugins interpreted instead of compiled (I considered Lua).  Problem is then we give up strict types, and also being able to write plugins in golang or c or whatever is cool, even if not directly supported.
+
+https://nullderef.com/blog/plugin-start/#actual_start
 
 ### Routing Complexity
 **Current Choice:** Host-level routing with ownership keys
