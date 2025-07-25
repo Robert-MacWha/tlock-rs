@@ -130,10 +130,11 @@ enum StorageScope {
 }
 ```
 
-|           | HSM | Encrypted | Plaintext |
-| --------- | --- | --------- | --------- |
-| Encrypted | Yes | Yes       | No        |
-| Portable  | No  | Yes       | Yes       |
+|                                   | `HSM` | `Encrypted` | `Plaintext` |
+| --------------------------------- | ----- | ----------- | ----------- |
+| Encrypted                         | Yes   | Yes         | No          |
+| Portable                          | No    | Yes         | Yes         |
+| Accessible without Authentication | No    | No          | Yes         |
 
 Plugins may also implement alternative storage models (IE network-based) for their own purposes.
 
