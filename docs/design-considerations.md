@@ -10,6 +10,8 @@ This document captures open questions, design trade-offs, and areas where the cu
 - Should there be quotas on CPU, memory, network requests or storage usage?
 - Testing frameworks for plugin interactions
 - Plugin code signing and verification
+- Should permissions be plugin or host-scoped?
+  - Plugin-scoped means people could build new things, but it feels rather dangerous.  If plugin-scoped then the handler plugin functionally has all permissions.
 
 
 ## Design Trade-offs
@@ -74,3 +76,4 @@ https://nullderef.com/blog/plugin-start/#actual_start
 - +More flexible plugin interactions
 - -Harder security boundaries
 - -Potential for routing conflicts
+

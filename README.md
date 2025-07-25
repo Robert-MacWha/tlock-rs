@@ -31,11 +31,12 @@ Defines interface contracts, manages plugin lifecycle, handles routing, etc. Act
    - Persistent Data (storage)
    - Plugin routing
    - Opaque UI message forwarding
+   - Permission Management
 
 ### Plugins
 
 Implement host-defined interfaces. Handle all business logic including cryptography, network operations, and application-specific workflows.
-   - Permission Management
+   - Permission Granting & Revoking
    - User Authentication
    - Account Management
    - Transaction Management
@@ -141,26 +142,41 @@ Plugins may also implement alternative storage models (IE network-based) for the
 Plugins request permissions for two distinct categories:
 
 ### Actions
-Core user workflow operations where the plugin is the primary handler:
+Actions are functions plugins can call on the host.  Calling actions will either require specifying a plugin ID to call a single action, or will call all plugins and return a list result. 
 
-| Permission                  | Description                                             |
-| --------------------------- | ------------------------------------------------------- |
-| `eip155:account_create`     | Create new accounts for EVM chains                      |
-| `eip155:account_import`     | Import existing accounts (private key, seed phrase)     |
-| `eip155:sign`               | Sign messages and transactions (enum variants for type) |
-| `eip155:decrypt`            | Decrypt messages using account keys                     |
-| `wallet:backup_export`      | Export wallet backup data                               |
-| `wallet:backup_import`      | Import wallet backup data                               |
-| `wallet:permission_grant`   | Grant permissions to other plugins                      |
-| `wallet:permission_revoke`  | Revoke permissions from plugins                         |
-| `wallet:storage_read`       | Read from plugin storage (scoped by StorageScope)       |
-| `wallet:storage_write`      | Write to plugin storage (scoped by StorageScope)        |
-| `network:http_request`      | Make HTTP requests to external services                 |
-| `network:websocket_connect` | Establish WebSocket connections                         |
-| `ui:*`                      | Access to frontend-defined UI capabilities              |
+| Permission                  | Description                                           |
+| --------------------------- | ----------------------------------------------------- |
+| `eip155:account_create`     | Create new accounts for EVM chains                    |
+| `eip155:account_list`       | Lists all accounts for EVM chains                     |
+| `eip155:sign`               | Sign messages and transactions                        |
+| `wallet:encrypt`            | Encrypt messages using account keys                   |
+| `wallet:decrypt`            | Decrypt messages using account keys                   |
+| `wallet:permission_get`     | Gets the plugin's permission status                   |
+| `wallet:permission_grant`   | Grant permissions to other plugins                    |
+| `wallet:permission_revoke`  | Revoke permissions from plugins                       |
+| `wallet:backup_export`      | Export wallet backup data from the host (encrypted)   |
+| `wallet:backup_import`      | Import wallet backup data into the host (encrypted)   |
+| `wallet:storage_read`       | Read from plugin storage (scoped to the plugin)       |
+| `wallet:storage_write`      | Write to plugin storage (scoped to the plugin)        |
+| `network:http_request`      | Make HTTP requests to external services (url scoping) |
+| `network:websocket_connect` | Establish WebSocket connections (url scoping)         |
+| `ui:alert`                  | Alerts to the UI to an important event                |
+
+Something for push notifications
+Something for account abstraction
+Lots for different chain namespaces
+
+### Handler
+Handlers are functions plugins can implement for the host. Handler patterns:
+
+| Handler                 | Description                        |
+| ----------------------- | ---------------------------------- |
+| `eip155:account_create` | Create new accounts for EVM chains |
+| `eip155:account_list`   | Lists all accounts for EVM chains  |
+| `eip155:sign`           | Sign messages and transactions     |
 
 ### Hooks
-Observability and enhancement operations that occur around actions:
+Hooks are observable events plugins can connect to that do not include a 
 
 | Permission                     | Description                             |
 | ------------------------------ | --------------------------------------- |
