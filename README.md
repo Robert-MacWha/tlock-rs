@@ -144,23 +144,23 @@ Plugins request permissions for two distinct categories:
 ### Actions
 Actions are functions plugins can call on the host.  Calling actions will either require specifying a plugin ID to call a single action, or will call all plugins and return a list result. 
 
-| Permission                  | Description                                           |
-| --------------------------- | ----------------------------------------------------- |
-| `eip155:account_create`     | Create new accounts for EVM chains                    |
-| `eip155:account_list`       | Lists all accounts for EVM chains                     |
-| `eip155:sign`               | Sign messages and transactions                        |
-| `wallet:encrypt`            | Encrypt messages using account keys                   |
-| `wallet:decrypt`            | Decrypt messages using account keys                   |
-| `wallet:permission_get`     | Gets the plugin's permission status                   |
-| `wallet:permission_grant`   | Grant permissions to other plugins                    |
-| `wallet:permission_revoke`  | Revoke permissions from plugins                       |
-| `wallet:backup_export`      | Export wallet backup data from the host (encrypted)   |
-| `wallet:backup_import`      | Import wallet backup data into the host (encrypted)   |
-| `wallet:storage_read`       | Read from plugin storage (scoped to the plugin)       |
-| `wallet:storage_write`      | Write to plugin storage (scoped to the plugin)        |
-| `network:http_request`      | Make HTTP requests to external services (url scoping) |
-| `network:websocket_connect` | Establish WebSocket connections (url scoping)         |
-| `ui:alert`                  | Alerts to the UI to an important event                |
+| Permission                  | Description                                                       |
+| --------------------------- | ----------------------------------------------------------------- |
+| `eip155:account_create`     | Create new accounts for EVM chains                                |
+| `eip155:account_list`       | Lists all accounts for EVM chains                                 |
+| `eip155:sign`               | Sign messages and transactions                                    |
+| `wallet:encrypt`            | Encrypt messages using account keys                               |
+| `wallet:decrypt`            | Decrypt messages using account keys                               |
+| `wallet:permission_get`     | Gets the plugin's permission status                               |
+| `wallet:permission_grant`   | Grant permissions to other plugins                                |
+| `wallet:permission_revoke`  | Revoke permissions from plugins                                   |
+| `wallet:backup_export`      | Export wallet backup data from the host (encrypted)               |
+| `wallet:backup_import`      | Import wallet backup data into the host (encrypted)               |
+| `wallet:storage_read`       | Read from plugin storage (scoped to the plugin)                   |
+| `wallet:storage_write`      | Write to plugin storage (scoped to the plugin)                    |
+| `network:http_request`      | Make HTTP requests to external services (url scoping)             |
+| `network:websocket_connect` | Establish WebSocket connections (url scoping)                     |
+| `ui:alert`                  | Alerts to the UI to an important event.  Universal across all UIs |
 
 Something for push notifications
 Something for account abstraction
