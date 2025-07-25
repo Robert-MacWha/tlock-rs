@@ -2,6 +2,10 @@
 
 Wasm-powered wallet client focused on security and extendability.
 
+This document contains a system overview.
+- See [problems.md](./docs/problems.md) for problems I have with the current status quo.
+- See [design-considerations.md](./docs/design-considerations.md) for problems I have this this proposal.
+
 ## System Components
 
 The wallet consists of three distinct components with clear separation of concerns:
