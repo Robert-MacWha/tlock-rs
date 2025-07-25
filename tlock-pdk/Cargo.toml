@@ -1,0 +1,8 @@
+[package]
+name = "tlock-pdk"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+extism-pdk = "1.4.1"
+serde = "1.0.219"

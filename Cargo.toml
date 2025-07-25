@@ -1,0 +1,8 @@
+[workspace]
+members = [
+    "tlock-pdk",
+    "host",
+    "plugins/plugin"
+]
+
+resolver = "2"
