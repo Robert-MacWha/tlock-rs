@@ -1,6 +1,7 @@
 # Status Quo
 
 ## Current Solutions
+[Claude Research](./claude_research_wallet_extensions.md)
 
 - Metamask Snaps
   - -Limited in plugin permissions
