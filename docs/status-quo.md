@@ -30,13 +30,14 @@
 
 Currently all mainstream wallets are built as monoliths. There are none which gives users optionality, allowing them to smoothly add new features, increase privacy or security, or take control over their experience.  Furthermore, the functionality which is provided by most wallets is unacceptable.  It forces users into inconvenient, insecure patterns of behavior. 
 
-## Problems I encounted while building foxguard
+## Problems I encounter while building foxguard
 
 1. Metamask restricts you to `fetch`, meaning other communication is locked.  I can't have metamask and the snap communicate over bluetooth or LAN because of this, thus requiring the mobile device to be internet-connected.
 2. Metamask snaps don't run on mobile, so I need a separate companion app.
    1. Even if snaps did work on mobile, no way to trigger actions based on push notifications or external requests.
 3. No control over execution flow.  When signing a transaction, for example, I'd love to have a "go check your phone to authorize this transaction" screen popup, but you're locked into metamask's signature pipeline so can't.
 4. Snaps are terribly restrictive.  I had a demo website for foxguard, where you could install the snap and try it out yourself with an emulated version of the app in your browser.  But metamask won't let other people install snaps from websites, even on their development extension.
+5. The documentation and example snaps contradict each other in fundamental ways.  And their type system is trash, so you basically need to guess at what parameters it's giving you / expecting.  I spent 15 hours on this. 
 
 
 ## General issues I have
