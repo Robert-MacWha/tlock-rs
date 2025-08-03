@@ -42,6 +42,9 @@ Implement host-defined interfaces. Handle all business logic including cryptogra
    - Transaction Management
    - Backups & Syncing
 
+Plugins should be self-contained.  A core requirement will be avoiding plugin dependencies, where one plugin requires another to function.  Rather, plugin behavior should be implemented
+statically and, when they need dependencies, should include them.  
+
 ## Update Requirements
 
 **Plugin-only updates** handle workflow changes and new applications of existing primitives:
@@ -140,102 +143,36 @@ Plugins may also implement alternative storage models (IE network-based) for the
 
 ## Permissions
 
-Plugins request permissions for two distinct categories:
+Plugins request permissions for three distinct categories:
 
-### Actions
-Actions are functions plugins can call on the host.  Calling actions will either require specifying a plugin ID to call a single action, or will call all plugins and return a list result. 
+### Handlers
 
-| Permission                  | Description                                                       |
-| --------------------------- | ----------------------------------------------------------------- |
-| `eip155:account_create`     | Create new accounts for EVM chains                                |
-| `eip155:account_list`       | Lists all accounts for EVM chains                                 |
-| `eip155:sign`               | Sign messages and transactions                                    |
-| `wallet:encrypt`            | Encrypt messages using account keys                               |
-| `wallet:decrypt`            | Decrypt messages using account keys                               |
-| `wallet:permission_get`     | Gets the plugin's permission status                               |
-| `wallet:permission_grant`   | Grant permissions to other plugins                                |
-| `wallet:permission_revoke`  | Revoke permissions from plugins                                   |
-| `wallet:backup_export`      | Export wallet backup data from the host (encrypted)               |
-| `wallet:backup_import`      | Import wallet backup data into the host (encrypted)               |
-| `wallet:storage_read`       | Read from plugin storage (scoped to the plugin)                   |
-| `wallet:storage_write`      | Write to plugin storage (scoped to the plugin)                    |
-| `network:http_request`      | Make HTTP requests to external services (url scoping)             |
-| `network:websocket_connect` | Establish WebSocket connections (url scoping)                     |
-| `ui:alert`                  | Alerts to the UI to an important event.  Universal across all UIs |
+Handlers are functions plugins implement for the host. They trigger when requests are made to perform some action. The vast majority of the host's API will be implemented by plugins. A single plugin can be registered for a given handler.
+- JSON-RPC methods https://docs.metamask.io/wallet/reference/json-rpc-methods/
+- CAIP-25 multi-chain methods https://github.com/ChainAgnostic/CAIPs/blob/main/CAIPs/caip-25.md
+- Ethereum provider API https://docs.metamask.io/wallet/reference/provider-api/
 
-Something for push notifications
-Something for account abstraction
-Lots for different chain namespaces
-
-### Handler
-Handlers are functions plugins can implement for the host. Handler patterns:
-
-| Handler                 | Description                        |
-| ----------------------- | ---------------------------------- |
-| `eip155:account_create` | Create new accounts for EVM chains |
-| `eip155:account_list`   | Lists all accounts for EVM chains  |
-| `eip155:sign`           | Sign messages and transactions     |
-| `ui:*`                  | Generic UI handler                 |
+Handlers can be scoped per-chain, per-account, or globally.  Depending on their scope, different handlers can be registered for different tasks.  For example, one might have multiple account handlers on a single chain for each account, or multiple chain handlers for different EVM chains.  
 
 ### Hooks
-Hooks are observable events plugins can connect to that do not include a 
 
-| Permission                     | Description                             |
-| ------------------------------ | --------------------------------------- |
-| `eip155:pre_sign`              | Execute before signing operations       |
-| `eip155:post_sign`             | Execute after signing operations        |
-| `eip155:transaction_broadcast` | Observe when transactions are broadcast |
-| `wallet:plugin_installed`      | Observe when new plugins are installed  |
-| `wallet:permission_changed`    | Observe permission changes              |
+Hooks are functions plugins implement for the host. They trigger alongside handled requests.  The difference between handlers and hooks is that
+1. While only a single handler can be registered per function, multiple hooks can be registered.
+2. Handlers are expected to return a result, while hooks are expected to perform actions.
 
-**Note:** UI capabilities (`ui:*`) are defined entirely by each frontend and passed opaquely through the host. While the specific UI methods and types are frontend-defined, plugins must still request the `ui:*` permission to access any UI functionality.
+A handler might implement transaction signing or transmission, while a hook might attach to the `pre_eth_call` hook and check requests before they're called.
+- `pre` and `post` hooks for most handlers.
+
+### Requests
+
+Requests are functions exposed by the host to plugins.  This includes the entire host's public API, plus a set of plugin-specific requests. 
+ - All Handler functions
+ - `plugin_*` namespace functions
+ - Various requests for network requests, subscribing to events, 
 
 ## UI Architecture
 
-All UI communication uses frontend-scoped enums to maintain type safety while allowing frontend flexibility. Plugins can create unified enums that combine multiple frontend types for cleaner handling.
-
-### Example Frontend Enums
-
-```rust
-// CLI Frontend
-#[derive(Serialize, Deserialize)]
-pub enum CliUiRequest {
-    GetHomepage {},
-    Input { key: String, value: Option<String> },
-}
-```
-
-```rust
-// Web Frontend  
-#[derive(Serialize, Deserialize)]
-pub enum WebUiRequest {
-    GetHomepage {},
-    Input { key: String, value: Option<String> },
-}
-```
-
-### Plugin Unified Enum Pattern
-
-Plugins can create their own enums that combine supported frontend types:
-
-```rust
-// Plugin's unified UI enum
-#[derive(Serialize, Deserialize)]
-pub enum UiRequest {
-    Cli(CliUiRequest),
-    Web(WebUiRequest),
-    #[serde(other)]
-    Unsupported,
-}
-
-fn handle_ui_request(request: UiRequest) -> Result<UiResponse, Error> {
-    match request {
-        UiRequest::Cli(cli_req) => handle_cli_ui(cli_req),
-        UiRequest::Web(web_req) => handle_web_ui(web_req),
-        UiRequest::Unsupported => Err(Error::UnsupportedUiType),
-    }
-}
-```
+UI should be like homeassistant or VScode - there should be standard "views" plugins can deal with (IE popup, page, card) and these should be combined together at the UI-level.  Non-UI interactions can be facilitated directly through the API.
 
 ## Performance Considerations
 
