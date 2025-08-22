@@ -1,8 +1,13 @@
 [package]
 name = "tlock-pdk"
 version = "0.1.0"
-edition = "2024"
+edition = "2021"
 
 [dependencies]
-extism-pdk = "1.4.1"
-serde = "1.0.219"
+wasmer = "6.0.1"
+wasmer-types = "6.0.1"
+serde = {version = "1.0.219", features = ["derive"] }
+serde_json = "1.0.142"
+thiserror = "2.0.12"
+anyhow = "1.0.99"
+wasmer-wasi = "3.1.1"

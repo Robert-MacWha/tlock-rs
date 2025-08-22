@@ -8,7 +8,4 @@ edition = "2021"
 crate-type = ["cdylib"]
 
 [dependencies]
-extism-pdk = "1.3.0"
-serde = { version = "1", features = ["derive"] }
-
 tlock-pdk = { path = "../../tlock-pdk" }

@@ -12,6 +12,12 @@ This document contains a system overview.
 - See [status-quo.md](./docs/status-quo.md) for problems I have with the current status quo.
 - See [design-considerations.md](./docs/design-considerations.md) for problems I have this this proposal.
 
+## Name
+
+Ideas:
+- Lodgelock.  Beavers, who are builders, lodge meaning a cabin or inn (shelter) and also to lodge something in means affixing or embedding.
+  - beavault
+- bearier - bear and barrier - I think it's clever.  Also NA, though less canada.  Bears = strength, barrier = blocking.  Don't like the meaning as much, but like the way it feels in my mouth.  Though would get confused for barrier when said outloud.
 
 ## System Components
 
@@ -179,6 +185,10 @@ UI should be like homeassistant or VScode - there should be standard "views" plu
 **WASM Overhead:** While WASM provides excellent security isolation, it introduces computational overhead.
 
 **Plugin Loading:** Lazy loading and caching strategies will be essential for maintaining responsive UX, especially with many installed plugins.  Host's responsibility.
+
+## Program Architecture
+
+tlock will use wasmer for its wasm runtime, and with wasmer will use std-pipes for communication.  wasmer was selected because it supports a vast array of backends, including IOS (https://wasmer.io/posts/introducing-wasmer-v5), making it ideal for cross-platform development. Pipes were selected for communication because (a) they are very simple to implement, (b) can carry arbitrary data without needing manual memory shenanigans, and (c) allow the host and plugin to naturally implement async waits for each other. 
 
 ## Development Experience
 

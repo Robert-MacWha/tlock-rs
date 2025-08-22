@@ -1,7 +1,7 @@
 [workspace]
 members = [
-    "tlock-pdk",
     "host",
+    "tlock-pdk",
     "plugins/plugin"
 ]
 
