@@ -1,11 +1,8 @@
 [package]
 name = "tlock-rs"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
 [dependencies]
-tlock-pdk = { path = "../tlock-pdk" }
-wasmer = "6.0.1"
-wasmer-types = "6.0.1"
-wasmer-wasix = "0.600.1"
-socket2 = { version = "0.5.10", features = ["all"] }
+wasmi = "0.51.0"
+wasmi_wasi = "0.51.0"

@@ -1,35 +1,38 @@
-// plugin.rs - simplified
-use std::io::{self, BufRead, Write};
+use std::io::{self, BufRead, ErrorKind};
+use std::thread;
+use std::time::Duration;
 
 fn main() {
     println!("Plugin started");
 
     let stdin = io::stdin();
-    let stdout = io::stdout();
+    let mut lines = stdin.lock().lines();
 
-    let reader = stdin.lock();
-    let mut lines_iter = reader.lines();
+    loop {
+        match lines.next() {
+            Some(Ok(line)) => {
+                println!("Received: {}", line);
 
-    while let Some(line_result) = lines_iter.next() {
-        println!("Plugin: Got Some from iterator");
+                thread::sleep(Duration::from_millis(1000));
 
-        if line_result.is_ok() {
-            println!("Plugin: line_result is Ok");
+                if line == "ping" {
+                    println!("pong");
+                } else {
+                    println!("Echo: {}", line);
+                }
+            }
+            Some(Err(e)) if e.kind() == ErrorKind::WouldBlock => {
+                continue;
+            }
+            Some(Err(e)) => {
+                eprintln!("Error reading input: {}", e);
+                break;
+            }
+            None => {
+                // EOF - stdin closed
+                println!("Input closed");
+                break;
+            }
         }
-
-        if line_result.is_err() {
-            println!("Plugin: line_result is Err");
-            break;
-        }
-
-        let line = line_result.unwrap();
-
-        println!("Plugin: About to reverse: {}", line);
-        let reversed: String = line.chars().rev().collect();
-
-        println!("{}", reversed);
-        io::stdout().flush().unwrap();
     }
-
-    println!("Plugin: Iterator returned None, exiting");
 }
