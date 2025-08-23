@@ -589,8 +589,9 @@ dependencies = [
 name = "tlock-rs"
 version = "0.1.0"
 dependencies = [
- "wasmi",
- "wasmi_wasi",
+ "serde",
+ "serde_json",
+ "tlock-pdk",
 ]
 
 [[package]]

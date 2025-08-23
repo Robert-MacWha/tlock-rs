@@ -4,11 +4,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-Tlock-rs is a modular-focused wallet framework that prioritizes modularity, security, and portability. It uses WebAssembly (WASM) plugins with Wasmer runtime for secure execution isolation. The architecture consists of three main components:
+Tlock-rs is a modular-focused wallet framework that prioritizes modularity, security, and portability. It uses WebAssembly (WASM) plugins with Wasmi runtime for secure execution isolation. The architecture consists of three main components:
 
 - **Host**: Manages plugin lifecycle, routing, permissions, and provides core services (located in `host/`)
 - **Plugin Development Kit (PDK)**: Shared library for building plugins (`tlock-pdk/`)  
 - **Plugins**: WASM modules implementing wallet functionality (`plugins/`)
+
+## Programming styles
+
+- Never-nester: Avoid deep nesting.  If code is nested more than 3 levels, consider refactoring to exit early or extract into a new function.
+- Functional: Avoid unnecessary state, and keep things functional
+- Dependency injection: Use traits to perform dependency injection for simpler testing.
 
 ## Build Commands
 
@@ -46,7 +52,7 @@ cargo check --workspace
 ## Architecture Details
 
 ### WASM Runtime Integration
-The host uses Wasmer 6.1.0-rc.3 with WASIX for running plugins. Communication happens through stdin/stdout pipes between the host and WASM modules.
+The host uses Wasmi 0.51.0 with WASI for running plugins. Communication happens through stdin/stdout pipes between the host and WASM modules.
 
 ### Key Components:
 - **Host (`host/src/main.rs`)**: Demonstrates WASI pipe communication with a WASM module

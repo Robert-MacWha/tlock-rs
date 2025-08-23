@@ -15,7 +15,7 @@ use thiserror::Error;
 use crate::transport::{RequestHandler, RpcMessage, Transport};
 
 #[derive(Error, Debug)]
-pub enum SendError {
+pub enum TransportError {
     #[error("io error")]
     Io(#[from] std::io::Error),
     #[error("serde error")]
@@ -28,7 +28,7 @@ pub struct JsonRpcTransport {
     stdin_writer: Arc<Mutex<PipeWriter>>,
     next_id: u64,
     pending: Arc<Mutex<HashMap<u64, Sender<RpcMessage>>>>,
-    handler: Option<Arc<RequestHandler>>,
+    handler: Option<Arc<dyn RequestHandler>>,
     is_polling: Arc<AtomicBool>,
 }
 
@@ -42,25 +42,27 @@ impl JsonRpcTransport {
             is_polling: Arc::new(AtomicBool::new(false)),
         }
     }
+}
 
-    pub fn set_handler<F>(&mut self, handler: F)
-    where
-        F: Fn(&str, Value) -> Result<Value, Box<dyn std::error::Error + Send + Sync>>
-            + Send
-            + Sync
-            + 'static,
-    {
-        self.handler = Some(Arc::new(handler));
+impl Transport for JsonRpcTransport {
+    type Error = TransportError;
+
+    fn set_handler(&mut self, handler: Arc<dyn RequestHandler>) {
+        self.handler = Some(handler);
     }
 
-    pub fn call(&mut self, method: &str, params: Value) -> Result<Receiver<RpcMessage>, SendError> {
+    fn call(
+        &mut self,
+        method: &str,
+        params: Value,
+    ) -> Result<Receiver<RpcMessage>, TransportError> {
         let id = self.next_id;
         self.next_id += 1;
 
         let (resp_tx, resp_rx) = mpsc::channel();
         self.pending
             .lock()
-            .map_err(|_| SendError::LockError)?
+            .map_err(|_| TransportError::LockError)?
             .insert(id, resp_tx);
 
         let msg = RpcMessage::Request {
@@ -71,17 +73,25 @@ impl JsonRpcTransport {
         };
 
         let serialized = serde_json::to_string(&msg)?;
-        let mut stdin = self.stdin_writer.lock().map_err(|_| SendError::LockError)?;
+        let mut stdin = self
+            .stdin_writer
+            .lock()
+            .map_err(|_| TransportError::LockError)?;
+        println!("Sending message: {}", serialized);
         writeln!(stdin, "{}", serialized)?;
         stdin.flush()?;
 
         Ok(resp_rx)
     }
+}
 
-    pub fn start_polling(&mut self, stdout_reader: PipeReader) -> Result<(), SendError> {
+impl JsonRpcTransport {
+    pub fn start_polling(&self, stdout_reader: PipeReader) -> Result<(), TransportError> {
         if self.is_polling.load(Ordering::SeqCst) {
             return Ok(());
         }
+
+        println!("Starting polling thread...");
 
         self.is_polling.store(true, Ordering::SeqCst);
 
@@ -100,16 +110,21 @@ impl JsonRpcTransport {
         stdout_reader: PipeReader,
         stdin_writer: Arc<Mutex<PipeWriter>>,
         pending: Arc<Mutex<HashMap<u64, Sender<RpcMessage>>>>,
-        handler: Option<Arc<RequestHandler>>,
+        handler: Option<Arc<dyn RequestHandler>>,
     ) {
         let mut buf_reader = BufReader::new(stdout_reader);
         let mut line = String::new();
 
         loop {
             line.clear();
+            println!("Waiting for message...");
             match buf_reader.read_line(&mut line) {
-                Ok(0) => break, // EOF
+                Ok(0) => {
+                    println!("EOF reached, stopping polling thread.");
+                    break;
+                }
                 Ok(_) => {
+                    println!("Received line: {}", line.trim());
                     if line.trim().is_empty() {
                         continue;
                     }
@@ -130,16 +145,27 @@ impl JsonRpcTransport {
         line: &str,
         stdin_writer: &Arc<Mutex<PipeWriter>>,
         pending: &Arc<Mutex<HashMap<u64, Sender<RpcMessage>>>>,
-        handler: &Option<Arc<RequestHandler>>,
-    ) -> Result<(), SendError> {
+        handler: &Option<Arc<dyn RequestHandler>>,
+    ) -> Result<(), TransportError> {
         let message: RpcMessage = serde_json::from_str(line.trim())?;
 
         match message {
+            RpcMessage::Response { id, .. } => {
+                println!("Handling response for id: {}", id);
+                if let Some(tx) = pending
+                    .lock()
+                    .map_err(|_| TransportError::LockError)?
+                    .remove(&id)
+                {
+                    let _ = tx.send(message);
+                }
+            }
             RpcMessage::Request {
                 id, method, params, ..
             } => {
+                println!("Handling request: {} with id: {}", method, id);
                 if let Some(handler) = handler {
-                    match handler(&method, params) {
+                    match handler.handle(&method, params) {
                         Ok(result) => {
                             let response = RpcMessage::Response {
                                 jsonrpc: "2.0".to_string(),
@@ -149,7 +175,7 @@ impl JsonRpcTransport {
                             };
                             let serialized = serde_json::to_string(&response)?;
                             let mut stdin =
-                                stdin_writer.lock().map_err(|_| SendError::LockError)?;
+                                stdin_writer.lock().map_err(|_| TransportError::LockError)?;
                             writeln!(stdin, "{}", serialized)?;
                             stdin.flush()?;
                         }
@@ -162,46 +188,15 @@ impl JsonRpcTransport {
                             };
                             let serialized = serde_json::to_string(&error_response)?;
                             let mut stdin =
-                                stdin_writer.lock().map_err(|_| SendError::LockError)?;
+                                stdin_writer.lock().map_err(|_| TransportError::LockError)?;
                             writeln!(stdin, "{}", serialized)?;
                             stdin.flush()?;
                         }
                     }
                 }
             }
-            RpcMessage::Response { id, .. } => {
-                if let Some(tx) = pending
-                    .lock()
-                    .map_err(|_| SendError::LockError)?
-                    .remove(&id)
-                {
-                    let _ = tx.send(message);
-                }
-            }
         }
 
         Ok(())
-    }
-}
-
-impl Transport for JsonRpcTransport {
-    type Error = SendError;
-
-    fn call(&mut self, method: &str, params: Value) -> Result<Receiver<RpcMessage>, Self::Error> {
-        JsonRpcTransport::call(self, method, params)
-    }
-
-    fn set_handler<F>(&mut self, handler: F)
-    where
-        F: Fn(&str, Value) -> Result<Value, Box<dyn std::error::Error + Send + Sync>>
-            + Send
-            + Sync
-            + 'static,
-    {
-        JsonRpcTransport::set_handler(self, handler)
-    }
-
-    fn start_polling(&mut self, stdout_reader: PipeReader) -> Result<(), Self::Error> {
-        JsonRpcTransport::start_polling(self, stdout_reader)
     }
 }

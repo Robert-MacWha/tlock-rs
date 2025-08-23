@@ -1,4 +1,5 @@
-use std::io::{self, BufRead, ErrorKind};
+// plugin.rs
+use std::io::{self, BufRead};
 use std::thread;
 use std::time::Duration;
 
@@ -20,9 +21,6 @@ fn main() {
                 } else {
                     println!("Echo: {}", line);
                 }
-            }
-            Some(Err(e)) if e.kind() == ErrorKind::WouldBlock => {
-                continue;
             }
             Some(Err(e)) => {
                 eprintln!("Error reading input: {}", e);

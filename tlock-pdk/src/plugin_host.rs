@@ -3,7 +3,7 @@ use std::{
     sync::{
         Arc, Mutex,
         atomic::AtomicBool,
-        mpsc::{self},
+        mpsc::{self, Receiver},
     },
     thread::{self},
 };
@@ -15,12 +15,16 @@ use wasmi_wasi::{
     wasi_common::pipe::{ReadPipe, WritePipe},
 };
 
+use crate::{
+    json_rpc_transport::{JsonRpcTransport, TransportError},
+    transport::{RequestHandler, RpcMessage, Transport},
+};
 
 /// PluginHost manages a plugin's lifecycle and io, implementing
 /// std::io::Read and std::io::Write
 pub struct PluginHost {
     stdin_writer: Option<Arc<Mutex<PipeWriter>>>,
-    stdout_reader: Option<Arc<Mutex<PipeReader>>>,
+    transport: JsonRpcTransport,
     is_running: Arc<AtomicBool>,
 }
 
@@ -36,6 +40,8 @@ pub enum SpawnError {
     WasiError(#[from] wasmi_wasi::Error),
     #[error("host trap")]
     HostTrap(wasmi::ResumableCallHostTrap),
+    #[error("transport error")]
+    TransportError(#[from] TransportError),
 }
 
 #[derive(Error, Debug)]
@@ -60,55 +66,32 @@ pub enum RecvError {
     TryRecvError(#[from] mpsc::TryRecvError),
 }
 
-const MAX_FUEL: u64 = 10_000;
+const MAX_FUEL: u64 = 1_000_000;
 
 impl PluginHost {
     /// Spawns the wasi plugin in a new thread
-    pub fn spawn(wasm_bytes: Vec<u8>) -> Result<Self, SpawnError> {
+    pub fn spawn(
+        wasm_bytes: Vec<u8>,
+        handler: Option<Arc<dyn RequestHandler>>,
+    ) -> Result<Self, SpawnError> {
         let is_running = Arc::new(AtomicBool::new(true));
 
+        // Setup pipes
         let (stdin_reader, stdin_writer) = pipe()?;
         let (stdout_reader, stdout_writer) = pipe()?;
-
         let stdin_writer = Arc::new(Mutex::new(stdin_writer));
-        let stdout_reader = Arc::new(Mutex::new(stdout_reader));
 
-        let stdin_pipe = ReadPipe::new(stdin_reader);
-        let stdout_pipe = WritePipe::new(stdout_writer);
+        start_plugin(wasm_bytes, &is_running, stdin_reader, stdout_writer)?;
 
-        let config = Config::default();
-        let engine = Engine::new(&config);
-        let module = Module::new(&engine, wasm_bytes)?;
-        let mut linker = <Linker<WasiCtx>>::new(&engine);
-        let wasi = WasiCtxBuilder::new()
-            .stdin(Box::new(stdin_pipe))
-            .stdout(Box::new(stdout_pipe))
-            .build();
-        let mut store = Store::new(&engine, wasi);
-
-        wasmi_wasi::add_to_linker(&mut linker, |ctx| ctx)?;
-        let instance = linker.instantiate_and_start(&mut store, &module)?;
-
-        let start_func = instance
-            .get_func(&store, "_start")
-            .ok_or(SpawnError::StartNotFound)?;
-
-        thread::spawn({
-            let is_running = is_running.clone();
-            move || match handle_start_thread(store, start_func, is_running.clone()) {
-                Ok(_) => {
-                    is_running.store(false, std::sync::atomic::Ordering::SeqCst);
-                }
-                Err(e) => {
-                    is_running.store(false, std::sync::atomic::Ordering::SeqCst);
-                    eprintln!("Thread died: {:?}", e);
-                }
-            }
-        });
+        let mut transport = JsonRpcTransport::new(stdin_writer.clone());
+        if let Some(handler) = handler {
+            transport.set_handler(handler);
+        }
+        transport.start_polling(stdout_reader)?;
 
         Ok(PluginHost {
             stdin_writer: Some(stdin_writer),
-            stdout_reader: Some(stdout_reader),
+            transport,
             is_running,
         })
     }
@@ -124,11 +107,68 @@ impl PluginHost {
         if let Some(writer) = self.stdin_writer.take() {
             drop(writer);
         }
-
-        if let Some(rx) = self.stdout_reader.take() {
-            drop(rx);
-        }
     }
+}
+
+impl Transport for PluginHost {
+    type Error = TransportError;
+
+    fn call(
+        &mut self,
+        method: &str,
+        params: serde_json::Value,
+    ) -> Result<Receiver<RpcMessage>, Self::Error> {
+        self.transport.call(method, params)
+    }
+
+    fn set_handler(&mut self, handler: Arc<dyn RequestHandler>) {
+        self.transport.set_handler(handler)
+    }
+}
+
+fn start_plugin(
+    wasm_bytes: Vec<u8>,
+    is_running: &Arc<AtomicBool>,
+    stdin_reader: PipeReader,
+    stdout_writer: PipeWriter,
+) -> Result<(), SpawnError> {
+    let stdin_pipe = ReadPipe::new(stdin_reader);
+    let stdout_pipe = WritePipe::new(stdout_writer);
+
+    let mut config = Config::default();
+    config.consume_fuel(true);
+    // https://github.com/wasmi-labs/wasmi/issues/1647
+    config.compilation_mode(wasmi::CompilationMode::Eager);
+    let engine = Engine::new(&config);
+    let module = Module::new(&engine, wasm_bytes)?;
+
+    let mut linker = <Linker<WasiCtx>>::new(&engine);
+    let wasi = WasiCtxBuilder::new()
+        .stdin(Box::new(stdin_pipe))
+        .stdout(Box::new(stdout_pipe))
+        .build();
+
+    let mut store = Store::new(&engine, wasi);
+    wasmi_wasi::add_to_linker(&mut linker, |ctx| ctx)?;
+
+    let instance = linker.instantiate_and_start(&mut store, &module)?;
+    let start_func = instance
+        .get_func(&store, "_start")
+        .ok_or(SpawnError::StartNotFound)?;
+
+    thread::spawn({
+        let is_running = is_running.clone();
+        move || match handle_start_thread(store, start_func, is_running.clone()) {
+            Ok(_) => {
+                is_running.store(false, std::sync::atomic::Ordering::SeqCst);
+            }
+            Err(e) => {
+                is_running.store(false, std::sync::atomic::Ordering::SeqCst);
+                eprintln!("Thread died: {:?}", e);
+            }
+        }
+    });
+    Ok(())
 }
 
 /// handle_start_thread manages the plugin's lifecycle. Essentially - because
@@ -151,14 +191,21 @@ fn handle_start_thread(
     loop {
         match resumable {
             wasmi::ResumableCall::Finished => return Ok(()),
-            wasmi::ResumableCall::HostTrap(trap) => return Err(SpawnError::HostTrap(trap)),
+            wasmi::ResumableCall::HostTrap(trap) => {
+                println!("Host trap: {:?}", trap);
+                return Err(SpawnError::HostTrap(trap));
+            }
             wasmi::ResumableCall::OutOfFuel(out_of_fuel) => {
+                println!("Out of fuel, checking if still running...");
                 if !is_running.load(std::sync::atomic::Ordering::SeqCst) {
                     return Ok(());
                 }
 
+                println!("Still running, resuming...");
+
                 let required = out_of_fuel.required_fuel();
                 let top_up = required.max(MAX_FUEL);
+                println!("Topping up fuel by {}", top_up);
                 store.set_fuel(top_up).unwrap();
 
                 match out_of_fuel.resume(&mut store, &mut []) {
