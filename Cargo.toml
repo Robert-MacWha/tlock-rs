@@ -2,6 +2,7 @@
 members = [
     "host",
     "tlock-pdk",
+    "tlock-hdk",
     "plugins/plugin"
 ]
 

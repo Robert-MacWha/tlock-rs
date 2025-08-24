@@ -1,14 +1,8 @@
-mod json_rpc_transport;
-mod plugin_handler;
-mod request_handler;
-mod transport;
 use std::io::{self, BufReader};
 
-use crate::{
-    json_rpc_transport::JsonRpcTransport,
-    plugin_handler::{PluginHandler, TlockApi},
+use tlock_pdk::{
+    api::TlockApi, json_rpc_transport::JsonRpcTransport, plugin_handler::PluginHandler,
 };
-
 struct Plugin {}
 
 fn main() {

@@ -1,12 +1,12 @@
 use serde_json::Value;
 use thiserror::Error;
-
-use crate::{
-    json_rpc_transport::JsonRpcTransport,
-    plugin_instance::{PluginInstance, SpawnError},
+use tlock_pdk::{
+    json_rpc_transport::{JsonRpcTransport, JsonRpcTransportError},
     request_handler::RequestHandler,
-    transport::{RpcMessage, Transport, TransportError},
+    transport::RpcMessage,
 };
+
+use crate::plugin_instance::{PluginInstance, SpawnError};
 
 /// Plugin is an async-capable instance of a plugin
 pub struct Plugin<'a> {
@@ -20,7 +20,7 @@ pub enum PluginError {
     #[error("spawn error")]
     SpawnError(#[from] SpawnError),
     #[error("transport error")]
-    TransportError(#[from] TransportError),
+    JsonRpcTransportError(#[from] JsonRpcTransportError),
 }
 
 impl<'a> Plugin<'a> {

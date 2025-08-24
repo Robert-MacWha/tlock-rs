@@ -1,10 +1,13 @@
 [package]
-name = "tlock-pdk"
+name = "tlock-hdk"
 version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+tlock-pdk = { path = "../tlock-pdk" }
 futures = "0.3.31"
 serde = {version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.142"
 thiserror = "2.0.12"
+wasmi = "0.51.0"
+wasmi_wasi = "0.51.0"

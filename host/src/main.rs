@@ -1,4 +1,7 @@
-use tlock_pdk::{api::TlockApi, plugin::Plugin, plugin_handler::PluginHandler};
+use tlock_hdk::{
+    plugin::Plugin,
+    tlock_pdk::{api::TlockApi, plugin_handler::PluginHandler},
+};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let wasm_path = "../target/wasm32-wasip1/debug/rust-pdk-template.wasm";

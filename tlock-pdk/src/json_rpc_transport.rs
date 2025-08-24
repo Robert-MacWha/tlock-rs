@@ -6,11 +6,23 @@ use std::{
 
 use futures::channel::oneshot::{self, Sender};
 use serde_json::Value;
+use thiserror::Error;
 
-use crate::{
-    request_handler::RequestHandler,
-    transport::{RpcMessage, Transport, TransportError},
-};
+use crate::{request_handler::RequestHandler, transport::RpcMessage};
+
+#[derive(Error, Debug)]
+pub enum JsonRpcTransportError {
+    #[error("io error")]
+    Io(#[from] std::io::Error),
+    #[error("deserialize error")]
+    Serde(serde_json::Error, String),
+    #[error("end of file")]
+    EOF,
+    #[error("response channel closed")]
+    ChannelClosed,
+    #[error("request timed out")]
+    Timeout,
+}
 
 /// Single-threaded, concurrent-safe json-rpc transport layer
 pub struct JsonRpcTransport {
@@ -25,19 +37,15 @@ impl JsonRpcTransport {
             pending: Arc::new(Mutex::new(HashMap::new())),
         }
     }
-}
 
-impl Transport for JsonRpcTransport {
-    type Error = TransportError;
-
-    fn call(
+    pub fn call(
         &self,
         reader: impl Read,
         writer: &mut dyn Write,
         method: &str,
         params: Value,
         handler: &dyn RequestHandler,
-    ) -> Result<RpcMessage, TransportError> {
+    ) -> Result<RpcMessage, JsonRpcTransportError> {
         let id = self
             .next_id
             .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
@@ -58,7 +66,7 @@ impl Transport for JsonRpcTransport {
                 Ok(None) => {}
                 Err(e) => {
                     println!("Error receiving response: {}", e);
-                    return Err(TransportError::ChannelClosed);
+                    return Err(JsonRpcTransportError::ChannelClosed);
                 }
             }
 
@@ -66,16 +74,14 @@ impl Transport for JsonRpcTransport {
             self.process_next_line(&mut reader, writer, handler)?;
         }
     }
-}
 
-impl JsonRpcTransport {
     fn write_request(
         &self,
         writer: &mut dyn Write,
         id: u64,
         method: &str,
         params: Value,
-    ) -> Result<(), TransportError> {
+    ) -> Result<(), JsonRpcTransportError> {
         println!("Sending request id: {} method: {}", id, method);
         let msg = RpcMessage::Request {
             jsonrpc: "2.0".to_string(),
@@ -91,8 +97,10 @@ impl JsonRpcTransport {
         &self,
         writer: &mut dyn Write,
         msg: &RpcMessage,
-    ) -> Result<(), TransportError> {
-        let serialized = serde_json::to_string(msg)?;
+    ) -> Result<(), JsonRpcTransportError> {
+        let serialized = serde_json::to_string(msg).map_err(|e| {
+            JsonRpcTransportError::Serde(e, format!("Failed to serialize message: {:?}", msg))
+        })?;
         println!("Sending message: {}", serialized);
         writeln!(writer, "{}", serialized)?;
         writer.flush()?;
@@ -104,9 +112,11 @@ impl JsonRpcTransport {
         reader: &mut dyn BufRead,
         writer: &mut dyn Write,
         handler: &dyn RequestHandler,
-    ) -> Result<(), TransportError> {
+    ) -> Result<(), JsonRpcTransportError> {
         let line = self.next_line(reader)?;
-        let message = serde_json::from_str(line.trim())?;
+        let message = serde_json::from_str(line.trim()).map_err(|e| {
+            JsonRpcTransportError::Serde(e, format!("Failed to deserialize line: {}", line.trim()))
+        })?;
 
         match message {
             RpcMessage::ResponseOk { id, .. } | RpcMessage::ResponseErr { id, .. } => {
@@ -143,15 +153,15 @@ impl JsonRpcTransport {
         Ok(())
     }
 
-    fn next_line(&self, reader: &mut dyn BufRead) -> Result<String, TransportError> {
+    fn next_line(&self, reader: &mut dyn BufRead) -> Result<String, JsonRpcTransportError> {
         let mut line = String::new();
         match reader.read_line(&mut line) {
-            Ok(0) => return Err(TransportError::EOF),
+            Ok(0) => return Err(JsonRpcTransportError::EOF),
             Ok(_) => {
                 return Ok(line);
             }
             Err(e) => {
-                return Err(TransportError::Io(e));
+                return Err(JsonRpcTransportError::Io(e));
             }
         }
     }
