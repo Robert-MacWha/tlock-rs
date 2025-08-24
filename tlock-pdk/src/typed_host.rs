@@ -1,33 +1,42 @@
-// use crate::{
-//     api::TlockApi,
-//     transport::{RequestHandler, RpcMessage, Transport},
-// };
+use std::sync::{Arc, atomic::AtomicU64};
 
-// pub struct TypedHost {
-//     transport: Box<dyn Transport>,
-//     handler: Box<dyn RequestHandler>,
-// }
+use futures::lock::Mutex;
 
-// impl TypedHost {
-//     pub fn new(transport: Box<dyn Transport>, handler: Box<dyn RequestHandler>) -> Self {
-//         Self { transport, handler }
-//     }
-// }
+use crate::{api::TlockApi, json_rpc_transport::JsonRpcTransport, transport::RpcMessage};
 
-// impl TlockApi for TypedHost {
-//     fn ping(&self, value: &str) -> String {
-//         let result = self
-//             .transport
-//             .call("tlock_ping", value.into(), self.handler.as_ref())
-//             .unwrap();
+pub struct TypedHost {
+    id: AtomicU64,
+    transport: JsonRpcTransport,
+}
 
-//         match result {
-//             RpcMessage::ResponseOk { result, .. } => result.as_str().unwrap().to_string(),
-//             _ => panic!("Unexpected message type"),
-//         }
-//     }
+impl TypedHost {
+    pub fn new(transport: JsonRpcTransport) -> Self {
+        Self {
+            id: AtomicU64::new(0),
+            transport,
+        }
+    }
+}
 
-//     fn version(&self) -> String {
-//         todo!()
-//     }
-// }
+impl TlockApi for TypedHost {
+    fn ping(&self, value: &str) -> String {
+        let id = self.id.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+
+        //? handler can be none because this plugin should only ever receive a
+        //? single request from the host, so there will be no `RpcMessage::Request`s
+        //? to handle
+        let result = self
+            .transport
+            .call(id, "tlock_ping", value.into(), None)
+            .unwrap();
+
+        match result {
+            RpcMessage::ResponseOk { result, .. } => result.as_str().unwrap().to_string(),
+            _ => panic!("Unexpected message type"),
+        }
+    }
+
+    fn version(&self) -> String {
+        todo!()
+    }
+}

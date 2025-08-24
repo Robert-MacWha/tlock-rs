@@ -3,27 +3,33 @@ use std::io::{self, BufReader};
 use tlock_pdk::{
     api::TlockApi, json_rpc_transport::JsonRpcTransport, plugin_handler::PluginHandler,
 };
-struct Plugin {}
-
-fn main() {
-    let plugin = Plugin {};
-    let transport = JsonRpcTransport::new();
-
-    let reader = io::stdin();
-    let mut reader = BufReader::new(reader);
-    let mut writer = io::stdout();
-    loop {
-        transport
-            .process_next_line(&mut reader, &mut writer, &plugin)
-            .unwrap();
-    }
+struct Plugin<'a> {
+    transport: &'a JsonRpcTransport,
 }
 
-impl PluginHandler for Plugin {}
+fn main() {
+    let writer = io::stdout();
+    let reader = io::stdin();
+    let reader = BufReader::new(reader);
 
-impl TlockApi for Plugin {
+    let transport = JsonRpcTransport::new(Box::new(reader), Box::new(writer));
+
+    let plugin = Plugin {
+        transport: &transport,
+    };
+
+    transport.process_next_line(Some(&plugin)).unwrap();
+}
+
+impl PluginHandler for Plugin<'_> {}
+
+impl TlockApi for Plugin<'_> {
     fn ping(&self, message: &str) -> String {
-        format!("Pong: {}", message)
+        let version = self
+            .transport
+            .call(0, "tlock_version", "".into(), None)
+            .unwrap();
+        format!("Pong: version={:?} message={}", version, message)
     }
 
     fn version(&self) -> String {

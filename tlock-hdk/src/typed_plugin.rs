@@ -1,35 +1,29 @@
-// use crate::{
-//     api::TlockApi,
-//     plugin::Plugin,
-//     transport::{RequestHandler, RpcMessage, Transport},
-// };
+use tlock_pdk::{api::TlockApi, transport::RpcMessage};
 
-// /// TypedPlugin is a plugin for the host with typed wrappers for all valid functions
-// pub struct TypedPlugin {
-//     plugin: Plugin,
-//     handler: Box<dyn RequestHandler>,
-// }
+use crate::plugin::Plugin;
 
-// impl TypedPlugin {
-//     pub fn new(plugin: Plugin, handler: Box<dyn RequestHandler>) -> Self {
-//         Self { plugin, handler }
-//     }
-// }
+/// TypedPlugin is a type-safe wrapped plugin
+pub struct TypedPlugin<'a> {
+    plugin: Plugin<'a>,
+}
 
-// impl TlockApi for TypedPlugin {
-//     fn ping(&self, value: &str) -> String {
-//         let result = self
-//             .plugin
-//             .call("tlock_ping", value.into(), self.handler.as_ref())
-//             .unwrap();
+impl<'a> TypedPlugin<'a> {
+    pub fn new(plugin: Plugin<'a>) -> Self {
+        Self { plugin }
+    }
+}
 
-//         match result {
-//             RpcMessage::ResponseOk { result, .. } => result.as_str().unwrap().to_string(),
-//             _ => panic!("Unexpected message type"),
-//         }
-//     }
+// TODO: Make a macro to generate this + typed_host
+impl TlockApi for TypedPlugin<'_> {
+    fn ping(&self, value: &str) -> String {
+        let result = self.plugin.call("tlock_ping", value.into()).unwrap();
+        match result {
+            RpcMessage::ResponseOk { result, .. } => result.as_str().unwrap().to_string(),
+            _ => panic!("Unexpected message type"),
+        }
+    }
 
-//     fn version(&self) -> String {
-//         todo!()
-//     }
-// }
+    fn version(&self) -> String {
+        todo!()
+    }
+}

@@ -1,6 +1,7 @@
 use tlock_hdk::{
     plugin::Plugin,
     tlock_pdk::{api::TlockApi, plugin_handler::PluginHandler},
+    typed_plugin::TypedPlugin,
 };
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -9,10 +10,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let handler = HostHandler {};
     let plugin = Plugin::new(wasm_bytes, &handler);
+    let plugin = TypedPlugin::new(plugin);
 
-    let resp = plugin
-        .call("tlock_ping", serde_json::json!("Hello Plugin!"))
-        .unwrap();
+    let resp = plugin.ping("Hello Plugin!");
     println!("Received message: {:?}", resp);
 
     Ok(())
