@@ -497,7 +497,10 @@ dependencies = [
 name = "rust-pdk-template"
 version = "0.1.0"
 dependencies = [
- "tlock-pdk",
+ "futures",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.16",
 ]
 
 [[package]]

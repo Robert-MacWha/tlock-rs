@@ -1,4 +1,4 @@
-use crate::{api::TlockApi, request_handler::RequestHandler};
+use crate::request_handler::RequestHandler;
 
 pub trait PluginHandler: RequestHandler + TlockApi {}
 
@@ -17,4 +17,9 @@ where
             _ => Err("Unknown method".into()),
         }
     }
+}
+
+pub trait TlockApi {
+    fn ping(&self, value: &str) -> String;
+    fn version(&self) -> String;
 }

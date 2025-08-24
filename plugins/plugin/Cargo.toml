@@ -3,9 +3,11 @@ name = "rust-pdk-template"
 version = "0.1.0"
 edition = "2024"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-[lib]
-crate-type = ["cdylib"]
-
 [dependencies]
-tlock-pdk = { path = "../../tlock-pdk" }
+futures = "0.3.31"
+serde = {version = "1.0.219", features = ["derive"] }
+serde_json = "1.0.143"
+thiserror = "2.0.16"
+
+[build]
+target = "wasm32-wasip1"

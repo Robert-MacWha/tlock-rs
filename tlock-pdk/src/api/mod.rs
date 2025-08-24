@@ -1,4 +1,4 @@
 pub trait TlockApi {
-    fn ping(&mut self, value: &str) -> String;
-    fn version(&mut self) -> String;
+    fn ping(&self, value: &str) -> String;
+    fn version(&self) -> String;
 }
