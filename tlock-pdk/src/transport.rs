@@ -1,13 +1,15 @@
-use std::sync::{Arc, mpsc::Receiver};
+use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use thiserror::Error;
 
-pub trait RequestHandler: Send + Sync {
+pub trait RequestHandler {
     fn handle(
-        &self,
+        &mut self,
         method: &str,
         params: Value,
+        transport: &mut dyn Transport,
     ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>>;
 }
 
@@ -20,17 +22,37 @@ pub enum RpcMessage {
         method: String,
         params: Value,
     },
-    Response {
+    ResponseOk {
         jsonrpc: String,
         id: u64,
-        result: Option<Value>,
-        error: Option<Value>,
+        result: Value,
+    },
+    ResponseErr {
+        jsonrpc: String,
+        id: u64,
+        error: Value,
     },
 }
 
-pub trait Transport {
-    type Error: std::error::Error + Send + Sync + 'static;
+#[derive(Error, Debug)]
+pub enum TransportError {
+    #[error("io error")]
+    Io(#[from] std::io::Error),
+    #[error("serde error")]
+    Serde(#[from] serde_json::Error),
+    #[error("end of file")]
+    EOF,
+    #[error("response channel closed")]
+    ChannelClosed,
+    #[error("request timed out")]
+    Timeout,
+}
 
-    fn call(&mut self, method: &str, params: Value) -> Result<Receiver<RpcMessage>, Self::Error>;
-    fn set_handler(&mut self, handler: Arc<dyn RequestHandler>);
+pub trait Transport {
+    fn call(
+        &mut self,
+        method: &str,
+        params: Value,
+        handler: &mut dyn RequestHandler,
+    ) -> Result<RpcMessage, TransportError>;
 }

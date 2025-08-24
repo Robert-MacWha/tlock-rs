@@ -1,13 +1,14 @@
 use std::{
     io::{PipeReader, PipeWriter, pipe},
     sync::{
-        Arc, Mutex,
+        Arc,
         atomic::AtomicBool,
-        mpsc::{self, Receiver},
+        mpsc::{self},
     },
     thread::{self},
 };
 
+use serde_json::Value;
 use thiserror::Error;
 use wasmi::{Config, Engine, Func, Linker, Module, Store};
 use wasmi_wasi::{
@@ -16,14 +17,13 @@ use wasmi_wasi::{
 };
 
 use crate::{
-    json_rpc_transport::{JsonRpcTransport, TransportError},
-    transport::{RequestHandler, RpcMessage, Transport},
+    json_rpc_transport::JsonRpcTransport,
+    transport::{RequestHandler, RpcMessage, Transport, TransportError},
 };
 
 /// PluginHost manages a plugin's lifecycle and io, implementing
 /// std::io::Read and std::io::Write
-pub struct PluginHost {
-    stdin_writer: Option<Arc<Mutex<PipeWriter>>>,
+pub struct Plugin {
     transport: JsonRpcTransport,
     is_running: Arc<AtomicBool>,
 }
@@ -68,29 +68,20 @@ pub enum RecvError {
 
 const MAX_FUEL: u64 = 1_000_000;
 
-impl PluginHost {
+impl Plugin {
     /// Spawns the wasi plugin in a new thread
-    pub fn spawn(
-        wasm_bytes: Vec<u8>,
-        handler: Option<Arc<dyn RequestHandler>>,
-    ) -> Result<Self, SpawnError> {
+    pub fn new(wasm_bytes: Vec<u8>) -> Result<Self, SpawnError> {
         let is_running = Arc::new(AtomicBool::new(true));
 
         // Setup pipes
         let (stdin_reader, stdin_writer) = pipe()?;
         let (stdout_reader, stdout_writer) = pipe()?;
-        let stdin_writer = Arc::new(Mutex::new(stdin_writer));
 
         start_plugin(wasm_bytes, &is_running, stdin_reader, stdout_writer)?;
 
-        let mut transport = JsonRpcTransport::new(stdin_writer.clone());
-        if let Some(handler) = handler {
-            transport.set_handler(handler);
-        }
-        transport.start_polling(stdout_reader)?;
+        let transport = JsonRpcTransport::new(Box::new(stdin_writer), Box::new(stdout_reader));
 
-        Ok(PluginHost {
-            stdin_writer: Some(stdin_writer),
+        Ok(Plugin {
             transport,
             is_running,
         })
@@ -100,29 +91,23 @@ impl PluginHost {
         self.is_running.load(std::sync::atomic::Ordering::SeqCst)
     }
 
-    pub fn kill(mut self) {
+    pub fn kill(&mut self) {
         self.is_running
             .store(false, std::sync::atomic::Ordering::SeqCst);
-
-        if let Some(writer) = self.stdin_writer.take() {
-            drop(writer);
-        }
     }
 }
 
-impl Transport for PluginHost {
-    type Error = TransportError;
-
+impl Transport for Plugin {
     fn call(
         &mut self,
         method: &str,
-        params: serde_json::Value,
-    ) -> Result<Receiver<RpcMessage>, Self::Error> {
-        self.transport.call(method, params)
-    }
-
-    fn set_handler(&mut self, handler: Arc<dyn RequestHandler>) {
-        self.transport.set_handler(handler)
+        params: Value,
+        handler: &mut dyn RequestHandler,
+    ) -> Result<RpcMessage, TransportError> {
+        if !self.is_running() {
+            return Err(TransportError::ChannelClosed);
+        }
+        self.transport.call(method, params, handler)
     }
 }
 
@@ -158,7 +143,7 @@ fn start_plugin(
 
     thread::spawn({
         let is_running = is_running.clone();
-        move || match handle_start_thread(store, start_func, is_running.clone()) {
+        move || match run_wasm(store, start_func, is_running.clone()) {
             Ok(_) => {
                 is_running.store(false, std::sync::atomic::Ordering::SeqCst);
             }
@@ -171,7 +156,7 @@ fn start_plugin(
     Ok(())
 }
 
-/// handle_start_thread manages the plugin's lifecycle. Essentially - because
+/// run_wasm manages the plugin's lifecycle. Essentially - because
 /// wasmi doesn't support any plugin intercept or halting, we need some manual
 /// way of interrupting the plugin every so often to check if it's been killed,
 /// and resuming it if it hasn't. Here I do that by setting a low fuel limit,
@@ -180,7 +165,7 @@ fn start_plugin(
 /// TODO: When wasmi implements plugin interception (like interrupt_handle), switch
 /// to that.
 /// https://docs.rs/wasmtime/0.27.0/wasmtime/struct.Store.html#method.interrupt_handle
-fn handle_start_thread(
+fn run_wasm(
     mut store: Store<WasiCtx>,
     start_func: Func,
     is_running: Arc<AtomicBool>,

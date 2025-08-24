@@ -1,14 +1,15 @@
-use tlock_pdk::{plugin_host::PluginHost, transport::Transport};
+mod plugin;
+use tlock_pdk::{api::TlockApi, plugin::Plugin, typed_plugin::TypedPlugin};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let wasm_path = "plugin.wasm";
     let wasm_bytes = std::fs::read(wasm_path)?;
 
-    let mut plugin = PluginHost::spawn(wasm_bytes, None)?;
+    let plugin = Plugin::new(wasm_bytes)?;
+    let mut plugin = TypedPlugin::new(plugin);
 
-    let response = plugin.call("method_1", serde_json::json!({"param1": "value1"}))?;
-    let msg = response.recv()?;
-    println!("Received message: {:?}", msg);
+    let resp = plugin.ping("Hello!");
+    println!("Received message: {:?}", resp);
 
     Ok(())
 }
