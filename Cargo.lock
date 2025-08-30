@@ -624,7 +624,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "rust-pdk-template"
+name = "rust-plugin-template"
 version = "0.1.0"
 dependencies = [
  "tlock-pdk",

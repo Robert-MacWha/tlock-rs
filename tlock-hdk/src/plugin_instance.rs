@@ -2,6 +2,7 @@ use std::{
     io::{PipeReader, PipeWriter, pipe},
     sync::{Arc, atomic::AtomicBool},
     thread,
+    time::Instant,
 };
 
 use thiserror::Error;
@@ -30,7 +31,20 @@ pub struct PluginInstance {
     is_running: Arc<AtomicBool>,
 }
 
-const MAX_FUEL: u64 = 1_000_000;
+// Notes on interuptability and performance implications (Robert's desktop - ryzen 5 3600).
+//
+// For a task of running a prime number sieve on 10_000 elements, it:
+// - takes 499 ms when MAX_FUEL is 100_000_000 (no refuels needed)
+// - takes 528 ms when MAX_FUEL is 1_000_000 (8 refuels needed, each one taking 62 ms)
+// - takes ~550 ms when MAX_FUEL is 100_000 (83 refuels needed, each one taking ~6.6 ms)
+// - takes ~575 ms when MAX_FUEL is 10_000 (336 refuels needed, each one taking ~600 us)
+//
+// So it seems like significantly lower fuel does not significantly lower performance - for a 100% CPU bound task that's
+// reasonably expensive, interrupting it every 600 us is not terribly impactful. For this reason, I figure it's fine
+// to keep MAX_FUEL very low and to build in async yielding into the `run_wasm` function so it works better in
+// single-thread environments (like within wasm when building to target the web).  If this later becomes a performance
+// issue we can test it properly.
+const MAX_FUEL: u64 = 10_000;
 
 impl PluginInstance {
     /// Spawns the wasi plugin in a new thread
@@ -101,8 +115,9 @@ fn start_plugin(
     // });
 
     // println!("Spawning plugin thread...");
-    thread::spawn(
-        move || match run_wasm(store, start_func, is_running.clone()) {
+    thread::spawn(move || {
+        let start_time = Instant::now();
+        match run_wasm(store, start_func, is_running.clone()) {
             Ok(_) => {
                 is_running.store(false, std::sync::atomic::Ordering::SeqCst);
                 println!("Thread exited cleanly");
@@ -111,8 +126,11 @@ fn start_plugin(
                 is_running.store(false, std::sync::atomic::Ordering::SeqCst);
                 println!("Thread died: {:?}", e);
             }
-        },
-    );
+        }
+
+        let elapsed = start_time.elapsed();
+        println!("Plugin thread finished after {:?}", elapsed);
+    });
     Ok(())
 }
 
@@ -123,6 +141,7 @@ fn start_plugin(
 /// catching the out-of-fuel condition and resuming the plugin when it's not killed.
 ///  
 /// TODO: When wasmi implements plugin interception (like interrupt_handle), switch
+/// TODO: Add async yielding now using platform-conditional code, so it works with tokio for desktop and wasm_bindgen_futures / gloo for wasm environments
 /// to that.
 /// https://docs.rs/wasmtime/0.27.0/wasmtime/struct.Store.html#method.interrupt_handle
 fn run_wasm(
@@ -130,9 +149,11 @@ fn run_wasm(
     start_func: Func,
     is_running: Arc<AtomicBool>,
 ) -> Result<(), SpawnError> {
-    store.set_fuel(MAX_FUEL).unwrap();
+    store.set_fuel(0).unwrap();
+    println!("Starting plugin...");
     let mut resumable = start_func.call_resumable(&mut store, &[], &mut [])?;
 
+    let mut start_time = Instant::now();
     loop {
         match resumable {
             wasmi::ResumableCall::Finished => return Ok(()),
@@ -141,7 +162,12 @@ fn run_wasm(
                 return Err(SpawnError::HostTrap(trap));
             }
             wasmi::ResumableCall::OutOfFuel(out_of_fuel) => {
-                println!("Out of fuel, checking if still running...");
+                let elapsed = start_time.elapsed();
+                println!(
+                    "Out of fuel after {:?}, checking if still running...",
+                    elapsed
+                );
+                start_time = Instant::now();
                 if !is_running.load(std::sync::atomic::Ordering::SeqCst) {
                     return Ok(());
                 }

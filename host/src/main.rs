@@ -1,3 +1,5 @@
+use std::{thread::sleep, time::Duration};
+
 use tlock_hdk::{
     plugin::Plugin,
     tlock_pdk::{
@@ -8,7 +10,7 @@ use tlock_hdk::{
 };
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let wasm_path = "../target/wasm32-wasip1/debug/rust-pdk-template.wasm";
+    let wasm_path = "../target/wasm32-wasip1/debug/rust-plugin-template.wasm";
     let wasm_bytes = std::fs::read(wasm_path)?;
 
     let handler = HostHandler {};
@@ -18,6 +20,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let resp = plugin.ping("Hello Plugin!".into());
     println!("Received message: {:?}", resp);
+
+    sleep(Duration::from_millis(1000));
 
     Ok(())
 }
