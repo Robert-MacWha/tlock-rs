@@ -89,7 +89,7 @@ fn start_plugin(
     // Spawn in a new thread so we don't block the main thread with plugin execution
     let is_running = is_running.clone();
     // tokio::spawn(async move {
-    //     match run_wasm(store, start_func, is_running.clone()).await {
+    //     match run_wasm(store, start_func, is_running.clone()) {
     //         Ok(_) => {
     //             is_running.store(false, std::sync::atomic::Ordering::SeqCst);
     //         }
@@ -100,7 +100,7 @@ fn start_plugin(
     //     }
     // });
 
-    println!("Spawning plugin thread...");
+    // println!("Spawning plugin thread...");
     thread::spawn(
         move || match run_wasm(store, start_func, is_running.clone()) {
             Ok(_) => {

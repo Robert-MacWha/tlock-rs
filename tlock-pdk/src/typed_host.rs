@@ -1,16 +1,18 @@
-use std::sync::{Arc, atomic::AtomicU64};
+use std::sync::atomic::AtomicU64;
 
-use futures::lock::Mutex;
+use crate::{
+    api::{HostApi, TlockNamespace, methods::Methods},
+    rpc_message::RpcErrorCode,
+    transport::json_rpc_transport::JsonRpcTransport,
+};
 
-use crate::{api::TlockApi, json_rpc_transport::JsonRpcTransport, transport::RpcMessage};
-
-pub struct TypedHost {
+pub struct TypedHost<'a> {
     id: AtomicU64,
-    transport: JsonRpcTransport,
+    transport: &'a JsonRpcTransport,
 }
 
-impl TypedHost {
-    pub fn new(transport: JsonRpcTransport) -> Self {
+impl<'a> TypedHost<'a> {
+    pub fn new(transport: &'a JsonRpcTransport) -> Self {
         Self {
             id: AtomicU64::new(0),
             transport,
@@ -18,25 +20,16 @@ impl TypedHost {
     }
 }
 
-impl TlockApi for TypedHost {
-    fn ping(&self, value: &str) -> String {
+impl HostApi<RpcErrorCode> for TypedHost<'_> {}
+
+impl TlockNamespace<RpcErrorCode> for TypedHost<'_> {
+    fn ping(&self, value: String) -> Result<String, RpcErrorCode> {
         let id = self.id.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-
-        //? handler can be none because this plugin should only ever receive a
-        //? single request from the host, so there will be no `RpcMessage::Request`s
-        //? to handle
-        let result = self
+        let value = serde_json::to_value(value).map_err(|_| RpcErrorCode::ParseError)?;
+        let resp = self
             .transport
-            .call(id, "tlock_ping", value.into(), None)
-            .unwrap();
-
-        match result {
-            RpcMessage::ResponseOk { result, .. } => result.as_str().unwrap().to_string(),
-            _ => panic!("Unexpected message type"),
-        }
-    }
-
-    fn version(&self) -> String {
-        todo!()
+            .call(id, &Methods::TlockPing.to_string(), value, None)?;
+        let resp = serde_json::from_value(resp.result).map_err(|_| RpcErrorCode::ParseError)?;
+        Ok(resp)
     }
 }

@@ -3,9 +3,9 @@ use std::{io::BufReader, sync::atomic::AtomicU64};
 use serde_json::Value;
 use thiserror::Error;
 use tlock_pdk::{
-    json_rpc_transport::{JsonRpcTransport, JsonRpcTransportError},
-    request_handler::RequestHandler,
-    transport::RpcMessage,
+    api::RequestHandler,
+    rpc_message::{RpcErrorCode, RpcResponse},
+    transport::json_rpc_transport::JsonRpcTransport,
 };
 
 use crate::plugin_instance::{PluginInstance, SpawnError};
@@ -14,7 +14,7 @@ use crate::plugin_instance::{PluginInstance, SpawnError};
 pub struct Plugin<'a> {
     wasm_bytes: Vec<u8>,
     id: AtomicU64,
-    handler: &'a dyn RequestHandler,
+    handler: &'a dyn RequestHandler<RpcErrorCode>,
 }
 
 #[derive(Debug, Error)]
@@ -22,11 +22,11 @@ pub enum PluginError {
     #[error("spawn error")]
     SpawnError(#[from] SpawnError),
     #[error("transport error")]
-    JsonRpcTransportError(#[from] JsonRpcTransportError),
+    RpcError(#[from] RpcErrorCode),
 }
 
 impl<'a> Plugin<'a> {
-    pub fn new(wasm_bytes: Vec<u8>, handler: &'a dyn RequestHandler) -> Self {
+    pub fn new(wasm_bytes: Vec<u8>, handler: &'a dyn RequestHandler<RpcErrorCode>) -> Self {
         Plugin {
             wasm_bytes,
             id: AtomicU64::new(0),
@@ -34,7 +34,7 @@ impl<'a> Plugin<'a> {
         }
     }
 
-    pub fn call(&self, method: &str, params: Value) -> Result<RpcMessage, PluginError> {
+    pub fn call(&self, method: &str, params: Value) -> Result<RpcResponse, PluginError> {
         let (_instance, stdin_writer, stdout_reader) =
             PluginInstance::new(self.wasm_bytes.clone())?;
 
