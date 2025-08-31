@@ -870,6 +870,7 @@ dependencies = [
  "thiserror 2.0.16",
  "tlock-pdk",
  "tokio",
+ "wasm-bindgen-futures",
  "wasmi",
  "wasmi_wasi",
 ]
@@ -878,6 +879,7 @@ dependencies = [
 name = "tlock-pdk"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "futures",
  "log",
  "serde",
@@ -885,6 +887,8 @@ dependencies = [
  "strum",
  "strum_macros",
  "thiserror 2.0.16",
+ "tokio",
+ "wasm-bindgen-futures",
 ]
 
 [[package]]
@@ -894,6 +898,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tlock-hdk",
+ "tokio",
 ]
 
 [[package]]
@@ -1024,6 +1029,19 @@ dependencies = [
  "quote",
  "syn",
  "wasm-bindgen-shared",
+]
+
+[[package]]
+name = "wasm-bindgen-futures"
+version = "0.4.50"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "555d470ec0bc3bb57890405e5d4322cc9ea83cebb085523ced7be4144dac1e61"
+dependencies = [
+ "cfg-if",
+ "js-sys",
+ "once_cell",
+ "wasm-bindgen",
+ "web-sys",
 ]
 
 [[package]]
@@ -1169,6 +1187,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "27975186f549e4b8d6878b627be732863883c72f7bf4dcf8f96e5f8242f73da9"
 dependencies = [
  "wast 237.0.0",
+]
+
+[[package]]
+name = "web-sys"
+version = "0.3.77"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "33b6dd2ef9186f1f2072e409e99cd22a975331a6b3591b12c764e0e55c60d5d2"
+dependencies = [
+ "js-sys",
+ "wasm-bindgen",
 ]
 
 [[package]]

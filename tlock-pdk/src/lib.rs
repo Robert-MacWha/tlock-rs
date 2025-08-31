@@ -1,5 +1,10 @@
 pub mod api;
+pub use async_trait;
+pub use futures;
+pub mod async_pipe;
 pub mod plugin_factory;
 pub mod rpc_message;
+pub mod runtime;
 pub mod transport;
 pub mod typed_host;
+pub use wasm_bindgen_futures;

@@ -1,20 +1,23 @@
-use std::{io::BufReader, sync::atomic::AtomicU64};
+use std::sync::{Arc, atomic::AtomicU64};
 
+use futures::select;
+use futures::{FutureExt, io::BufReader};
 use serde_json::Value;
 use thiserror::Error;
 use tlock_pdk::{
     api::RequestHandler,
     rpc_message::{RpcErrorCode, RpcResponse},
+    runtime::yield_now,
     transport::json_rpc_transport::JsonRpcTransport,
 };
 
 use crate::plugin_instance::{PluginInstance, SpawnError};
 
 /// Plugin is an async-capable instance of a plugin
-pub struct Plugin<'a> {
+pub struct Plugin {
     wasm_bytes: Vec<u8>,
     id: AtomicU64,
-    handler: &'a dyn RequestHandler<RpcErrorCode>,
+    handler: Arc<dyn RequestHandler<RpcErrorCode>>,
 }
 
 #[derive(Debug, Error)]
@@ -23,10 +26,12 @@ pub enum PluginError {
     SpawnError(#[from] SpawnError),
     #[error("transport error")]
     RpcError(#[from] RpcErrorCode),
+    #[error("plugin died")]
+    PluginDied,
 }
 
-impl<'a> Plugin<'a> {
-    pub fn new(wasm_bytes: Vec<u8>, handler: &'a dyn RequestHandler<RpcErrorCode>) -> Self {
+impl Plugin {
+    pub fn new(wasm_bytes: Vec<u8>, handler: Arc<dyn RequestHandler<RpcErrorCode>>) -> Self {
         Plugin {
             wasm_bytes,
             id: AtomicU64::new(0),
@@ -34,15 +39,26 @@ impl<'a> Plugin<'a> {
         }
     }
 
-    pub fn call(&self, method: &str, params: Value) -> Result<RpcResponse, PluginError> {
-        let (_instance, stdin_writer, stdout_reader) =
-            PluginInstance::new(self.wasm_bytes.clone())?;
+    pub async fn call(&self, method: &str, params: Value) -> Result<RpcResponse, PluginError> {
+        let (instance, stdin_writer, stdout_reader) = PluginInstance::new(self.wasm_bytes.clone())?;
 
         let id = self.id.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
 
         let buf_reader = BufReader::new(stdout_reader);
         let transport = JsonRpcTransport::new(Box::new(buf_reader), Box::new(stdin_writer));
-        let res = transport.call(id, method, params, Some(self.handler))?;
-        return Ok(res);
+
+        select! {
+            res = transport.call(id, method, params, Some(self.handler.clone())).fuse() => {
+                res.map_err(Into::into)
+            }
+            _ = async {
+                loop {
+                    if !instance.is_running() { break; }
+                    yield_now().await;
+                }
+            }.fuse() => {
+                Err(PluginError::PluginDied)
+            }
+        }
     }
 }

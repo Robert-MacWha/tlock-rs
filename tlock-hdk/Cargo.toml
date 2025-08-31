@@ -12,3 +12,4 @@ thiserror = "2.0.12"
 wasmi = "0.51.0"
 wasmi_wasi = "0.51.0"
 tokio = {version = "1.47.1", features = ["full"]}
+wasm-bindgen-futures = "0.4.50"
