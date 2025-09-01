@@ -1,5 +1,6 @@
 use std::sync::{Arc, atomic::AtomicBool};
 
+use log::error;
 use runtime::{spawn_local, yield_now};
 use thiserror::Error;
 use wasmi::{Func, Store};
@@ -36,12 +37,11 @@ pub fn spawn_wasm(
     is_running: Arc<AtomicBool>,
     max_fuel: Option<u64>,
 ) -> Arc<AtomicBool> {
-    println!("Spawning plugin");
     let _ = spawn_local({
         let is_running = is_running.clone();
         async move {
             if let Err(e) = run_wasm(store, start_func, is_running.clone(), max_fuel).await {
-                eprintln!("Plugin error: {:?}", e);
+                error!("Plugin error: {:?}", e);
             }
             is_running.store(false, std::sync::atomic::Ordering::SeqCst);
         }
@@ -66,8 +66,6 @@ pub async fn run_wasm(
     //? Starts with zero fuel so we fall into the resumable loop that yields
     store.set_fuel(0).unwrap();
     let mut resumable = start_func.call_resumable(&mut store, &[], &mut [])?;
-
-    println!("Plugin started");
 
     loop {
         match resumable {

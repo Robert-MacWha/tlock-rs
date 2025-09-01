@@ -14,6 +14,7 @@ strum = "0.27.2"
 strum_macros = "0.27.2"
 thiserror = "2.0.12"
 wasm-bindgen-futures = "0.4.50"
+stderrlog = "0.6.0"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 tokio = {version = "1.47.1", features = ["full"]}

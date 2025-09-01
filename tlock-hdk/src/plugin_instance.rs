@@ -1,9 +1,10 @@
-use std::sync::{Arc, atomic::AtomicBool};
-
-use thiserror::Error;
-use tlock_pdk::non_blocking_pipe::{
-    NonBlockingPipeReader, NonBlockingPipeWriter, non_blocking_pipe,
+use std::{
+    io::{Read, Write},
+    sync::{Arc, atomic::AtomicBool},
 };
+
+use crate::non_blocking_pipe::{NonBlockingPipeReader, NonBlockingPipeWriter, non_blocking_pipe};
+use thiserror::Error;
 use wasmi::{Config, Engine, Linker, Module, Store};
 use wasmi_async::wasmi::spawn_wasm;
 use wasmi_wasi::{
@@ -34,16 +35,36 @@ impl PluginInstance {
     /// Spawns the wasi plugin in a new thread
     pub fn new(
         wasm_bytes: Vec<u8>,
-    ) -> Result<(Self, NonBlockingPipeWriter, NonBlockingPipeReader), SpawnError> {
+    ) -> Result<
+        (
+            Self,
+            NonBlockingPipeWriter,
+            NonBlockingPipeReader,
+            NonBlockingPipeReader,
+        ),
+        SpawnError,
+    > {
         let is_running = Arc::new(AtomicBool::new(true));
 
         // Setup pipes
         let (stdin_reader, stdin_writer) = non_blocking_pipe();
         let (stdout_reader, stdout_writer) = non_blocking_pipe();
+        let (stderr_reader, stderr_writer) = non_blocking_pipe();
 
-        start_plugin(wasm_bytes, is_running.clone(), stdin_reader, stdout_writer)?;
+        start_plugin(
+            wasm_bytes,
+            is_running.clone(),
+            stdin_reader,
+            stdout_writer,
+            stderr_writer,
+        )?;
 
-        Ok((PluginInstance { is_running }, stdin_writer, stdout_reader))
+        Ok((
+            PluginInstance { is_running },
+            stdin_writer,
+            stdout_reader,
+            stderr_reader,
+        ))
     }
 
     pub fn is_running(&self) -> bool {
@@ -56,14 +77,21 @@ impl PluginInstance {
     }
 }
 
-fn start_plugin(
+fn start_plugin<R, W1, W2>(
     wasm_bytes: Vec<u8>,
     is_running: Arc<AtomicBool>,
-    to_plugin_rx: NonBlockingPipeReader,
-    from_plugin_tx: NonBlockingPipeWriter,
-) -> Result<(), SpawnError> {
-    let stdin_pipe = ReadPipe::new(to_plugin_rx);
-    let stdout_pipe = WritePipe::new(from_plugin_tx);
+    stdin_reader: R,
+    stdout_writer: W1,
+    stderr_writer: W2,
+) -> Result<(), SpawnError>
+where
+    R: Read + Send + Sync + 'static,
+    W1: Write + Send + Sync + 'static,
+    W2: Write + Send + Sync + 'static,
+{
+    let stdin_pipe = ReadPipe::new(stdin_reader);
+    let stdout_pipe = WritePipe::new(stdout_writer);
+    let stderr_pipe = WritePipe::new(stderr_writer);
 
     let mut config = Config::default();
     config.consume_fuel(true);
@@ -76,6 +104,7 @@ fn start_plugin(
     let wasi = WasiCtxBuilder::new()
         .stdin(Box::new(stdin_pipe))
         .stdout(Box::new(stdout_pipe))
+        .stderr(Box::new(stderr_pipe))
         .build();
 
     let mut store = Store::new(&engine, wasi);

@@ -1,15 +1,11 @@
-use std::{
-    io::{self, BufReader},
-    sync::Arc,
-};
+use std::sync::Arc;
 
 use tlock_pdk::{
-    api::{Plugin, PluginApi, PluginNamespace, TlockNamespace},
+    api::{PluginApi, PluginNamespace, TlockNamespace},
     async_trait::async_trait,
-    futures,
     plugin_factory::PluginFactory,
+    register_plugin,
     rpc_message::RpcErrorCode,
-    transport::json_rpc_transport::JsonRpcTransport,
     typed_host::TypedHost,
 };
 struct MyPlugin {
@@ -63,22 +59,4 @@ fn find_primes(limit: usize) -> usize {
     count
 }
 
-fn main() {
-    let buf_reader = BufReader::new(io::stdin());
-    let transport = JsonRpcTransport::new(Box::new(buf_reader), Box::new(io::stdout()));
-    let transport = Arc::new(transport);
-
-    let host = TypedHost::new(transport.clone());
-    let host = Arc::new(host);
-    let plugin_instance = MyPlugin::new(host.clone());
-    let plugin = Plugin(plugin_instance);
-    let plugin = Arc::new(plugin);
-
-    let runtime_future = async move {
-        let _ = transport.process_next_line(Some(plugin)).await;
-    };
-
-    futures::executor::block_on(runtime_future);
-
-    println!("Plugin runtime finished");
-}
+register_plugin!(MyPlugin);

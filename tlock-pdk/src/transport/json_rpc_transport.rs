@@ -8,6 +8,7 @@ use futures::{
     channel::oneshot::{self, Sender},
     lock::Mutex,
 };
+use log::warn;
 use runtime::yield_now;
 use serde_json::Value;
 
@@ -104,7 +105,7 @@ impl JsonRpcTransport {
         let message = match serde_json::from_str::<RpcMessage>(line.trim()) {
             Ok(msg) => msg,
             Err(_) => {
-                println!("Failed to parse line: {}", line.trim());
+                warn!("Failed to parse line: {}", line.trim());
                 return Err(RpcErrorCode::ParseError);
             }
         };

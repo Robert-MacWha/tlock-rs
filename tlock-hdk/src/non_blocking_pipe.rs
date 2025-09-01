@@ -1,10 +1,15 @@
 use std::collections::VecDeque;
 use std::io::{self, Read, Write};
+use std::pin::Pin;
 use std::sync::{Arc, Mutex};
+use std::task::{Context, Poll, Waker};
+
+use futures::AsyncRead;
 
 struct Inner {
     buf: VecDeque<u8>,
     closed: bool,
+    waker: Option<Waker>,
 }
 
 #[derive(Clone)]
@@ -21,6 +26,7 @@ pub fn non_blocking_pipe() -> (NonBlockingPipeReader, NonBlockingPipeWriter) {
     let inner = Arc::new(Mutex::new(Inner {
         buf: VecDeque::new(),
         closed: false,
+        waker: None,
     }));
     (
         NonBlockingPipeReader {
@@ -53,10 +59,47 @@ impl Read for NonBlockingPipeReader {
     }
 }
 
+impl AsyncRead for NonBlockingPipeReader {
+    fn poll_read(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut [u8],
+    ) -> Poll<io::Result<usize>> {
+        let mut inner = self.inner.lock().unwrap();
+
+        let mut bytes_read = 0;
+
+        // Read available data
+        while bytes_read < buf.len() {
+            if let Some(b) = inner.buf.pop_front() {
+                buf[bytes_read] = b;
+                bytes_read += 1;
+            } else {
+                break;
+            }
+        }
+
+        if bytes_read > 0 {
+            inner.waker = None; // Clear stale waker
+            Poll::Ready(Ok(bytes_read))
+        } else if inner.closed {
+            // EOF
+            Poll::Ready(Ok(0))
+        } else {
+            // No data available, register waker and return pending
+            inner.waker = Some(cx.waker().clone());
+            Poll::Pending
+        }
+    }
+}
+
 impl Write for NonBlockingPipeWriter {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         let mut inner = self.inner.lock().unwrap();
         inner.buf.extend(buf);
+        if let Some(waker) = inner.waker.take() {
+            waker.wake();
+        }
         Ok(buf.len())
     }
 
