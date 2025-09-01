@@ -1,10 +1,15 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    cell::RefCell,
+    collections::HashMap,
+    io::{BufRead, Write},
+    sync::Arc,
+};
 
 use futures::{
-    AsyncBufRead, AsyncBufReadExt, AsyncWrite, AsyncWriteExt,
     channel::oneshot::{self, Sender},
     lock::Mutex,
 };
+use runtime::yield_now;
 use serde_json::Value;
 
 use crate::{
@@ -19,16 +24,16 @@ use crate::{
 /// at the same time, very helpful within the plugins.
 pub struct JsonRpcTransport {
     pending: Mutex<HashMap<u64, Sender<RpcResponse>>>,
-    reader: Mutex<Box<dyn AsyncBufRead + Unpin + Send>>,
-    writer: Mutex<Box<dyn AsyncWrite + Unpin + Send>>,
+    reader: Mutex<Box<dyn BufRead + Send + Sync>>,
+    writer: Mutex<Box<dyn Write + Send + Sync>>,
 }
 
 const JSON_RPC_VERSION: &str = "2.0";
 
 impl JsonRpcTransport {
     pub fn new(
-        reader: Box<dyn AsyncBufRead + Unpin + Send>,
-        writer: Box<dyn AsyncWrite + Unpin + Send>,
+        reader: Box<dyn BufRead + Send + Sync>,
+        writer: Box<dyn Write + Send + Sync>,
     ) -> Self {
         Self {
             pending: Mutex::new(HashMap::new()),
@@ -87,12 +92,8 @@ impl JsonRpcTransport {
         let mut writer = self.writer.lock().await;
         writer
             .write_all(msg.as_bytes())
-            .await
             .map_err(|_| RpcErrorCode::InternalError)?;
-        writer
-            .flush()
-            .await
-            .map_err(|_| RpcErrorCode::InternalError)?;
+        writer.flush().map_err(|_| RpcErrorCode::InternalError)?;
         Ok(())
     }
 
@@ -125,8 +126,6 @@ impl JsonRpcTransport {
                 params,
             }) => {
                 let handler = handler.ok_or(RpcErrorCode::MethodNotFound)?;
-                println!("Handling method: {}", method);
-
                 match handler.handle(&method, params).await {
                     Ok(result) => {
                         let response = RpcMessage::RpcResponse(RpcResponse {
@@ -155,19 +154,24 @@ impl JsonRpcTransport {
 
     async fn next_line(&self) -> Result<String, RpcErrorCode> {
         let mut line = String::new();
-        let n = self
-            .reader
-            .lock()
-            .await
-            .read_line(&mut line)
-            .await
-            .map_err(|_| RpcErrorCode::InternalError)?;
 
-        if n == 0 {
-            // EOF
-            return Err(RpcErrorCode::InternalError);
+        loop {
+            match self.reader.lock().await.read_line(&mut line) {
+                Ok(0) => {
+                    // EOF
+                    return Err(RpcErrorCode::InternalError);
+                }
+                Ok(_) => {
+                    return Ok(line);
+                }
+                Err(e) => match e.kind() {
+                    std::io::ErrorKind::WouldBlock => {
+                        yield_now().await;
+                        continue;
+                    }
+                    _ => return Err(RpcErrorCode::InternalError),
+                },
+            }
         }
-
-        Ok(line)
     }
 }

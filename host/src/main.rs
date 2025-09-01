@@ -10,10 +10,13 @@ use tlock_hdk::{
     typed_plugin::TypedPlugin,
 };
 
-#[tokio::main]
+//? current_thread uses single-threaded mode, simulating the browser environment
+#[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    println!("Running single-threaded");
     let wasm_path = "../target/wasm32-wasip1/debug/rust-plugin-template.wasm";
     let wasm_bytes = std::fs::read(wasm_path)?;
+    println!("Read {} kb from {}", wasm_bytes.len() / 1024, wasm_path);
 
     let handler = HostHandler {};
     let handler = Host(handler);

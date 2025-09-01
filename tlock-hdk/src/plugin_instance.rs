@@ -1,14 +1,11 @@
-use std::{
-    sync::{Arc, atomic::AtomicBool},
-    time::Instant,
-};
+use std::sync::{Arc, atomic::AtomicBool};
 
 use thiserror::Error;
-use tlock_pdk::{
-    async_pipe::{AsyncPipeReader, AsyncPipeWriter, async_pipe},
-    runtime::{spawn, yield_now},
+use tlock_pdk::non_blocking_pipe::{
+    NonBlockingPipeReader, NonBlockingPipeWriter, non_blocking_pipe,
 };
-use wasmi::{Config, Engine, Func, Linker, Module, Store};
+use wasmi::{Config, Engine, Linker, Module, Store};
+use wasmi_async::wasmi::spawn_wasm;
 use wasmi_wasi::{
     WasiCtx, WasiCtxBuilder,
     wasi_common::pipe::{ReadPipe, WritePipe},
@@ -33,33 +30,16 @@ pub struct PluginInstance {
     is_running: Arc<AtomicBool>,
 }
 
-// Notes on interuptability and performance implications (Robert's desktop - ryzen 5 3600).
-//
-// For a task of running a prime number sieve on 10_000 elements, it:
-// - takes 499 ms when MAX_FUEL is 100_000_000 (no refuels needed)
-// - takes 528 ms when MAX_FUEL is 1_000_000 (8 refuels needed, each one taking 62 ms)
-// - takes ~550 ms when MAX_FUEL is 100_000 (83 refuels needed, each one taking ~6.6 ms)
-// - takes ~575 ms when MAX_FUEL is 10_000 (336 refuels needed, each one taking ~600 us)
-//
-// So it seems like significantly lower fuel does not significantly lower performance - for a 100% CPU bound task that's
-// reasonably expensive, interrupting it every 600 us is not terribly impactful. For this reason, I figure it's fine
-// to keep MAX_FUEL very low and to build in async yielding into the `run_wasm` function so it works better in
-// single-thread environments (like within wasm when building to target the web).  If this later becomes a performance
-// issue we can test it properly.
-const MAX_FUEL: u64 = 10_000;
-
 impl PluginInstance {
     /// Spawns the wasi plugin in a new thread
     pub fn new(
         wasm_bytes: Vec<u8>,
-    ) -> Result<(Self, AsyncPipeWriter, AsyncPipeReader), SpawnError> {
+    ) -> Result<(Self, NonBlockingPipeWriter, NonBlockingPipeReader), SpawnError> {
         let is_running = Arc::new(AtomicBool::new(true));
 
         // Setup pipes
-        let (stdin_reader, stdin_writer) = async_pipe();
-        let (stdout_reader, stdout_writer) = async_pipe();
-        // let (stdin_reader, stdin_writer) = pipe()?;
-        // let (stdout_reader, stdout_writer) = pipe()?;
+        let (stdin_reader, stdin_writer) = non_blocking_pipe();
+        let (stdout_reader, stdout_writer) = non_blocking_pipe();
 
         start_plugin(wasm_bytes, is_running.clone(), stdin_reader, stdout_writer)?;
 
@@ -79,8 +59,8 @@ impl PluginInstance {
 fn start_plugin(
     wasm_bytes: Vec<u8>,
     is_running: Arc<AtomicBool>,
-    to_plugin_rx: AsyncPipeReader,
-    from_plugin_tx: AsyncPipeWriter,
+    to_plugin_rx: NonBlockingPipeReader,
+    from_plugin_tx: NonBlockingPipeWriter,
 ) -> Result<(), SpawnError> {
     let stdin_pipe = ReadPipe::new(to_plugin_rx);
     let stdout_pipe = WritePipe::new(from_plugin_tx);
@@ -106,64 +86,7 @@ fn start_plugin(
         .get_func(&store, "_start")
         .ok_or(SpawnError::StartNotFound)?;
 
-    spawn(async move {
-        if let Err(e) = run_wasm(store, start_func, is_running.clone()).await {
-            eprintln!("Plugin error: {:?}", e);
-        }
-        is_running.store(false, std::sync::atomic::Ordering::SeqCst);
-    });
+    spawn_wasm(store, start_func, is_running, None);
 
     Ok(())
-}
-
-/// run_wasm manages the plugin's lifecycle. Essentially - because
-/// wasmi doesn't support any plugin intercept, halting, or async execution, we
-/// need some manual way of interrupting the plugin every so often to check if
-/// it's been killed and yield. Here I do that by setting a low fuel limit,
-/// catching the out-of-fuel condition and resuming the plugin when it's not killed.
-async fn run_wasm(
-    mut store: Store<WasiCtx>,
-    start_func: Func,
-    is_running: Arc<AtomicBool>,
-) -> Result<(), SpawnError> {
-    //? Starts with zero fuel so we fall into the resumable loop that yields
-    store.set_fuel(0).unwrap();
-    println!("Starting plugin...");
-    let mut resumable = start_func.call_resumable(&mut store, &[], &mut [])?;
-
-    let mut start_time = Instant::now();
-    loop {
-        match resumable {
-            wasmi::ResumableCall::Finished => return Ok(()),
-            wasmi::ResumableCall::HostTrap(trap) => {
-                println!("Host trap: {:?}", trap);
-                return Err(SpawnError::HostTrap(trap));
-            }
-            wasmi::ResumableCall::OutOfFuel(out_of_fuel) => {
-                let elapsed = start_time.elapsed();
-                println!(
-                    "Out of fuel after {:?}, checking if still running...",
-                    elapsed
-                );
-                start_time = Instant::now();
-                if !is_running.load(std::sync::atomic::Ordering::SeqCst) {
-                    return Ok(());
-                }
-
-                println!("Still running, resuming...");
-
-                let required = out_of_fuel.required_fuel();
-                let top_up = required.max(MAX_FUEL);
-                println!("Topping up fuel by {}", top_up);
-                store.set_fuel(top_up).unwrap();
-
-                yield_now().await;
-
-                match out_of_fuel.resume(&mut store, &mut []) {
-                    Ok(next) => resumable = next,
-                    Err(e) => return Err(SpawnError::WasmiError(e)),
-                }
-            }
-        }
-    }
 }

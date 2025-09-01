@@ -1,13 +1,15 @@
-use std::sync::{Arc, atomic::AtomicU64};
+use std::{
+    io::{BufRead, BufReader},
+    sync::{Arc, atomic::AtomicU64},
+};
 
-use futures::select;
-use futures::{FutureExt, io::BufReader};
+use futures::{FutureExt, select};
+use runtime::yield_now;
 use serde_json::Value;
 use thiserror::Error;
 use tlock_pdk::{
     api::RequestHandler,
     rpc_message::{RpcErrorCode, RpcResponse},
-    runtime::yield_now,
     transport::json_rpc_transport::JsonRpcTransport,
 };
 
@@ -46,6 +48,8 @@ impl Plugin {
 
         let buf_reader = BufReader::new(stdout_reader);
         let transport = JsonRpcTransport::new(Box::new(buf_reader), Box::new(stdin_writer));
+
+        println!("Calling plugin method: {}", method);
 
         select! {
             res = transport.call(id, method, params, Some(self.handler.clone())).fuse() => {

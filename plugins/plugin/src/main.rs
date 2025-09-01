@@ -1,19 +1,16 @@
 use std::{
-    io::{self, BufRead, Write},
+    io::{self, BufReader},
     sync::Arc,
 };
 
 use tlock_pdk::{
     api::{Plugin, PluginApi, PluginNamespace, TlockNamespace},
-    async_pipe::async_pipe,
     async_trait::async_trait,
-    futures::{self, AsyncReadExt, io::BufReader},
+    futures,
     plugin_factory::PluginFactory,
     rpc_message::RpcErrorCode,
-    runtime::spawn,
     transport::json_rpc_transport::JsonRpcTransport,
     typed_host::TypedHost,
-    wasm_bindgen_futures::{future_to_promise, wasm_bindgen::JsValue},
 };
 struct MyPlugin {
     host: Arc<TypedHost>,
@@ -32,7 +29,7 @@ impl TlockNamespace<RpcErrorCode> for MyPlugin {
     async fn ping(&self, message: String) -> Result<String, RpcErrorCode> {
         self.host.ping("Hello from plugin v2".to_string()).await?;
 
-        let count = find_primes(10);
+        let count = find_primes(10000);
 
         Ok(format!("Pong: message={}, primes={}", message, count))
     }
@@ -67,50 +64,9 @@ fn find_primes(limit: usize) -> usize {
 }
 
 fn main() {
-    println!("Plugin started");
-    let (stdin_reader, mut stdin_writer) = async_pipe();
-    let (stdout_reader, stdout_writer) = async_pipe();
-
-    let buf_reader = BufReader::new(stdin_reader);
-    let transport = JsonRpcTransport::new(Box::new(buf_reader), Box::new(stdout_writer));
+    let buf_reader = BufReader::new(io::stdin());
+    let transport = JsonRpcTransport::new(Box::new(buf_reader), Box::new(io::stdout()));
     let transport = Arc::new(transport);
-
-    spawn(async move {
-        let mut stdin = std::io::BufReader::new(io::stdin());
-        let mut line = String::new();
-        loop {
-            line.clear();
-            match stdin.read_line(&mut line) {
-                Ok(0) => break,
-                Ok(_) => {
-                    if stdin_writer.write(line.as_bytes()).is_err() {
-                        break;
-                    }
-                }
-                Err(_) => break,
-            }
-        }
-    });
-
-    spawn(async move {
-        let mut stdout = io::stdout();
-        let mut buffer = [0u8; 1024];
-        let mut buf_reader = BufReader::new(stdout_reader);
-        loop {
-            match buf_reader.read(&mut buffer).await {
-                Ok(0) => break,
-                Ok(n) => {
-                    if stdout.write(&buffer[..n]).is_err() {
-                        break;
-                    }
-                    if stdout.flush().is_err() {
-                        break;
-                    }
-                }
-                Err(_) => break,
-            }
-        }
-    });
 
     let host = TypedHost::new(transport.clone());
     let host = Arc::new(host);
@@ -119,11 +75,10 @@ fn main() {
     let plugin = Arc::new(plugin);
 
     let runtime_future = async move {
-        if let Err(e) = transport.process_next_line(Some(plugin)).await {
-            println!("Transport error: {:?}", e);
-        }
+        let _ = transport.process_next_line(Some(plugin)).await;
     };
 
-    // Block until completion
     futures::executor::block_on(runtime_future);
+
+    println!("Plugin runtime finished");
 }
