@@ -47,7 +47,7 @@ pub fn spawn_wasm(
         }
     });
 
-    return is_running;
+    is_running
 }
 
 /// run_wasm manages the plugin's lifecycle. Essentially - because

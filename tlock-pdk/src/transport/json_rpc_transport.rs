@@ -1,5 +1,4 @@
 use std::{
-    cell::RefCell,
     collections::HashMap,
     io::{BufRead, Write},
     sync::Arc,

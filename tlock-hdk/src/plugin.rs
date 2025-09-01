@@ -1,5 +1,5 @@
 use std::{
-    io::{BufRead, BufReader},
+    io::BufReader,
     sync::{Arc, atomic::AtomicU64},
 };
 
