@@ -8,8 +8,7 @@ use alloy_rpc_types::{
 };
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-
-use crate::{api::ApiError, rpc_message::RpcErrorCode};
+use wasmi_pdk::{api::ApiError, rpc_message::RpcErrorCode};
 
 #[derive(Serialize, Deserialize)]
 pub struct EthCallParams {
@@ -102,192 +101,163 @@ pub struct PersonalSignParams {
 #[allow(unused_variables)]
 pub trait EthNamespace<E: ApiError>: Send + Sync {
     async fn eth_accounts(&self) -> Result<Vec<Address>, E> {
-        Err(RpcErrorCode::MethodNotSupported.into())
+        Err(RpcErrorCode::MethodNotFound.into())
     }
 
     async fn eth_block_number(&self) -> Result<BlockNumber, E> {
-        Err(RpcErrorCode::MethodNotSupported.into())
+        Err(RpcErrorCode::MethodNotFound.into())
     }
 
     async fn eth_call(&self, params: EthCallParams) -> Result<Bytes, E> {
-        Err(RpcErrorCode::MethodNotSupported.into())
+        Err(RpcErrorCode::MethodNotFound.into())
     }
 
     async fn eth_chain_id(&self) -> Result<ChainId, E> {
-        Err(RpcErrorCode::MethodNotSupported.into())
+        Err(RpcErrorCode::MethodNotFound.into())
     }
 
     async fn eth_coinbase(&self) -> Result<Address, E> {
-        Err(RpcErrorCode::MethodNotSupported.into())
+        Err(RpcErrorCode::MethodNotFound.into())
     }
 
-    async fn eth_decrypt(&self, encrypted: Bytes, address: Address) -> Result<String, E> {
-        Err(RpcErrorCode::MethodNotSupported.into())
+    async fn eth_decrypt(&self, params: EthDecryptParams) -> Result<String, E> {
+        Err(RpcErrorCode::MethodNotFound.into())
     }
 
-    async fn eth_estimate_gas(
-        &self,
-        tx: TransactionRequest,
-        block: BlockNumberOrTag,
-    ) -> Result<u64, E> {
-        Err(RpcErrorCode::MethodNotSupported.into())
+    async fn eth_estimate_gas(&self, params: EthEstimateGasParams) -> Result<u64, E> {
+        Err(RpcErrorCode::MethodNotFound.into())
     }
 
-    async fn eth_fee_history(
-        &self,
-        block_count: BlockNumber,
-        last_block: BlockNumberOrTag,
-        reward_percentiles: Vec<f64>,
-    ) -> Result<FeeHistory, E> {
-        Err(RpcErrorCode::MethodNotSupported.into())
+    async fn eth_fee_history(&self, params: EthFeeHistoryParams) -> Result<FeeHistory, E> {
+        Err(RpcErrorCode::MethodNotFound.into())
     }
 
     async fn eth_gas_price(&self) -> Result<U128, E> {
-        Err(RpcErrorCode::MethodNotSupported.into())
+        Err(RpcErrorCode::MethodNotFound.into())
     }
 
-    async fn eth_get_balance(&self, address: Address, block: BlockNumberOrTag) -> Result<U256, E> {
-        Err(RpcErrorCode::MethodNotSupported.into())
+    async fn eth_get_balance(&self, params: EthGetBalanceParams) -> Result<U256, E> {
+        Err(RpcErrorCode::MethodNotFound.into())
     }
 
-    async fn eth_get_block_by_hash(
-        &self,
-        hash: BlockHash,
-        hydrate_transactions: bool,
-    ) -> Result<Block, E> {
-        Err(RpcErrorCode::MethodNotSupported.into())
+    async fn eth_get_block_by_hash(&self, params: EthGetBlockByHashParams) -> Result<Block, E> {
+        Err(RpcErrorCode::MethodNotFound.into())
     }
 
-    async fn eth_get_block_by_number(
-        &self,
-        block: BlockNumberOrTag,
-        hydrate_transactions: bool,
-    ) -> Result<Block, E> {
-        Err(RpcErrorCode::MethodNotSupported.into())
+    async fn eth_get_block_by_number(&self, params: EthGetBlockByNumberParams) -> Result<Block, E> {
+        Err(RpcErrorCode::MethodNotFound.into())
     }
 
     async fn eth_get_block_transaction_count_by_hash(&self, hash: BlockHash) -> Result<U64, E> {
-        Err(RpcErrorCode::MethodNotSupported.into())
+        Err(RpcErrorCode::MethodNotFound.into())
     }
 
     async fn eth_get_block_transaction_count_by_number(
         &self,
         block: BlockNumberOrTag,
     ) -> Result<U64, E> {
-        Err(RpcErrorCode::MethodNotSupported.into())
+        Err(RpcErrorCode::MethodNotFound.into())
     }
 
-    async fn eth_get_code(&self, address: Address, block: BlockNumberOrTag) -> Result<Bytes, E> {
-        Err(RpcErrorCode::MethodNotSupported.into())
+    async fn eth_get_code(&self, params: EthGetCodeParams) -> Result<Bytes, E> {
+        Err(RpcErrorCode::MethodNotFound.into())
     }
 
     async fn eth_get_encryption_public_key(&self, address: Address) -> Result<Bytes, E> {
-        Err(RpcErrorCode::MethodNotSupported.into())
+        Err(RpcErrorCode::MethodNotFound.into())
     }
 
     async fn eth_get_filter_changes(&self, filter_id: U256) -> Result<FilterChanges, E> {
-        Err(RpcErrorCode::MethodNotSupported.into())
+        Err(RpcErrorCode::MethodNotFound.into())
     }
 
     async fn eth_get_filter_logs(&self, filter_id: U256) -> Result<Vec<Log>, E> {
-        Err(RpcErrorCode::MethodNotSupported.into())
+        Err(RpcErrorCode::MethodNotFound.into())
     }
 
     async fn eth_get_logs(&self, filter: Filter) -> Result<Vec<Log>, E> {
-        Err(RpcErrorCode::MethodNotSupported.into())
+        Err(RpcErrorCode::MethodNotFound.into())
     }
 
     async fn eth_get_proof(
         &self,
-        address: Address,
-        key: U256,
+        params: EthGetProofParams,
     ) -> Result<EIP1186AccountProofResponse, E> {
-        Err(RpcErrorCode::MethodNotSupported.into())
+        Err(RpcErrorCode::MethodNotFound.into())
     }
 
-    async fn eth_get_storage_at(
-        &self,
-        address: Address,
-        key: U256,
-        block: BlockNumberOrTag,
-    ) -> Result<U256, E> {
-        Err(RpcErrorCode::MethodNotSupported.into())
+    async fn eth_get_storage_at(&self, params: EthGetStorageAtParams) -> Result<U256, E> {
+        Err(RpcErrorCode::MethodNotFound.into())
     }
 
     async fn eth_get_transaction_by_block_hash_and_index(
         &self,
-        block_hash: BlockHash,
-        index: usize,
+        params: EthGetTransactionByBlockHashAndIndexParams,
     ) -> Result<Transaction, E> {
-        Err(RpcErrorCode::MethodNotSupported.into())
+        Err(RpcErrorCode::MethodNotFound.into())
     }
 
     async fn eth_get_transaction_by_hash(&self, hash: TxHash) -> Result<Transaction, E> {
-        Err(RpcErrorCode::MethodNotSupported.into())
+        Err(RpcErrorCode::MethodNotFound.into())
     }
 
     async fn eth_get_transaction_receipt(&self, hash: TxHash) -> Result<TransactionReceipt, E> {
-        Err(RpcErrorCode::MethodNotSupported.into())
+        Err(RpcErrorCode::MethodNotFound.into())
     }
 
     async fn eth_get_uncle_count_by_block_hash(&self, hash: BlockHash) -> Result<U64, E> {
-        Err(RpcErrorCode::MethodNotSupported.into())
+        Err(RpcErrorCode::MethodNotFound.into())
     }
 
     async fn eth_get_uncle_count_by_block_number(&self, block: BlockNumberOrTag) -> Result<U64, E> {
-        Err(RpcErrorCode::MethodNotSupported.into())
+        Err(RpcErrorCode::MethodNotFound.into())
     }
 
     async fn eth_new_block_filter(&self) -> Result<U256, E> {
-        Err(RpcErrorCode::MethodNotSupported.into())
+        Err(RpcErrorCode::MethodNotFound.into())
     }
 
     async fn eth_new_filter(&self, _filter: Filter) -> Result<U256, E> {
-        Err(RpcErrorCode::MethodNotSupported.into())
+        Err(RpcErrorCode::MethodNotFound.into())
     }
 
     async fn eth_new_pending_transaction_filter(&self) -> Result<U256, E> {
-        Err(RpcErrorCode::MethodNotSupported.into())
+        Err(RpcErrorCode::MethodNotFound.into())
     }
 
     async fn eth_send_raw_transaction(&self, tx: Bytes) -> Result<TxHash, E> {
-        Err(RpcErrorCode::MethodNotSupported.into())
+        Err(RpcErrorCode::MethodNotFound.into())
     }
 
     async fn eth_send_transaction(&self, tx: TransactionRequest) -> Result<TxHash, E> {
-        Err(RpcErrorCode::MethodNotSupported.into())
+        Err(RpcErrorCode::MethodNotFound.into())
     }
 
     async fn eth_sign_typed_data_v4(
         &self,
-        address: Address,
-        data: TypedData,
+        params: EthSignTypedDataV4Params,
     ) -> Result<Signature, E> {
-        Err(RpcErrorCode::MethodNotSupported.into())
+        Err(RpcErrorCode::MethodNotFound.into())
     }
 
     async fn eth_syncing(&self) -> Result<SyncStatus, E> {
-        Err(RpcErrorCode::MethodNotSupported.into())
+        Err(RpcErrorCode::MethodNotFound.into())
     }
 
-    async fn eth_subscribe(
-        &self,
-        kind: SubscriptionKind,
-        filter: Option<Filter>,
-    ) -> Result<String, E> {
-        Err(RpcErrorCode::MethodNotSupported.into())
+    async fn eth_subscribe(&self, params: EthSubscribeParams) -> Result<String, E> {
+        Err(RpcErrorCode::MethodNotFound.into())
     }
 
     async fn eth_unsubscribe(&self, subscription_id: String) -> Result<bool, E> {
-        Err(RpcErrorCode::MethodNotSupported.into())
+        Err(RpcErrorCode::MethodNotFound.into())
     }
 
     async fn eth_uninstall_filter(&self, filter_id: U256) -> Result<bool, E> {
-        Err(RpcErrorCode::MethodNotSupported.into())
+        Err(RpcErrorCode::MethodNotFound.into())
     }
 
     async fn personal_sign(&self, data: Bytes, address: Address) -> Result<Signature, E> {
-        Err(RpcErrorCode::MethodNotSupported.into())
+        Err(RpcErrorCode::MethodNotFound.into())
     }
     // TODO: This is a Metamask method, not officially part of eth json-rpc. Should it be included?
     // async fn eth_request_accounts(&self) -> Result<Vec<Address>, E>;

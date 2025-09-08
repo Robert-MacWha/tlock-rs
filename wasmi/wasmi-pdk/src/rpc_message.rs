@@ -40,8 +40,7 @@ pub struct RpcError {
 
 #[derive(Error, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[repr(i64)]
-/// EIP-1474 error codes:
-/// https://github.com/ethereum/EIPs/blob/master/EIPS/eip-1474.md
+/// https://www.jsonrpc.org/specification
 pub enum RpcErrorCode {
     // standard
     #[error("Parse error")]
@@ -56,6 +55,7 @@ pub enum RpcErrorCode {
     InternalError = -32603,
 
     // non-standard
+    // https://github.com/ethereum/EIPs/blob/master/EIPS/eip-1474.md
     #[error("Invalid input")]
     InvalidInput = -32000,
     #[error("Resource not found")]
