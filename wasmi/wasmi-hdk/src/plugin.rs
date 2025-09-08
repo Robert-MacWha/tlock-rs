@@ -61,20 +61,22 @@ impl Plugin {
                 info!(target: "plugin", "[{}] {}", self.name, line.trim_end());
                 line.clear();
             }
-        };
+        }
+        .fuse();
 
         let buf_reader = BufReader::new(stdout_reader);
         let transport = JsonRpcTransport::new(Box::new(buf_reader), Box::new(stdin_writer));
+        let rpc_task = transport
+            .call(id, method, params, Some(self.handler.clone()))
+            .fuse();
 
-        let rpc_task = transport.call(id, method, params, Some(self.handler.clone()));
+        futures::pin_mut!(stderr_task, rpc_task);
 
-        let res = select! {
-            res = rpc_task.fuse() => res.map_err(Into::into),
-            _ = stderr_task.fuse() => Err(PluginError::PluginDied),
-        };
+        let (res, _) = futures::join!(rpc_task, stderr_task);
+        let res = res?;
 
         instance.kill();
 
-        res
+        Ok(res)
     }
 }

@@ -19,7 +19,6 @@ macro_rules! register_plugin {
             let _ = assert_factory::<$plugin_type>;
 
             stderrlog::new()
-                .module(module_path!())
                 .verbosity(stderrlog::LogLevelNum::Trace)
                 .init()
                 .unwrap();

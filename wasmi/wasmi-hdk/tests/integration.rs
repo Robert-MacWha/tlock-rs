@@ -2,7 +2,7 @@ use std::{fs, path::PathBuf, sync::Arc, time::Duration};
 
 use log::info;
 use serde_json::Value;
-use tokio::time::timeout;
+use tokio::time::{sleep, timeout};
 use wasmi_hdk::plugin::Plugin;
 use wasmi_pdk::{api::RequestHandler, async_trait::async_trait, rpc_message::RpcErrorCode};
 
@@ -20,6 +20,11 @@ struct MyHostHandler {}
 impl RequestHandler<RpcErrorCode> for MyHostHandler {
     async fn handle(&self, method: &str, params: Value) -> Result<Value, RpcErrorCode> {
         info!("Host received method: {}, params: {:?}", method, params);
+
+        sleep(Duration::from_millis(100)).await; // Simulate some processing delay
+
+        info!("Host processing complete for method: {}", method);
+
         match method {
             "ping" => Ok(serde_json::json!("pong")),
             _ => Err(RpcErrorCode::MethodNotFound),
@@ -33,7 +38,8 @@ async fn test_plugin() {
         .with_level(log::LevelFilter::Debug)
         .with_colors(true)
         .init()
-        .unwrap();
+        .ok();
+
     log::info!("Starting test_plugin...");
 
     let wasm_bytes = load_plugin_wasm();
@@ -47,4 +53,36 @@ async fn test_plugin() {
     .await;
 
     result.expect("Test timed out");
+}
+
+#[tokio::test]
+async fn test_prime_sieve() {
+    simple_logger::SimpleLogger::new()
+        .with_level(log::LevelFilter::Debug)
+        .with_colors(true)
+        .init()
+        .ok();
+
+    info!("Starting prime sieve test...");
+
+    let wasm_bytes = load_plugin_wasm();
+    let handler = Arc::new(MyHostHandler {});
+
+    let result = timeout(Duration::from_secs(2), async {
+        let plugin = Plugin::new("test_plugin", wasm_bytes, handler);
+
+        let response = plugin
+            .call("prime_sieve", Value::Number(1000.into()))
+            .await
+            .unwrap();
+
+        info!("Prime sieve response: {:?}", response);
+
+        let count = response.result["count"].as_u64().unwrap();
+
+        assert_eq!(count, 168);
+    })
+    .await;
+
+    result.expect("Prime sieve test timed out");
 }

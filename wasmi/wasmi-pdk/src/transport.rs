@@ -8,7 +8,7 @@ use futures::{
     channel::oneshot::{self, Sender},
     lock::Mutex,
 };
-use log::{info, warn};
+use log::warn;
 use runtime::yield_now;
 use serde_json::Value;
 
@@ -179,17 +179,10 @@ impl JsonRpcTransport {
     async fn next_line(&self) -> Result<String, RpcErrorCode> {
         let mut line = String::new();
 
-        info!("Reading next line...");
-
         loop {
             match self.reader.lock().await.read_line(&mut line) {
-                Ok(0) => {
-                    // EOF
-                    return Err(RpcErrorCode::InternalError);
-                }
-                Ok(_) => {
-                    return Ok(line);
-                }
+                Ok(0) => return Err(RpcErrorCode::InternalError), // EOF
+                Ok(_) => return Ok(line),
                 Err(e) => match e.kind() {
                     std::io::ErrorKind::WouldBlock => {
                         yield_now().await;

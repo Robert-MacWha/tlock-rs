@@ -107,3 +107,13 @@ impl Write for NonBlockingPipeWriter {
         Ok(())
     }
 }
+
+impl Drop for NonBlockingPipeWriter {
+    fn drop(&mut self) {
+        let mut inner = self.inner.lock().unwrap();
+        inner.closed = true;
+        if let Some(waker) = inner.waker.take() {
+            waker.wake();
+        }
+    }
+}

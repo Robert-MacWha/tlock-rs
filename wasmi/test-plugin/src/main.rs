@@ -1,8 +1,14 @@
 use std::sync::Arc;
 
 use wasmi_pdk::{
-    api::RequestHandler, async_trait::async_trait, log, plugin_factory::PluginFactory,
-    register_plugin, rpc_message::RpcErrorCode, serde_json::Value, transport::JsonRpcTransport,
+    api::RequestHandler,
+    async_trait::async_trait,
+    log,
+    plugin_factory::PluginFactory,
+    register_plugin,
+    rpc_message::RpcErrorCode,
+    serde_json::{self, Value},
+    transport::JsonRpcTransport,
 };
 
 struct MyPlugin {
@@ -38,11 +44,43 @@ impl RequestHandler<RpcErrorCode> for MyPlugin {
                     return Err(RpcErrorCode::InternalError);
                 }
 
+                log::info!("Ping successful, returning");
                 Ok(Value::String("pong".to_string()))
+            }
+            "prime_sieve" => {
+                let limit = params.as_u64().ok_or(RpcErrorCode::InvalidParams)? as usize;
+                let primes = sieve_of_eratosthenes(limit);
+
+                log::info!("Generated {} primes up to {}", primes.len(), limit);
+
+                Ok(serde_json::json!({
+                    "count": primes.len(),
+                    "limit": limit
+                }))
             }
             _ => Err(RpcErrorCode::MethodNotFound),
         }
     }
+}
+
+fn sieve_of_eratosthenes(limit: usize) -> Vec<usize> {
+    if limit < 2 {
+        return vec![];
+    }
+
+    let mut is_prime = vec![true; limit + 1];
+    is_prime[0] = false;
+    is_prime[1] = false;
+
+    for i in 2..=((limit as f64).sqrt() as usize) {
+        if is_prime[i] {
+            for j in ((i * i)..=limit).step_by(i) {
+                is_prime[j] = false;
+            }
+        }
+    }
+
+    (2..=limit).filter(|&i| is_prime[i]).collect()
 }
 
 register_plugin!(MyPlugin);
