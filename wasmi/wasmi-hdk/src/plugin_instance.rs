@@ -8,7 +8,7 @@ use crate::{
     non_blocking_pipe::{NonBlockingPipeReader, NonBlockingPipeWriter, non_blocking_pipe},
 };
 use thiserror::Error;
-use wasmi::{Config, Engine, Linker, Module, Store};
+use wasmi::{Linker, Store};
 use wasmi_async::wasmi::spawn_wasm;
 use wasmi_wasi::{
     WasiCtx, WasiCtxBuilder,
@@ -25,8 +25,6 @@ pub enum SpawnError {
     WasmiError(#[from] wasmi::Error),
     #[error("wasi error")]
     WasiError(#[from] wasmi_wasi::Error),
-    #[error("host trap")]
-    HostTrap(wasmi::ResumableCallHostTrap),
 }
 
 /// PluginInstance is a single static running instance of a plugin

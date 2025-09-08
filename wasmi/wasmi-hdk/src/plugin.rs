@@ -3,9 +3,8 @@ use std::{
     sync::{Arc, atomic::AtomicU64},
 };
 
-use futures::{AsyncBufReadExt, FutureExt, select};
-use log::{info, trace};
-use runtime::yield_now;
+use futures::{AsyncBufReadExt, FutureExt};
+use log::info;
 use serde_json::Value;
 use thiserror::Error;
 use wasmi_pdk::{
@@ -22,7 +21,6 @@ use crate::{
 /// Plugin is an async-capable instance of a plugin
 pub struct Plugin {
     name: String,
-    wasm_bytes: Vec<u8>,
     id: AtomicU64,
     handler: Arc<dyn RequestHandler<RpcErrorCode>>,
     compiled: CompiledPlugin,
@@ -48,7 +46,6 @@ impl Plugin {
 
         Ok(Plugin {
             name: name.to_string(),
-            wasm_bytes,
             id: AtomicU64::new(0),
             handler,
             compiled,

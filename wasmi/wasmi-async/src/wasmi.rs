@@ -37,7 +37,7 @@ pub fn spawn_wasm(
     is_running: Arc<AtomicBool>,
     max_fuel: Option<u64>,
 ) -> Arc<AtomicBool> {
-    let _ = spawn_local({
+    spawn_local({
         let is_running = is_running.clone();
         async move {
             if let Err(e) = run_wasm(store, start_func, is_running.clone(), max_fuel).await {

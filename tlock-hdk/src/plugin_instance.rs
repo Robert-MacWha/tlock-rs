@@ -22,8 +22,6 @@ pub enum SpawnError {
     WasmiError(#[from] wasmi::Error),
     #[error("wasi error")]
     WasiError(#[from] wasmi_wasi::Error),
-    #[error("host trap")]
-    HostTrap(wasmi::ResumableCallHostTrap),
 }
 
 /// PluginInstance is a single static running instance of a plugin
