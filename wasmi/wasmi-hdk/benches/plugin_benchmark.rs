@@ -19,8 +19,11 @@ struct MyHostHandler {}
 
 #[async_trait]
 impl RequestHandler<RpcErrorCode> for MyHostHandler {
-    async fn handle(&self, _method: &str, _params: Value) -> Result<Value, RpcErrorCode> {
-        Err(RpcErrorCode::MethodNotFound)
+    async fn handle(&self, method: &str, _params: Value) -> Result<Value, RpcErrorCode> {
+        match method {
+            "echo" => Ok(Value::String("echo".to_string())),
+            _ => Err(RpcErrorCode::MethodNotFound),
+        }
     }
 }
 
@@ -76,5 +79,35 @@ pub fn bench_prime_sieve_large(c: &mut Criterion) {
     });
 }
 
-criterion_group!(benches, bench_prime_sieve_small, bench_prime_sieve_large);
+/// Benchmark sending many echo requests to the host, and receiving responses.
+pub fn bench_echo_many(c: &mut Criterion) {
+    let rt = Builder::new_current_thread().enable_all().build().unwrap();
+
+    info!("Starting many echo test...");
+
+    let wasm_bytes = load_plugin_wasm();
+    let handler = Arc::new(MyHostHandler {});
+
+    let plugin = Plugin::new("test_plugin", wasm_bytes.clone(), handler);
+
+    c.bench_function("many_echo", |b| {
+        b.iter(|| {
+            let fut = async {
+                plugin
+                    .call("many_echo", Value::Number(1000.into()))
+                    .await
+                    .unwrap();
+            };
+
+            rt.block_on(fut);
+        })
+    });
+}
+
+criterion_group!(
+    benches,
+    bench_prime_sieve_small,
+    bench_prime_sieve_large,
+    bench_echo_many
+);
 criterion_main!(benches);

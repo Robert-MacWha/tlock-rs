@@ -58,6 +58,17 @@ impl RequestHandler<RpcErrorCode> for MyPlugin {
                     "limit": limit
                 }))
             }
+            "many_echo" => {
+                let limit = params.as_u64().ok_or(RpcErrorCode::InvalidParams)? as usize;
+                for i in 0..limit {
+                    let id = i as u64;
+                    self.host
+                        .call(id, "echo", Value::Number(id.into()), None)
+                        .await?;
+                }
+
+                Ok(Value::Null)
+            }
             _ => Err(RpcErrorCode::MethodNotFound),
         }
     }
