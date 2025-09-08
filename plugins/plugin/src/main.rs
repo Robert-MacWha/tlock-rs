@@ -1,25 +1,29 @@
+use std::sync::Arc;
+
 use tlock_pdk::{
     api::{PluginApi, PluginNamespace, TlockNamespace},
+    async_trait::async_trait,
     plugin_factory::PluginFactory,
     register_plugin,
     rpc_message::RpcErrorCode,
     typed_host::TypedHost,
 };
-struct MyPlugin<'a> {
-    host: &'a TypedHost<'a>,
+struct MyPlugin {
+    host: Arc<TypedHost>,
 }
 
-impl PluginApi<RpcErrorCode> for MyPlugin<'_> {}
+impl PluginApi<RpcErrorCode> for MyPlugin {}
 
-impl<'a> PluginFactory<'a> for MyPlugin<'a> {
-    fn new(host: &'a TypedHost<'a>) -> Self {
+impl PluginFactory for MyPlugin {
+    fn new(host: Arc<TypedHost>) -> Self {
         MyPlugin { host }
     }
 }
 
-impl TlockNamespace<RpcErrorCode> for MyPlugin<'_> {
-    fn ping(&self, message: String) -> Result<String, RpcErrorCode> {
-        self.host.ping("Hello from plugin v2".to_string())?;
+#[async_trait]
+impl TlockNamespace<RpcErrorCode> for MyPlugin {
+    async fn ping(&self, message: String) -> Result<String, RpcErrorCode> {
+        self.host.ping("Hello from plugin v2".to_string()).await?;
 
         let count = find_primes(10000);
 
@@ -27,12 +31,13 @@ impl TlockNamespace<RpcErrorCode> for MyPlugin<'_> {
     }
 }
 
-impl PluginNamespace<RpcErrorCode> for MyPlugin<'_> {
-    fn name(&self) -> Result<String, RpcErrorCode> {
-        Ok("Test Plugin".to_string())
+#[async_trait]
+impl PluginNamespace<RpcErrorCode> for MyPlugin {
+    async fn name(&self) -> Result<String, RpcErrorCode> {
+        Ok("Test Async Plugin".to_string())
     }
 
-    fn version(&self) -> Result<String, RpcErrorCode> {
+    async fn version(&self) -> Result<String, RpcErrorCode> {
         Ok("1.0.0".to_string())
     }
 }
@@ -54,4 +59,4 @@ fn find_primes(limit: usize) -> usize {
     count
 }
 
-register_plugin!(MyPlugin<'_>);
+register_plugin!(MyPlugin);

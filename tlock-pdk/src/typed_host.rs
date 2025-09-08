@@ -1,18 +1,20 @@
-use std::sync::atomic::AtomicU64;
+use std::sync::{Arc, atomic::AtomicU64};
+
+use async_trait::async_trait;
 
 use crate::{
     api::{HostApi, TlockNamespace, methods::Methods},
     rpc_message::RpcErrorCode,
-    transport::json_rpc_transport::JsonRpcTransport,
+    transport::JsonRpcTransport,
 };
 
-pub struct TypedHost<'a> {
+pub struct TypedHost {
     id: AtomicU64,
-    transport: &'a JsonRpcTransport,
+    transport: Arc<JsonRpcTransport>,
 }
 
-impl<'a> TypedHost<'a> {
-    pub fn new(transport: &'a JsonRpcTransport) -> Self {
+impl TypedHost {
+    pub fn new(transport: Arc<JsonRpcTransport>) -> Self {
         Self {
             id: AtomicU64::new(0),
             transport,
@@ -20,15 +22,17 @@ impl<'a> TypedHost<'a> {
     }
 }
 
-impl HostApi<RpcErrorCode> for TypedHost<'_> {}
+impl HostApi<RpcErrorCode> for TypedHost {}
 
-impl TlockNamespace<RpcErrorCode> for TypedHost<'_> {
-    fn ping(&self, value: String) -> Result<String, RpcErrorCode> {
+#[async_trait]
+impl TlockNamespace<RpcErrorCode> for TypedHost {
+    async fn ping(&self, value: String) -> Result<String, RpcErrorCode> {
         let id = self.id.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         let value = serde_json::to_value(value).map_err(|_| RpcErrorCode::ParseError)?;
         let resp = self
             .transport
-            .call(id, &Methods::TlockPing.to_string(), value, None)?;
+            .call(id, &Methods::TlockPing.to_string(), value, None)
+            .await?;
         let resp = serde_json::from_value(resp.result).map_err(|_| RpcErrorCode::ParseError)?;
         Ok(resp)
     }

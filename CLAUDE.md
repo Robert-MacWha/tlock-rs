@@ -2,13 +2,15 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Overview
+## Project Overview
 
-Tlock-rs is a modular-focused wallet framework that prioritizes modularity, security, and portability. It uses WebAssembly (WASM) plugins with Wasmi runtime for secure execution isolation. The architecture consists of three main components:
+Tlock-rs is a modular-focused wallet framework designed for security, modularity, and portability. It consists of three main components:
 
-- **Host**: Manages plugin lifecycle, routing, permissions, and provides core services (located in `host/`)
-- **Plugin Development Kit (PDK)**: Shared library for building plugins (`tlock-pdk/`)  
-- **Plugins**: WASM modules implementing wallet functionality (`plugins/`)
+- **Frontend**: Cross-platform UIs (Tauri, CLI, server-side) that translate raw data to user interfaces
+- **Host**: Interface contracts manager, plugin lifecycle handler, message router with trait registry  
+- **Plugins**: Self-contained WASM modules implementing business logic, cryptography, and workflows
+
+The architecture prioritizes plugin-only updates for most functionality while reserving host updates only for new fundamental primitives.
 
 ## Programming styles
 
@@ -16,86 +18,86 @@ Tlock-rs is a modular-focused wallet framework that prioritizes modularity, secu
 - Functional: Avoid unnecessary state, and keep things functional
 - Dependency injection: Use traits to perform dependency injection for simpler testing.
 
-## Build Commands
+## Workspace Structure
 
-### Building the entire workspace:
-```bash
-cargo build --workspace
-```
+This is a Cargo workspace with the following crates:
 
-### Building individual components:
+- `host/`: Main host application that loads and manages plugins
+- `tlock-pdk/`: Plugin Development Kit - provides APIs for plugin authors
+- `tlock-hdk/`: Host Development Kit - provides APIs for host developers  
+- `plugins/plugin/`: Example plugin template (builds to WASM)
+- `runtime/`: Shared runtime utilities for async operations
+- `wasmi-async/`: Custom async WASM runtime based on wasmi
+
+## Development Commands
+
+### Building
 ```bash
-# Host application
+# Build entire workspace
 cargo build
 
-# Plugin Development Kit
-cd tlock-pdk && cargo build
+# Build specific crate
+cargo build -p tlock-hdk
 
-# Build plugin as WASM
-cd plugins/plugin && cargo build --target wasm32-wasip1
+# Build plugin for WASM target
+cargo build --target wasm32-wasip1 -p rust-plugin-template
 ```
 
-### Running the host:
+### Testing
 ```bash
-cargo run
+# Run tests for entire workspace
+cargo test
+
+# Run tests for specific crate
+cargo test -p tlock-pdk
 ```
 
-### Testing:
+### Code Quality
 ```bash
-# Run all tests across workspace
-cargo test --workspace
+# Run clippy linter
+cargo clippy
 
-# Check for compilation errors
-cargo check --workspace
+# Format code
+cargo fmt
+
+# Check code without building
+cargo check
 ```
 
-## Architecture Details
+### Running the Host
+```bash
+# Run the host application (from host/ directory)
+cd host && cargo run
+```
 
-### WASM Runtime Integration
-The host uses Wasmi 0.51.0 with WASI for running plugins. Communication happens through stdin/stdout pipes between the host and WASM modules.
+## Key Architecture Concepts
 
-### Key Components:
-- **Host (`host/src/main.rs`)**: Demonstrates WASI pipe communication with a WASM module
-- **PDK (`tlock-pdk/src/lib.rs`)**: Currently minimal, uses serde for serialization
-- **Example Plugin (`plugins/plugin/src/lib.rs`)**: Basic template for plugin development
+### Plugin Communication
+- Plugins run in WASM with wasmer runtime
+- Communication via std-pipes for async operations
+- JSON-RPC message protocol between host and plugins
+- Type-safe API contracts defined in tlock-pdk
 
-### Plugin Development:
-- Plugins are compiled to `wasm32-wasip1` target
-- Use `tlock-pdk` for shared types and utilities
-- Communication via stdin/stdout with the host
-- Plugins have `cdylib` crate type for WASM compilation
-
-### Cargo Workspace Structure:
-The project uses a Cargo workspace with three members:
-- `host/` - Main host application
-- `tlock-pdk/` - Plugin Development Kit
-- `plugins/plugin/` - Example plugin template
-
-### API Versioning Strategy:
-The framework uses tagged enums with `#[serde(other)]` for backward compatibility, allowing graceful handling of unknown variants as the protocol evolves.
-
-### Permission System:
-Plugins request permissions for three categories:
-- **Handlers**: Functions plugins implement (single plugin per handler)
-- **Hooks**: Functions that trigger alongside handlers (multiple hooks allowed)
+### Plugin System
+- **Handlers**: Functions plugins implement (one per function)  
+- **Hooks**: Functions that trigger alongside handlers (multiple allowed)
 - **Requests**: Functions exposed by host to plugins
+- Routing strategies: Singleton (one plugin) or Broadcast (all capable plugins)
 
-### Storage Scopes:
+### Storage Model
+Three storage scopes with different security guarantees:
 - **HSM**: Hardware security module storage (encrypted, non-portable)
-- **Encrypted**: User-authenticated encryption (portable)  
-- **Plaintext**: Unencrypted storage (publicly accessible)
+- **Encrypted**: User-authenticated encryption (portable between devices)
+- **Plaintext**: Unencrypted storage (accessible without authentication)
 
-## Development Workflow
+### Async Compatibility
+- Supports both native async (tokio) and browser environments (wasm-bindgen-futures)
+- Uses `#[tokio::main(flavor = "current_thread")]` to simulate browser single-threaded environment
+- Runtime abstraction in `runtime/` crate handles platform differences
 
-1. Make changes to host, PDK, or plugins
-2. Build the workspace with `cargo build --workspace`
-3. For plugin changes, rebuild WASM target: `cargo build --target wasm32-wasip1`
-4. Test the host: `cargo run` (reads `plugin.wasm` if present)
-5. Run tests: `cargo test --workspace`
+## API Versioning Strategy
 
-## WASM Targets
-
-The following WASM targets are available:
-- `wasm32-unknown-unknown` - Basic WASM
-- `wasm32-wasip1` - WASI Preview 1 (used for plugins)
-- `wasm32-wasip2` - WASI Preview 2
+Uses tagged enums with `#[serde(other)]` Unknown variants for backward compatibility:
+- Protocol evolution handled gracefully (old plugins get Unknown variants)
+- Optional fields with `Option<T>` for non-breaking additions
+- JSON stability maintained while allowing Rust code improvements
