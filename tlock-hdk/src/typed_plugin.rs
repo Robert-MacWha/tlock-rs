@@ -1,10 +1,12 @@
-use tlock_pdk::{
-    api::{PluginApi, PluginNamespace, TlockNamespace, methods::Methods},
-    async_trait::async_trait,
-    rpc_message::RpcErrorCode,
+use async_trait::async_trait;
+use tlock_api::{
+    PluginApi, methods::Methods, namespace_global::GlobalNamespace,
+    namespace_plugin::PluginNamespace,
 };
-
-use crate::plugin::{Plugin, PluginError};
+use wasmi_hdk::{
+    RpcErrorCode,
+    plugin::{Plugin, PluginError},
+};
 
 /// TypedPlugin is a type-safe wrapped plugin
 pub struct TypedPlugin {
@@ -43,7 +45,7 @@ impl PluginNamespace<PluginError> for TypedPlugin {
 }
 
 #[async_trait]
-impl TlockNamespace<PluginError> for TypedPlugin {
+impl GlobalNamespace<PluginError> for TypedPlugin {
     async fn ping(&self, value: String) -> Result<String, PluginError> {
         rpc_call!(self, Methods::TlockPing, value)
     }

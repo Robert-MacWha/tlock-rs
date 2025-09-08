@@ -2,7 +2,7 @@ use std::ops::{Deref, DerefMut};
 
 use serde::{Deserialize, Deserializer, de::DeserializeOwned};
 
-/// Transparent wrapper that allows trailing elements in arrays
+/// Transparent serde wrapper that allows trailing elements in arrays
 #[derive(Debug, Clone)]
 pub struct FlexArray<T>(pub T);
 

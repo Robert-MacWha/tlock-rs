@@ -1,9 +1,6 @@
-pub mod api;
 pub use async_trait;
 pub use futures;
-pub mod plugin_factory;
-pub mod rpc_message;
-pub mod transport;
 pub mod typed_host;
 pub use stderrlog;
 pub use wasm_bindgen_futures;
+pub use wasmi_pdk;

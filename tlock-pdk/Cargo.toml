@@ -5,6 +5,8 @@ edition = "2024"
 
 [dependencies]
 runtime = { path = "../runtime" }
+tlock-api = { path = "../tlock-api" }
+wasmi-pdk = { path = "../wasmi/wasmi-pdk" }
 async-trait = "0.1.89"
 futures = "0.3.31"
 log = "0.4.27"
