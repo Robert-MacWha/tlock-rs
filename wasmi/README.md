@@ -1,6 +1,6 @@
 # Wasmi Plugin Framework
 
-A plugin framework built on the [Wasmi](https://github.com/wasmi-labs/wasmi) WebAssembly interpreter. Wasmi Plugin Framework is designed to run wasm plugins across many frameworks.
+A plugin framework built on the [Wasmi](https://github.com/wasmi-labs/wasmi) WebAssembly interpreter. Wasmi Plugin Framework is designed to run wasm plugins across many architectures, including natively, on mobile, and web browsers (running wasm within wasm).
 
 **Features**
 - JSON-rpc based host <> plugin communication
@@ -8,7 +8,7 @@ A plugin framework built on the [Wasmi](https://github.com/wasmi-labs/wasmi) Web
   - STDIN / STDOUT for JSON-rpc communication
   - STDERR for logs
 - Async compatible
-- Single-threaded compatible (works with wasm hosts!)
+- Single-threaded compatible
 - Interpreter-based (works on IOS, thanks to wasmi)
 
 **Limitations**
