@@ -2,19 +2,20 @@ use std::{sync::Arc, thread::sleep, time::Duration};
 
 use log::{info, trace};
 use tlock_hdk::{
-    plugin::Plugin,
-    tlock_pdk::{
-        api::{Host, HostApi, TlockNamespace},
-        async_trait::async_trait,
-        rpc_message::RpcErrorCode,
-    },
+    async_trait::async_trait,
+    tlock_api::{Host, HostApi, namespace_global::GlobalNamespace},
     typed_plugin::TypedPlugin,
+    wasmi_hdk::wasmi_pdk::rpc_message::RpcErrorCode,
 };
 
 //? current_thread uses single-threaded mode, simulating the browser environment
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    colog::init();
+    simple_logger::SimpleLogger::new()
+        .with_level(log::LevelFilter::Debug)
+        .with_colors(true)
+        .init()
+        .ok();
 
     info!("Running single-threaded");
     let wasm_path = "../target/wasm32-wasip1/debug/rust-plugin-template.wasm";
@@ -24,8 +25,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let handler = HostHandler {};
     let handler = Host(handler);
     let handler = Arc::new(handler);
-    let plugin = Plugin::new("Test Plugin", wasm_bytes, handler);
-    let plugin = TypedPlugin::new(plugin);
+    let plugin = TypedPlugin::new("Test Plugin", wasm_bytes, handler)?;
 
     let resp = plugin.ping("Hello Plugin!".into()).await?;
     info!("Received message: {:?}", resp);
@@ -40,7 +40,7 @@ struct HostHandler {}
 impl HostApi<RpcErrorCode> for HostHandler {}
 
 #[async_trait]
-impl TlockNamespace<RpcErrorCode> for HostHandler {
+impl GlobalNamespace<RpcErrorCode> for HostHandler {
     async fn ping(&self, message: String) -> Result<String, RpcErrorCode> {
         trace!("Host received ping with message: {}", message);
         Ok(format!("Host Pong: {}", message))

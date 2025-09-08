@@ -17,8 +17,8 @@ required-features = ["tokio-runtime"]
 
 [dependencies]
 runtime = { path = "../../runtime" }
-wasmi-async = { path = "../wasmi-async" }
 wasmi-pdk = { path = "../wasmi-pdk" }
+wasmi-async = { path = "../wasmi-async" }
 wasmi = "0.51.0"
 wasmi_wasi = "0.51.0"
 serde_json = "1.0.142"

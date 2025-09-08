@@ -1,13 +1,14 @@
 use std::sync::Arc;
 
 use tlock_pdk::{
-    api::{PluginApi, PluginNamespace, TlockNamespace},
     async_trait::async_trait,
     plugin_factory::PluginFactory,
     register_plugin,
-    rpc_message::RpcErrorCode,
+    tlock_api::{PluginApi, namespace_global::GlobalNamespace, namespace_plugin::PluginNamespace},
     typed_host::TypedHost,
+    wasmi_pdk::{rpc_message::RpcErrorCode, transport::JsonRpcTransport},
 };
+
 struct MyPlugin {
     host: Arc<TypedHost>,
 }
@@ -21,7 +22,7 @@ impl PluginFactory for MyPlugin {
 }
 
 #[async_trait]
-impl TlockNamespace<RpcErrorCode> for MyPlugin {
+impl GlobalNamespace<RpcErrorCode> for MyPlugin {
     async fn ping(&self, message: String) -> Result<String, RpcErrorCode> {
         self.host.ping("Hello from plugin v2".to_string()).await?;
 

@@ -1,11 +1,13 @@
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use tlock_api::{
     PluginApi, methods::Methods, namespace_global::GlobalNamespace,
     namespace_plugin::PluginNamespace,
 };
 use wasmi_hdk::{
-    RpcErrorCode,
     plugin::{Plugin, PluginError},
+    wasmi_pdk::{api::RequestHandler, rpc_message::RpcErrorCode},
 };
 
 /// TypedPlugin is a type-safe wrapped plugin
@@ -14,8 +16,13 @@ pub struct TypedPlugin {
 }
 
 impl TypedPlugin {
-    pub fn new(plugin: Plugin) -> Self {
-        Self { plugin }
+    pub fn new(
+        name: &str,
+        wasm_bytes: Vec<u8>,
+        handler: Arc<dyn RequestHandler<RpcErrorCode>>,
+    ) -> Result<Self, wasmi::Error> {
+        let plugin = Plugin::new(name, wasm_bytes, handler)?;
+        Ok(Self { plugin })
     }
 }
 
