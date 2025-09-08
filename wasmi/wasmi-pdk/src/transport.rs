@@ -173,7 +173,7 @@ impl JsonRpcTransport {
             }
         }
 
-        return Ok(());
+        Ok(())
     }
 
     async fn next_line(&self) -> Result<String, RpcErrorCode> {
