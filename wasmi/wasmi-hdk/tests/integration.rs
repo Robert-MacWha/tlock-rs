@@ -21,7 +21,7 @@ impl RequestHandler<RpcErrorCode> for MyHostHandler {
     async fn handle(&self, method: &str, params: Value) -> Result<Value, RpcErrorCode> {
         info!("Host received method: {}, params: {:?}", method, params);
 
-        sleep(Duration::from_millis(100)).await; // Simulate some processing delay
+        sleep(Duration::from_millis(100)).await;
 
         info!("Host processing complete for method: {}", method);
 

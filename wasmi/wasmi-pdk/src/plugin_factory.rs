@@ -2,10 +2,41 @@ use std::sync::Arc;
 
 use crate::{api::RequestHandler, rpc_message::RpcErrorCode, transport::JsonRpcTransport};
 
+/// A factory trait for creating plugin instances that handle JSON-RPC requests.
 pub trait PluginFactory: RequestHandler<RpcErrorCode> {
     fn new(transport: Arc<JsonRpcTransport>) -> Self;
 }
 
+/// Macro to register a plugin implementing the `PluginFactory` trait.
+/// This macro is designed to be used in the `main.rs` file of a plugin crate,
+/// and sets up the necessary boilerplate to initialize and run the plugin.
+///  
+/// # Example
+/// ```
+/// struct MyPlugin {}
+///
+/// impl PluginFactory for MyPlugin {
+///     fn new(_: Arc<JsonRpcTransport>) -> Self {
+///         Self {}
+///     }
+/// }
+///
+/// #[async_trait]
+/// impl RequestHandler<RpcErrorCode> for MyPlugin {
+///     async fn handle(
+///         &self,
+///         method: &str,
+///         _params: serde_json::Value,
+///     ) -> Result<serde_json::Value, RpcErrorCode> {
+///         match method {
+///             "hello" => Ok(serde_json::json!({"message": "Hello from MyPlugin!"})),
+///             _ => Err(RpcErrorCode::MethodNotFound),
+///         }
+///     }
+/// }
+///
+/// register_plugin!(MyPlugin);
+/// ```
 #[macro_export]
 macro_rules! register_plugin {
     ($plugin_type:ty) => {
