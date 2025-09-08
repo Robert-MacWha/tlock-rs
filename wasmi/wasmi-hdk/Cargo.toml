@@ -7,6 +7,10 @@ edition = "2024"
 name = "plugin_benchmark"
 harness = false
 
+[[bin]]
+name = "profile_prime_sieve"
+path = "src/bin/profile_prime_sieve.rs"
+
 [dependencies]
 runtime = { path = "../../runtime" }
 wasmi-async = { path = "../wasmi-async" }

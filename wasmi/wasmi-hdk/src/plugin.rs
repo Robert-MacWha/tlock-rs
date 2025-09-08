@@ -14,7 +14,10 @@ use wasmi_pdk::{
     transport::JsonRpcTransport,
 };
 
-use crate::plugin_instance::{PluginInstance, SpawnError};
+use crate::{
+    compiled_plugin::CompiledPlugin,
+    plugin_instance::{PluginInstance, SpawnError},
+};
 
 /// Plugin is an async-capable instance of a plugin
 pub struct Plugin {
@@ -22,6 +25,7 @@ pub struct Plugin {
     wasm_bytes: Vec<u8>,
     id: AtomicU64,
     handler: Arc<dyn RequestHandler<RpcErrorCode>>,
+    compiled: CompiledPlugin,
 }
 
 #[derive(Debug, Error)]
@@ -39,18 +43,21 @@ impl Plugin {
         name: &str,
         wasm_bytes: Vec<u8>,
         handler: Arc<dyn RequestHandler<RpcErrorCode>>,
-    ) -> Self {
-        Plugin {
+    ) -> Result<Self, wasmi::Error> {
+        let compiled = CompiledPlugin::new(wasm_bytes.clone())?;
+
+        Ok(Plugin {
             name: name.to_string(),
             wasm_bytes,
             id: AtomicU64::new(0),
             handler,
-        }
+            compiled,
+        })
     }
 
     pub async fn call(&self, method: &str, params: Value) -> Result<RpcResponse, PluginError> {
         let (instance, stdin_writer, stdout_reader, stderr_reader) =
-            PluginInstance::new(self.wasm_bytes.clone())?;
+            PluginInstance::new(self.compiled.clone())?;
 
         let id = self.id.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
 

@@ -3,7 +3,10 @@ use std::{
     sync::{Arc, atomic::AtomicBool},
 };
 
-use crate::non_blocking_pipe::{NonBlockingPipeReader, NonBlockingPipeWriter, non_blocking_pipe};
+use crate::{
+    compiled_plugin::CompiledPlugin,
+    non_blocking_pipe::{NonBlockingPipeReader, NonBlockingPipeWriter, non_blocking_pipe},
+};
 use thiserror::Error;
 use wasmi::{Config, Engine, Linker, Module, Store};
 use wasmi_async::wasmi::spawn_wasm;
@@ -34,7 +37,7 @@ pub struct PluginInstance {
 impl PluginInstance {
     /// Spawns the wasi plugin in a new thread
     pub fn new(
-        wasm_bytes: Vec<u8>,
+        compiled: CompiledPlugin,
     ) -> Result<
         (
             Self,
@@ -52,7 +55,7 @@ impl PluginInstance {
         let (stderr_reader, stderr_writer) = non_blocking_pipe();
 
         start_plugin(
-            wasm_bytes,
+            compiled,
             is_running.clone(),
             stdin_reader,
             stdout_writer,
@@ -78,7 +81,7 @@ impl PluginInstance {
 }
 
 fn start_plugin<R, W1, W2>(
-    wasm_bytes: Vec<u8>,
+    compiled: CompiledPlugin,
     is_running: Arc<AtomicBool>,
     stdin_reader: R,
     stdout_writer: W1,
@@ -93,12 +96,8 @@ where
     let stdout_pipe = WritePipe::new(stdout_writer);
     let stderr_pipe = WritePipe::new(stderr_writer);
 
-    let mut config = Config::default();
-    config.consume_fuel(true);
-    // https://github.com/wasmi-labs/wasmi/issues/1647
-    config.compilation_mode(wasmi::CompilationMode::Eager);
-    let engine = Engine::new(&config);
-    let module = Module::new(&engine, wasm_bytes)?;
+    let module = compiled.module;
+    let engine = compiled.engine;
 
     let mut linker = <Linker<WasiCtx>>::new(&engine);
     let wasi = WasiCtxBuilder::new()

@@ -37,9 +37,9 @@ pub fn bench_prime_sieve_small(c: &mut Criterion) {
     let wasm_bytes = load_plugin_wasm();
     let handler = Arc::new(MyHostHandler {});
 
-    let plugin = Plugin::new("test_plugin", wasm_bytes.clone(), handler);
+    let plugin = Plugin::new("test_plugin", wasm_bytes.clone(), handler).unwrap();
 
-    c.bench_function("prime_sieve", |b| {
+    c.bench_function("prime_sieve_small", |b| {
         b.iter(|| {
             let fut = async {
                 plugin
@@ -63,9 +63,9 @@ pub fn bench_prime_sieve_large(c: &mut Criterion) {
     let wasm_bytes = load_plugin_wasm();
     let handler = Arc::new(MyHostHandler {});
 
-    let plugin = Plugin::new("test_plugin", wasm_bytes.clone(), handler);
+    let plugin = Plugin::new("test_plugin", wasm_bytes.clone(), handler).unwrap();
 
-    c.bench_function("prime_sieve", |b| {
+    c.bench_function("prime_sieve_large", |b| {
         b.iter(|| {
             let fut = async {
                 plugin
@@ -88,13 +88,13 @@ pub fn bench_echo_many(c: &mut Criterion) {
     let wasm_bytes = load_plugin_wasm();
     let handler = Arc::new(MyHostHandler {});
 
-    let plugin = Plugin::new("test_plugin", wasm_bytes.clone(), handler);
+    let plugin = Plugin::new("test_plugin", wasm_bytes.clone(), handler).unwrap();
 
     c.bench_function("many_echo", |b| {
         b.iter(|| {
             let fut = async {
                 plugin
-                    .call("many_echo", Value::Number(1000.into()))
+                    .call("many_echo", Value::Number(200.into()))
                     .await
                     .unwrap();
             };
