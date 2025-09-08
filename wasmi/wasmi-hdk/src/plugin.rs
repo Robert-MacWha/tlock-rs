@@ -4,11 +4,11 @@ use std::{
 };
 
 use futures::{AsyncBufReadExt, FutureExt, select};
-use log::info;
+use log::{info, trace};
 use runtime::yield_now;
 use serde_json::Value;
 use thiserror::Error;
-use tlock_pdk::{
+use wasmi_pdk::{
     api::RequestHandler,
     rpc_message::{RpcErrorCode, RpcResponse},
     transport::JsonRpcTransport,
@@ -68,18 +68,8 @@ impl Plugin {
 
         let rpc_task = transport.call(id, method, params, Some(self.handler.clone()));
 
-        let death_watcher = async {
-            loop {
-                if !instance.is_running() {
-                    break;
-                }
-                yield_now().await;
-            }
-        };
-
         let res = select! {
             res = rpc_task.fuse() => res.map_err(Into::into),
-            _ = death_watcher.fuse() => Err(PluginError::PluginDied),
             _ = stderr_task.fuse() => Err(PluginError::PluginDied),
         };
 

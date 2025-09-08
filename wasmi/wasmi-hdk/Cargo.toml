@@ -1,0 +1,17 @@
+[package]
+name = "wasmi-hdk"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+runtime = { path = "../../runtime" }
+wasmi-async = { path = "../wasmi-async" }
+wasmi-pdk = { path = "../wasmi-pdk" }
+wasmi = "0.51.0"
+serde_json = "1.0.142"
+wasmi_wasi = "0.51.0"
+thiserror = "2.0.12"
+tokio = { version = "1.0", features = ["rt", "macros"] }
+log = "0.4.27"
+futures = "0.3.31"
+simple_logger = "5.0.0"

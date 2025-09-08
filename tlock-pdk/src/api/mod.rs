@@ -1,10 +1,15 @@
 use std::str::FromStr;
 
+use alloy_rpc_types::TransactionRequest;
 use async_trait::async_trait;
 use serde_json::Value;
 
-use crate::{api::methods::Methods, rpc_message::RpcErrorCode};
+use crate::{
+    api::{eth::EthNamespace, methods::Methods},
+    rpc_message::RpcErrorCode,
+};
 
+pub mod eth;
 pub mod methods;
 
 pub trait ApiError: From<RpcErrorCode> + Send + Sync {}

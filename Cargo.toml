@@ -3,8 +3,12 @@ members = [
     "host",
     "tlock-pdk",
     "tlock-hdk",
+    "tlock-api",
     "plugins/plugin",
-    "wasmi-async"
+    "wasmi/wasmi-async",
+    "wasmi/wasmi-pdk",
+    "wasmi/wasmi-hdk",
+    "wasmi/test-plugin",
 ]
 
 resolver = "2"

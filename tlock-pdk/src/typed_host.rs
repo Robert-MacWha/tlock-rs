@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use crate::{
     api::{HostApi, TlockNamespace, methods::Methods},
     rpc_message::RpcErrorCode,
-    transport::json_rpc_transport::JsonRpcTransport,
+    transport::JsonRpcTransport,
 };
 
 pub struct TypedHost {

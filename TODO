@@ -1,2 +1,5 @@
 - Switch to wasmer 6.1.0 as soon as it's released
     - Need to use rc since there's a bug in 6.0.1 and I don't want to fall behind.
+
+
+  - Finish wasmi-pdk and hdk, write integration and regression tests using real compiled plugins, and make sure it can be integrated into tlock-pdk/hdk for proper type-safe wrappers.

@@ -6,7 +6,7 @@ edition = "2024"
 [dependencies]
 tlock-pdk = { path = "../tlock-pdk" }
 runtime = { path = "../runtime" }
-wasmi-async = { path = "../wasmi-async" }
+wasmi-async = { path = "../wasmi/wasmi-async" }
 futures = "0.3.31"
 serde = {version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.142"
