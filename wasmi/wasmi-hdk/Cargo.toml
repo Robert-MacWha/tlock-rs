@@ -20,7 +20,7 @@ runtime = { path = "../../runtime" }
 wasmi-pdk = { path = "../wasmi-pdk" }
 wasmi-async = { path = "../wasmi-async" }
 wasmi = "0.51.0"
-wasmi_wasi = "0.51.0"
+
 serde_json = "1.0.142"
 thiserror = "2.0.12"
 log = "0.4.27"

@@ -8,7 +8,7 @@ use futures::{
     channel::oneshot::{self, Sender},
     lock::Mutex,
 };
-use log::warn;
+use log::{trace, warn};
 use runtime::yield_now;
 use serde_json::Value;
 
@@ -71,6 +71,7 @@ impl JsonRpcTransport {
                 }
                 Ok(None) => {}
                 Err(_) => {
+                    warn!("Caller dropped");
                     return Err(RpcErrorCode::InternalError);
                 }
             }
@@ -117,14 +118,22 @@ impl JsonRpcTransport {
     }
 
     async fn write_message(&self, msg: &RpcMessage) -> Result<(), RpcErrorCode> {
-        let serialized = serde_json::to_string(msg).map_err(|_| RpcErrorCode::InvalidParams)?;
+        let serialized = serde_json::to_string(msg).map_err(|_| {
+            warn!("Failed to serialize message: {:?}", msg);
+            RpcErrorCode::InternalError
+        })?;
         let msg = format!("{}\n", serialized);
 
+        trace!("JsonRpcTransport::write_message() - {}", msg.trim());
         let mut writer = self.writer.lock().await;
-        writer
-            .write_all(msg.as_bytes())
-            .map_err(|_| RpcErrorCode::InternalError)?;
-        writer.flush().map_err(|_| RpcErrorCode::InternalError)?;
+        writer.write_all(msg.as_bytes()).map_err(|_| {
+            warn!("Failed to write message: {}", msg.trim());
+            RpcErrorCode::InternalError
+        })?;
+        writer.flush().map_err(|_| {
+            warn!("Failed to flush message: {}", msg.trim());
+            RpcErrorCode::InternalError
+        })?;
         Ok(())
     }
 
@@ -140,6 +149,10 @@ impl JsonRpcTransport {
                 }
             }
             RpcMessage::RpcErrorResponse(err) => {
+                warn!(
+                    "Received error response from plugin: {:?}",
+                    err.error.message
+                );
                 return Err(err.error.code);
             }
             RpcMessage::RpcRequest(RpcRequest {
@@ -181,14 +194,20 @@ impl JsonRpcTransport {
 
         loop {
             match self.reader.lock().await.read_line(&mut line) {
-                Ok(0) => return Err(RpcErrorCode::InternalError), // EOF
+                Ok(0) => {
+                    warn!("EOF reached while reading line");
+                    return Err(RpcErrorCode::InternalError);
+                }
                 Ok(_) => return Ok(line),
                 Err(e) => match e.kind() {
                     std::io::ErrorKind::WouldBlock => {
                         yield_now().await;
                         continue;
                     }
-                    _ => return Err(RpcErrorCode::InternalError),
+                    _ => {
+                        warn!("Failed to read line: {}", e);
+                        return Err(RpcErrorCode::InternalError);
+                    }
                 },
             }
         }

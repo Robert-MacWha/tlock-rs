@@ -35,7 +35,7 @@ impl RequestHandler<RpcErrorCode> for MyHostHandler {
 #[tokio::test]
 async fn test_plugin() {
     simple_logger::SimpleLogger::new()
-        .with_level(log::LevelFilter::Debug)
+        .with_level(log::LevelFilter::Trace)
         .with_colors(true)
         .init()
         .ok();
@@ -58,7 +58,7 @@ async fn test_plugin() {
 #[tokio::test]
 async fn test_prime_sieve() {
     simple_logger::SimpleLogger::new()
-        .with_level(log::LevelFilter::Debug)
+        .with_level(log::LevelFilter::Trace)
         .with_colors(true)
         .init()
         .ok();

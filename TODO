@@ -2,4 +2,8 @@
     - Need to use rc since there's a bug in 6.0.1 and I don't want to fall behind.
 
 
-  - Finish wasmi-pdk and hdk, write integration and regression tests using real compiled plugins, and make sure it can be integrated into tlock-pdk/hdk for proper type-safe wrappers.
+  - Re-write wasmi-pdk and hdk to not use wasmi.
+    - Wasmi can't be compiled to wasm32-unknown-unknown. This is bad. So we need 
+    - to switch to using wasmi directly and injecting host functions, which is really really sad.
+      - Alternatively we could do it by patching wasmi to compile into wasm32-unknown-unknown. But that
+      - seems harder and I don't see a good reason for that.

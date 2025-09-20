@@ -12,7 +12,7 @@ pub trait PluginFactory: RequestHandler<RpcErrorCode> {
 /// and sets up the necessary boilerplate to initialize and run the plugin.
 ///  
 /// # Example
-/// ```
+/// ```rust,ignore
 /// struct MyPlugin {}
 ///
 /// impl PluginFactory for MyPlugin {

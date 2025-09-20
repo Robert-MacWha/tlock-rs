@@ -3,16 +3,13 @@ use std::{
     sync::{Arc, atomic::AtomicBool},
 };
 
-use crate::{
-    compiled_plugin::CompiledPlugin,
-    non_blocking_pipe::{NonBlockingPipeReader, NonBlockingPipeWriter, non_blocking_pipe},
-};
+use crate::compiled_plugin::CompiledPlugin;
 use thiserror::Error;
 use wasmi::{Linker, Store};
-use wasmi_async::wasmi::spawn_wasm;
-use wasmi_wasi::{
-    WasiCtx, WasiCtxBuilder,
-    wasi_common::pipe::{ReadPipe, WritePipe},
+use wasmi_async::{
+    non_blocking_pipe::{NonBlockingPipeReader, NonBlockingPipeWriter, non_blocking_pipe},
+    wasmi::spawn_wasm,
+    wasmi_wasi::{WasiCtx, add_to_linker},
 };
 
 #[derive(Error, Debug)]
@@ -23,8 +20,6 @@ pub enum SpawnError {
     StartNotFound,
     #[error("wasmi error")]
     WasmiError(#[from] wasmi::Error),
-    #[error("wasi error")]
-    WasiError(#[from] wasmi_wasi::Error),
 }
 
 /// PluginInstance is a single static running instance of a plugin
@@ -91,22 +86,17 @@ where
     W1: Write + Send + Sync + 'static,
     W2: Write + Send + Sync + 'static,
 {
-    let stdin_pipe = ReadPipe::new(stdin_reader);
-    let stdout_pipe = WritePipe::new(stdout_writer);
-    let stderr_pipe = WritePipe::new(stderr_writer);
-
     let module = compiled.module;
     let engine = compiled.engine;
 
-    let mut linker = <Linker<WasiCtx>>::new(&engine);
-    let wasi = WasiCtxBuilder::new()
-        .stdin(Box::new(stdin_pipe))
-        .stdout(Box::new(stdout_pipe))
-        .stderr(Box::new(stderr_pipe))
-        .build();
+    let mut linker = Linker::new(&engine);
+    let wasi = WasiCtx::new()
+        .set_stdin(Box::new(stdin_reader))
+        .set_stdout(Box::new(stdout_writer))
+        .set_stderr(Box::new(stderr_writer));
 
     let mut store = Store::new(&engine, wasi);
-    wasmi_wasi::add_to_linker(&mut linker, |ctx| ctx)?;
+    add_to_linker(&mut linker)?;
 
     let instance = linker.instantiate_and_start(&mut store, &module)?;
     let start_func = instance
