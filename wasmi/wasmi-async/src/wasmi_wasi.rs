@@ -1,3 +1,4 @@
+use rand::TryRngCore;
 use std::io::{Read, Write};
 
 use log::{info, trace};
@@ -19,6 +20,7 @@ enum Errno {
     Again = 6,
     Badf = 8,
     Fault = 21,
+    Inval = 28,
     Io = 29,
 }
 
@@ -423,31 +425,47 @@ fn fd_close(mut caller: wasmi::Caller<'_, WasiCtx>, fd: i32) -> i32 {
     Errno::Success as i32
 }
 
-// TODO: Implement properly
+// TODO: Implement for wasm32-unknown-unknown target
 fn clock_time_get(
     mut caller: wasmi::Caller<'_, WasiCtx>,
     clock_id: i32,
-    precision: i64,
+    _precision: i64,
     result_ptr: i32,
 ) -> i32 {
-    trace!(
-        "wasi clock_time_get({}, {}, {})",
-        clock_id, precision, result_ptr
-    );
+    trace!("wasi clock_time_get({}, _, {})", clock_id, result_ptr);
 
     let memory = caller
         .get_export("memory")
         .and_then(|e| e.into_memory())
         .expect("guest must have memory");
 
-    let now = 0u64; // stub value
-    memory
+    let now = match clock_id {
+        // Realtime: nanoseconds since UNIX epoch
+        0 => {
+            match std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH) {
+                Ok(dur) => dur.as_nanos() as u64,
+                Err(_) => return Errno::Inval as i32, // time before epoch shouldn't happen
+            }
+        }
+        // Monotonic: nanoseconds since arbitrary fixed point
+        1 => {
+            let dur = std::time::Instant::now().elapsed();
+            dur.as_nanos() as u64
+        }
+        _ => return Errno::Inval as i32, // unsupported clock
+    };
+
+    if memory
         .write(&mut caller, result_ptr as usize, &now.to_le_bytes())
-        .unwrap();
+        .is_err()
+    {
+        return Errno::Fault as i32;
+    }
     Errno::Success as i32
 }
 
-// TODO: Implement properly
+// TODO: Implement for wasm32-unknown-unknown target
+
 fn random_get(mut caller: wasmi::Caller<'_, WasiCtx>, buf_ptr: i32, buf_len: i32) -> i32 {
     trace!("wasi random_get({}, {})", buf_ptr, buf_len);
 
@@ -456,11 +474,16 @@ fn random_get(mut caller: wasmi::Caller<'_, WasiCtx>, buf_ptr: i32, buf_len: i32
         .and_then(|e| e.into_memory())
         .expect("guest must have memory");
 
-    // Fill with zeros as a stub
-    let zeros = vec![0u8; buf_len as usize];
-    if memory.write(&mut caller, buf_ptr as usize, &zeros).is_err() {
+    let mut buf = vec![0u8; buf_len as usize];
+    if let Err(e) = rand::rngs::OsRng.try_fill_bytes(&mut buf) {
+        eprintln!("random_get failed: {:?}", e);
+        return Errno::Io as i32;
+    }
+
+    if memory.write(&mut caller, buf_ptr as usize, &buf).is_err() {
         return Errno::Fault as i32;
     }
+
     Errno::Success as i32
 }
 
