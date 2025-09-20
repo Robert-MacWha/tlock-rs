@@ -9,7 +9,7 @@ use wasmi_pdk::{api::RequestHandler, async_trait::async_trait, rpc_message::RpcE
 
 fn load_plugin_wasm() -> Vec<u8> {
     let wasm_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../target/wasm32-wasip1/release/test-plugin.wasm");
+        .join("../../target/wasm32-wasip1/release/test-plugin-opt.wasm");
 
     info!("Loading plugin WASM from {:?}", wasm_path);
     fs::read(wasm_path).expect("Failed to read plugin WASM file")
@@ -79,6 +79,14 @@ pub fn bench_prime_sieve_large(c: &mut Criterion) {
     });
 }
 
+pub fn bench_prime_sieve_native(c: &mut Criterion) {
+    c.bench_function("prime_sieve_native", |b| {
+        b.iter(|| {
+            sieve_of_eratosthenes(100_000);
+        })
+    });
+}
+
 /// Benchmark sending many echo requests to the host, and receiving responses.
 pub fn bench_echo_many(c: &mut Criterion) {
     let rt = Builder::new_current_thread().enable_all().build().unwrap();
@@ -108,6 +116,27 @@ criterion_group!(
     benches,
     bench_prime_sieve_small,
     bench_prime_sieve_large,
+    bench_prime_sieve_native,
     bench_echo_many
 );
 criterion_main!(benches);
+
+fn sieve_of_eratosthenes(limit: usize) -> Vec<usize> {
+    if limit < 2 {
+        return vec![];
+    }
+
+    let mut is_prime = vec![true; limit + 1];
+    is_prime[0] = false;
+    is_prime[1] = false;
+
+    for i in 2..=((limit as f64).sqrt() as usize) {
+        if is_prime[i] {
+            for j in ((i * i)..=limit).step_by(i) {
+                is_prime[j] = false;
+            }
+        }
+    }
+
+    (2..=limit).filter(|&i| is_prime[i]).collect()
+}
