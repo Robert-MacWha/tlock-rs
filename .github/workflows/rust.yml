@@ -34,6 +34,9 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-cargo-target-
 
+    - name: Add wasm32-wasip1 target
+      run: rustup target add wasm32-wasip1
+
     - name: Build
       run: cargo build --verbose
 
