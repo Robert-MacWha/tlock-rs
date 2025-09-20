@@ -37,5 +37,8 @@ jobs:
     - name: Build
       run: cargo build --verbose
 
+    - name: Build plugin
+      run: cargo build --target wasm32-wasip1 -p test-plugin --release
+
     - name: Run tests
       run: cargo test --verbose
