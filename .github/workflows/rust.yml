@@ -41,7 +41,7 @@ jobs:
       run: cargo build --verbose
 
     - name: Build plugin
-      run: cargo build --target wasm32-wasip1 -p test-plugin --release
+      run: cargo build --target wasm32-wasip1 -p test-plugin
 
     - name: Run tests
       run: cargo test --verbose
