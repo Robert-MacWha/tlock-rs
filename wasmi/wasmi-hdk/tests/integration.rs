@@ -8,7 +8,7 @@ use wasmi_pdk::{api::RequestHandler, async_trait::async_trait, rpc_message::RpcE
 
 fn load_plugin_wasm() -> Vec<u8> {
     let wasm_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../target/wasm32-wasip1/debug/test-plugin.wasm");
+        .join("../../target/wasm32-wasip1/release/test-plugin.wasm");
 
     info!("Loading plugin WASM from {:?}", wasm_path);
     fs::read(wasm_path).expect("Failed to read plugin WASM file")

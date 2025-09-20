@@ -3,7 +3,6 @@
 # Build the WASM plugin first
 build-wasm:
 	cargo build --target wasm32-wasip1 -p test-plugin --release
-	wasm-opt ../../target/wasm32-wasip1/release/test-plugin.wasm -O3 -o ../../target/wasm32-wasip1/release/test-plugin-opt.wasm
 
 test: build-wasm
 	cargo test
