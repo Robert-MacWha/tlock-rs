@@ -1,10 +1,9 @@
 use std::sync::{Arc, atomic::AtomicBool};
 
-use log::error;
+use log::{error, trace};
 use runtime::{spawn_local, yield_now};
 use thiserror::Error;
 use wasmi::{Func, Store};
-use wasmi_wasi::WasiCtx;
 
 #[derive(Error, Debug)]
 pub enum RunError {
@@ -31,8 +30,8 @@ pub enum RunError {
 /// becomes a performance issue we can test it properly.
 const MAX_FUEL: u64 = 100_000;
 
-pub fn spawn_wasm(
-    store: Store<WasiCtx>,
+pub fn spawn_wasm<T: Send + Sync + 'static>(
+    store: Store<T>,
     start_func: Func,
     is_running: Arc<AtomicBool>,
     max_fuel: Option<u64>,
@@ -55,8 +54,8 @@ pub fn spawn_wasm(
 /// need some manual way of interrupting the plugin every so often to check if
 /// it's been killed and yield. Here I do that by setting a low fuel limit,
 /// catching the out-of-fuel condition and resuming the plugin when it's not killed.
-pub async fn run_wasm(
-    mut store: Store<WasiCtx>,
+async fn run_wasm<T>(
+    mut store: Store<T>,
     start_func: Func,
     is_running: Arc<AtomicBool>,
     max_fuel: Option<u64>,
@@ -82,6 +81,7 @@ pub async fn run_wasm(
                 let top_up = required.max(max_fuel);
                 store.set_fuel(top_up).unwrap();
 
+                trace!("Plugin out of fuel, yielding...");
                 yield_now().await;
 
                 match out_of_fuel.resume(&mut store, &mut []) {

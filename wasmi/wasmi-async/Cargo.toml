@@ -6,6 +6,6 @@ edition = "2024"
 [dependencies]
 runtime = { path = "../../runtime" }
 wasmi = "0.51.0"
-wasmi_wasi = "0.51.0"
 thiserror = "2.0.12"
 log = "0.4.27"
+futures = "0.3.31"
