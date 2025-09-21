@@ -1,9 +1,9 @@
-use std::{fs, path::PathBuf, sync::Arc, time::Duration};
-
 use log::info;
 use serde_json::Value;
+use std::{fs, path::PathBuf, sync::Arc, time::Duration};
 use tokio::time::{sleep, timeout};
 use wasmi_hdk::plugin::Plugin;
+use wasmi_pdk::transport::Transport;
 use wasmi_pdk::{api::RequestHandler, async_trait::async_trait, rpc_message::RpcErrorCode};
 
 fn load_plugin_wasm() -> Vec<u8> {

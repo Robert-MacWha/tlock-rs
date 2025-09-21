@@ -1,52 +1,49 @@
-use std::sync::Arc;
-
-use crate::typed_host::TypedHost;
-
-/// A factory trait for creating plugin instances that handle JSON-RPC requests.
-pub trait PluginFactory {
-    fn new(transport: Arc<TypedHost>) -> Self;
-}
-
+// TODO: Clean this up and add docs. Would be nice to infer the namespace servers
+// from the plugin's type (maybe a proc macro?) or at least to use the namespace
+// rather than the `::new` constructor path. But I'm not skilled enough with
+// macros to do that yet.
+/// Registers a plugin's main function with the given namespace servers. The
+/// plugin type must implement a `new(Arc<TypedHost>) -> Self` constructor.
+///  
+/// This macro automatically sets up the transport and logging over stdio and
+/// reads the host's incoming request from stdin, dispatching the plugin.
 #[macro_export]
 macro_rules! register_plugin {
-    ($plugin_type:ty) => {
+    // Explicit list of server constructors
+    ($plugin_ty:ty, [ $($server_ctor:path),* $(,)? ]) => {
         fn main() {
-            use std::io::{self, BufReader};
-            use std::sync::Arc;
-            use tlock_pdk::plugin_factory::PluginFactory;
-            use tlock_pdk::tlock_api::Plugin;
-            use tlock_pdk::wasmi_pdk::{futures::executor, log, stderrlog};
+            // Transport (stdio)
+            let writer = ::std::io::stdout();
+            let reader = ::std::io::BufReader::new(::std::io::stdin());
+            let transport = ::tlock_pdk::wasmi_pdk::transport::JsonRpcTransport::new(
+                Box::new(reader),
+                Box::new(writer),
+            );
+            let transport = ::std::sync::Arc::new(transport);
 
-            // This ensures at compile-time that $plugin_type implements PluginFactory
-            fn assert_factory<T: PluginFactory>() {}
-            let _ = assert_factory::<$plugin_type>;
-
-            stderrlog::new()
-                .verbosity(stderrlog::LogLevelNum::Trace)
+            // Logging
+            ::tlock_pdk::wasmi_pdk::stderrlog::new()
+                .verbosity(::tlock_pdk::wasmi_pdk::stderrlog::LogLevelNum::Trace)
                 .init()
                 .unwrap();
+            ::tlock_pdk::wasmi_pdk::log::info!("Starting plugin...");
 
-            log::info!("Starting plugin...");
+            // Host + plugin
+            let host = ::std::sync::Arc::new(::tlock_pdk::tlock_api::CompositeClient::new(transport.clone()));
+            let plugin = ::std::sync::Arc::new(<$plugin_ty>::new(host.clone()));
 
-            // Setup stdio transport
-            let writer = io::stdout();
-            let reader = io::stdin();
-            let reader = BufReader::new(reader);
-            let transport = JsonRpcTransport::new(Box::new(reader), Box::new(writer));
-            let transport = Arc::new(transport);
+            // Composite server
+            let mut handler = ::tlock_pdk::tlock_api::CompositeServer::new();
+            $(
+                handler.register($server_ctor(plugin.clone()));
+            )*
+            let handler = ::std::sync::Arc::new(handler);
 
-            let host = TypedHost::new(transport.clone());
-            let host = Arc::new(host);
-
-            let plugin = <$plugin_type>::new(host.clone());
-            let plugin = Plugin(plugin);
-            let plugin = Arc::new(plugin);
-
-            let runtime_future = async move {
-                let _ = transport.process_next_line(Some(plugin)).await;
+            // Run loop
+            let fut = async move {
+                let _ = transport.process_next_line(Some(handler)).await;
             };
-
-            executor::block_on(runtime_future);
+            ::tlock_pdk::wasmi_pdk::futures::executor::block_on(fut);
         }
     };
 }

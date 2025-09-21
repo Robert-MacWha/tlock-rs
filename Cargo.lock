@@ -2241,6 +2241,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "rpc-namespace"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.106",
+]
+
+[[package]]
 name = "ruint"
 version = "1.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2885,6 +2894,7 @@ dependencies = [
  "alloy-primitives",
  "alloy-rpc-types",
  "async-trait",
+ "rpc-namespace",
  "serde",
  "serde_json",
  "strum",

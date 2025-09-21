@@ -8,7 +8,7 @@ use wasmi_pdk::{
     register_plugin,
     rpc_message::RpcErrorCode,
     serde_json::{self, Value},
-    transport::JsonRpcTransport,
+    transport::{JsonRpcTransport, Transport},
 };
 
 struct MyPlugin {
@@ -29,13 +29,12 @@ impl RequestHandler<RpcErrorCode> for MyPlugin {
         match method {
             "ping" => {
                 // Send a ping request, expect to receive a "pong" response.
-                let id = 42;
-                log::info!("Sending ping with id={}", id);
-                let resp = self.host.call(id, "ping", Value::Null, None).await?;
+                log::info!("Sending ping");
+                let resp = self.host.call("ping", Value::Null).await?;
                 log::info!("Received response: {:?}", resp);
 
-                if resp.id != id {
-                    log::error!("Incorrect response id: expected {}, got {}", id, resp.id);
+                if resp.id != 0 {
+                    log::error!("Incorrect response id: expected {}, got {}", 0, resp.id);
                     return Err(RpcErrorCode::InternalError);
                 }
 
@@ -61,10 +60,17 @@ impl RequestHandler<RpcErrorCode> for MyPlugin {
             "many_echo" => {
                 let limit = params.as_u64().ok_or(RpcErrorCode::InvalidParams)? as usize;
                 for i in 0..limit {
-                    let id = i as u64;
-                    self.host
-                        .call(id, "echo", Value::Number(id.into()), None)
-                        .await?;
+                    let resp = self.host.call("echo", Value::Number(i.into())).await?;
+
+                    if resp.id != i as u64 {
+                        log::error!("Incorrect response id: expected {}, got {}", i, resp.id);
+                        return Err(RpcErrorCode::InternalError);
+                    }
+
+                    if resp.result != Value::Number(i.into()) {
+                        log::error!("Incorrect response result: {:?}", resp.result);
+                        return Err(RpcErrorCode::InternalError);
+                    }
                 }
 
                 Ok(Value::Null)

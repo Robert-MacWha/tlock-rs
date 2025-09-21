@@ -8,6 +8,7 @@ members = [
     "wasmi/wasmi-async",
     "wasmi/wasmi-pdk",
     "wasmi/wasmi-hdk",
+    "wasmi/rpc-namespace",
     "wasmi/test-plugin",
 ]
 

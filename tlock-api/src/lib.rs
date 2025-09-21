@@ -1,90 +1,79 @@
-use std::str::FromStr;
+use std::sync::Arc;
 
 use async_trait::async_trait;
-use serde_json::Value;
 use wasmi_pdk::{
     api::{ApiError, RequestHandler},
+    log::warn,
     rpc_message::RpcErrorCode,
+    transport::Transport,
 };
 
 use crate::{
-    methods::Methods, namespace_global::GlobalNamespace, namespace_plugin::PluginNamespace,
+    global::{GlobalNamespace, GlobalNamespaceClient},
+    plugin::PluginNamespaceClient,
 };
 
 pub mod flex_array;
+pub mod global;
 pub mod methods;
 pub mod namespace_eth;
-pub mod namespace_global;
-pub mod namespace_plugin;
+pub mod plugin;
 
-pub trait PluginApi<E: ApiError>: GlobalNamespace<E> + PluginNamespace<E> {}
-pub trait HostApi<E: ApiError>: GlobalNamespace<E> {}
-
-pub struct Plugin<T>(pub T);
-pub struct Host<T>(pub T);
-
-macro_rules! register_methods {
-    ($self:expr, $method:expr, $params:expr, {
-        $($variant:ident => $fn_name:ident($($param_type:ty)?)),* $(,)?
-    }) => {
-        match $method {
-            $(
-                Methods::$variant => {
-                    register_methods!(@call $self, $fn_name, $params, $($param_type)?)
-                }
-            )*
-            _ => Err(RpcErrorCode::MethodNotFound.into())
-        }
-    };
-
-    // Handle function with one param
-    (@call $self:expr, $fn_name:ident, $params:expr, $param_type:ty) => {
-        {
-            let param: $param_type = serde_json::from_value($params).map_err(|_| RpcErrorCode::InvalidParams)?;
-            let result = $self.0.$fn_name(param).await?;
-            let result = serde_json::to_value(result).map_err(|_| RpcErrorCode::ParseError)?;
-            Ok(result)
-        }
-    };
-
-    // Handle function with no params
-    (@call $self:expr, $fn_name:ident, $params:expr, ) => {
-        {
-            let result = $self.0.$fn_name().await?;
-            let result = serde_json::to_value(result).map_err(|_| RpcErrorCode::ParseError)?;
-            Ok(result)
-        }
-    };
+pub struct CompositeClient<E: ApiError> {
+    plugin: PluginNamespaceClient<E>,
+    global: GlobalNamespaceClient<E>,
 }
 
-#[async_trait]
-impl<T, E> RequestHandler<E> for Host<T>
-where
-    T: HostApi<E> + Send + Sync,
-    E: ApiError,
-{
-    async fn handle(&self, method: &str, params: Value) -> Result<Value, E> {
-        let m: Methods = Methods::from_str(method).map_err(|_| RpcErrorCode::MethodNotFound)?;
+impl<E: ApiError> CompositeClient<E> {
+    pub fn new(transport: Arc<dyn Transport<E> + Send + Sync>) -> Self {
+        Self {
+            plugin: PluginNamespaceClient::new(transport.clone()),
+            global: GlobalNamespaceClient::new(transport),
+        }
+    }
 
-        register_methods!(self, m, params, {
-            TlockPing => ping(String),
-        })
+    pub fn plugin(&self) -> &PluginNamespaceClient<E> {
+        &self.plugin
+    }
+
+    pub fn global(&self) -> &GlobalNamespaceClient<E> {
+        &self.global
+    }
+}
+
+pub struct CompositeServer<E: ApiError> {
+    servers: Vec<Box<dyn RequestHandler<E> + Send + Sync>>,
+}
+
+impl<E: ApiError> CompositeServer<E> {
+    pub fn new() -> Self {
+        Self {
+            servers: Vec::new(),
+        }
+    }
+
+    pub fn register<H>(&mut self, handler: H)
+    where
+        H: RequestHandler<E> + Send + Sync + 'static,
+    {
+        self.servers.push(Box::new(handler));
     }
 }
 
 #[async_trait]
-impl<T, E> RequestHandler<E> for Plugin<T>
-where
-    T: PluginApi<E> + Send + Sync,
-    E: ApiError,
-{
-    async fn handle(&self, method: &str, params: Value) -> Result<Value, E> {
-        let m: Methods = Methods::from_str(method).map_err(|_| RpcErrorCode::MethodNotFound)?;
+impl<E: ApiError> RequestHandler<E> for CompositeServer<E> {
+    async fn handle(
+        &self,
+        method: &str,
+        params: serde_json::Value,
+    ) -> Result<serde_json::Value, E> {
+        for server in &self.servers {
+            if let Ok(result) = server.handle(method, params.clone()).await {
+                return Ok(result);
+            }
+        }
 
-        register_methods!(self, m, params, {
-            TlockPing     => ping(String),
-            PluginVersion => version(),
-            PluginName    => name(),
-        })
+        warn!("Method not found: {}", method);
+        Err(E::from(RpcErrorCode::MethodNotFound))
     }
 }

@@ -2,62 +2,51 @@ use std::sync::Arc;
 
 use tlock_pdk::{
     async_trait::async_trait,
-    plugin_factory::PluginFactory,
     register_plugin,
-    tlock_api::{PluginApi, namespace_global::GlobalNamespace, namespace_plugin::PluginNamespace},
-    typed_host::TypedHost,
-    wasmi_pdk::{rpc_message::RpcErrorCode, transport::JsonRpcTransport},
+    tlock_api::{
+        CompositeClient,
+        global::{self, GlobalNamespace},
+        plugin::{self, PluginNamespace},
+    },
+    wasmi_pdk::rpc_message::RpcErrorCode,
 };
 
 struct MyPlugin {
-    host: Arc<TypedHost>,
+    host: Arc<CompositeClient<RpcErrorCode>>,
 }
 
-impl PluginApi<RpcErrorCode> for MyPlugin {}
-
-impl PluginFactory for MyPlugin {
-    fn new(host: Arc<TypedHost>) -> Self {
-        MyPlugin { host }
+impl MyPlugin {
+    pub fn new(host: Arc<CompositeClient<RpcErrorCode>>) -> Self {
+        Self { host }
     }
 }
 
 #[async_trait]
-impl GlobalNamespace<RpcErrorCode> for MyPlugin {
-    async fn ping(&self, message: String) -> Result<String, RpcErrorCode> {
-        self.host.ping("Hello from plugin v2".to_string()).await?;
+impl PluginNamespace for MyPlugin {
+    type Error = RpcErrorCode;
 
-        let count = find_primes(10000);
-
-        Ok(format!("Pong: message={}, primes={}", message, count))
-    }
-}
-
-#[async_trait]
-impl PluginNamespace<RpcErrorCode> for MyPlugin {
-    async fn name(&self) -> Result<String, RpcErrorCode> {
+    async fn name(&self) -> Result<String, Self::Error> {
         Ok("Test Async Plugin".to_string())
     }
 
-    async fn version(&self) -> Result<String, RpcErrorCode> {
+    async fn version(&self) -> Result<String, Self::Error> {
         Ok("1.0.0".to_string())
     }
 }
 
-fn find_primes(limit: usize) -> usize {
-    let mut is_prime = vec![true; limit];
-    let mut count = 0;
+#[async_trait]
+impl GlobalNamespace for MyPlugin {
+    type Error = RpcErrorCode;
 
-    for i in 2..limit {
-        if is_prime[i] {
-            count += 1;
-            let mut j = i * i;
-            while j < limit {
-                is_prime[j] = false;
-                j += i;
-            }
-        }
+    async fn ping(&self, message: String) -> Result<String, Self::Error> {
+        Ok(format!("Pong: {}", message))
     }
-    count
 }
 
-register_plugin!(MyPlugin);
+register_plugin!(
+    MyPlugin,
+    [
+        plugin::PluginNamespaceServer::new,
+        global::GlobalNamespaceServer::new
+    ]
+);

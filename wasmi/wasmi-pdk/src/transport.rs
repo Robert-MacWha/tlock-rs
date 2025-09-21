@@ -1,9 +1,10 @@
 use std::{
     collections::HashMap,
     io::{BufRead, Write},
-    sync::Arc,
+    sync::{Arc, atomic::AtomicU64},
 };
 
+use async_trait::async_trait;
 use futures::{
     channel::oneshot::{self, Sender},
     lock::Mutex,
@@ -13,9 +14,14 @@ use runtime::yield_now;
 use serde_json::Value;
 
 use crate::{
-    api::RequestHandler,
+    api::{ApiError, RequestHandler},
     rpc_message::{RpcError, RpcErrorCode, RpcErrorResponse, RpcMessage, RpcRequest, RpcResponse},
 };
+
+#[async_trait]
+pub trait Transport<E: ApiError> {
+    async fn call(&self, method: &str, params: Value) -> Result<RpcResponse, E>;
+}
 
 /// Single-threaded, concurrent-safe json-rpc transport layer
 ///
@@ -23,9 +29,11 @@ use crate::{
 /// us run `call` from multiple different instances of the transport
 /// at the same time, very helpful within the plugins.
 pub struct JsonRpcTransport {
+    id: AtomicU64,
     pending: Mutex<HashMap<u64, Sender<RpcResponse>>>,
     reader: Mutex<Box<dyn BufRead + Send + Sync>>,
     writer: Mutex<Box<dyn Write + Send + Sync>>,
+    handler: Option<Arc<dyn RequestHandler<RpcErrorCode>>>,
 }
 
 const JSON_RPC_VERSION: &str = "2.0";
@@ -36,30 +44,37 @@ impl JsonRpcTransport {
         writer: Box<dyn Write + Send + Sync>,
     ) -> Self {
         Self {
+            id: AtomicU64::new(0),
             pending: Mutex::new(HashMap::new()),
             reader: Mutex::new(reader),
             writer: Mutex::new(writer),
+            handler: None,
         }
     }
 
-    /// Sends a json-rpc request and waits for the response
-    /// If a handler is provided, it will be used to handle incoming requests
-    /// while waiting for the response.
-    ///
-    /// - When calling from a plugin: A given plugin instance will only ever
-    ///     receive a single request. Because of this handler should be None.
-    /// - When calling from the host: The host may receive multiple requests from
-    ///     a plugin before it returns a response. Handler should be set to Some(...).
-    ///
-    /// TODO: Make the above explicit in the type system
-    pub async fn call(
-        &self,
-        id: u64,
-        method: &str,
-        params: Value,
-        handler: Option<Arc<dyn RequestHandler<RpcErrorCode>>>,
-    ) -> Result<RpcResponse, RpcErrorCode> {
+    pub fn with_handler(
+        reader: Box<dyn BufRead + Send + Sync>,
+        writer: Box<dyn Write + Send + Sync>,
+        handler: Arc<dyn RequestHandler<RpcErrorCode>>,
+    ) -> Self {
+        Self {
+            id: AtomicU64::new(0),
+            pending: Mutex::new(HashMap::new()),
+            reader: Mutex::new(reader),
+            writer: Mutex::new(writer),
+            handler: Some(handler),
+        }
+    }
+}
+
+#[async_trait]
+impl Transport<RpcErrorCode> for JsonRpcTransport {
+    /// Sends a json-rpc request and waits for the response. `Call` does not
+    /// pump the reader, so you must call `process_next_line` in another task
+    /// to read responses / handle incoming requests.
+    async fn call(&self, method: &str, params: Value) -> Result<RpcResponse, RpcErrorCode> {
         let (tx, mut rx) = oneshot::channel();
+        let id = self.id.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         self.pending.lock().await.insert(id, tx);
         self.write_request(id, method, params).await?;
 
@@ -76,15 +91,14 @@ impl JsonRpcTransport {
                 }
             }
 
-            self.process_next_line(handler.clone()).await?;
+            self.process_next_line(self.handler.clone()).await?;
         }
     }
+}
 
-    /// Processes a single request from the reader. For the plugin, this can be used
-    /// to process the single incoming request from the host. For the host this doesn't
-    /// really matter, or can be used to step through requests one by one.
-    ///
-    /// TODO: Make the above explicit in the type system
+impl JsonRpcTransport {
+    /// Processes a single request from the reader.  Can be used to manually
+    /// pump the reader with a custom handler.
     pub async fn process_next_line(
         &self,
         handler: Option<Arc<dyn RequestHandler<RpcErrorCode>>>,

@@ -12,7 +12,7 @@ bench: build-wasm
 
 samply: build-wasm
 	cargo build --release --bin profile_prime_sieve
-	samply record ../../target/release/profile_prime_sieve
+	samply record target/release/profile_prime_sieve
 
 clean:
 	cargo clean

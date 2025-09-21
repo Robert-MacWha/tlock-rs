@@ -8,9 +8,10 @@ use log::info;
 use serde_json::Value;
 use thiserror::Error;
 use wasmi_pdk::{
-    api::RequestHandler,
+    api::{ApiError, RequestHandler},
+    async_trait::async_trait,
     rpc_message::{RpcErrorCode, RpcResponse},
-    transport::JsonRpcTransport,
+    transport::{JsonRpcTransport, Transport},
 };
 
 use crate::{
@@ -21,7 +22,6 @@ use crate::{
 /// Plugin is an async-capable instance of a plugin
 pub struct Plugin {
     name: String,
-    id: AtomicU64,
     handler: Arc<dyn RequestHandler<RpcErrorCode>>,
     compiled: CompiledPlugin,
 }
@@ -46,17 +46,17 @@ impl Plugin {
 
         Ok(Plugin {
             name: name.to_string(),
-            id: AtomicU64::new(0),
             handler,
             compiled,
         })
     }
+}
 
-    pub async fn call(&self, method: &str, params: Value) -> Result<RpcResponse, PluginError> {
+#[async_trait]
+impl Transport<PluginError> for Plugin {
+    async fn call(&self, method: &str, params: Value) -> Result<RpcResponse, PluginError> {
         let (instance, stdin_writer, stdout_reader, stderr_reader) =
             PluginInstance::new(self.compiled.clone())?;
-
-        let id = self.id.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
 
         let stderr_task = async move {
             let mut buf_reader = futures::io::BufReader::new(stderr_reader);
@@ -69,10 +69,12 @@ impl Plugin {
         .fuse();
 
         let buf_reader = BufReader::new(stdout_reader);
-        let transport = JsonRpcTransport::new(Box::new(buf_reader), Box::new(stdin_writer));
-        let rpc_task = transport
-            .call(id, method, params, Some(self.handler.clone()))
-            .fuse();
+        let transport = JsonRpcTransport::with_handler(
+            Box::new(buf_reader),
+            Box::new(stdin_writer),
+            self.handler.clone(),
+        );
+        let rpc_task = transport.call(method, params).fuse();
 
         futures::pin_mut!(stderr_task, rpc_task);
 

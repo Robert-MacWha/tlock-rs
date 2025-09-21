@@ -1,10 +1,10 @@
-use std::{fs, path::PathBuf, sync::Arc};
-
 use criterion::{Criterion, criterion_group, criterion_main};
 use log::info;
 use serde_json::Value;
+use std::{fs, path::PathBuf, sync::Arc};
 use tokio::runtime::Builder;
 use wasmi_hdk::plugin::Plugin;
+use wasmi_pdk::transport::Transport;
 use wasmi_pdk::{api::RequestHandler, async_trait::async_trait, rpc_message::RpcErrorCode};
 
 fn load_plugin_wasm() -> Vec<u8> {

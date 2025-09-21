@@ -1,12 +1,15 @@
-use std::{sync::Arc, thread::sleep, time::Duration};
-
 use log::{info, trace};
+use std::{sync::Arc, thread::sleep, time::Duration};
 use tlock_hdk::{
     async_trait::async_trait,
-    tlock_api::{Host, HostApi, namespace_global::GlobalNamespace},
-    typed_plugin::TypedPlugin,
-    wasmi_hdk::wasmi_pdk::rpc_message::RpcErrorCode,
+    tlock_api::{
+        CompositeClient, CompositeServer,
+        global::{GlobalNamespace, GlobalNamespaceServer},
+    },
+    wasmi_hdk::{plugin::Plugin, wasmi_pdk::rpc_message::RpcErrorCode},
 };
+
+struct HostHandler {}
 
 //? current_thread uses single-threaded mode, simulating the browser environment
 #[tokio::main(flavor = "current_thread")]
@@ -18,16 +21,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .ok();
 
     info!("Running single-threaded");
-    let wasm_path = "../target/wasm32-wasip1/debug/rust-plugin-template.wasm";
+    let wasm_path = "target/wasm32-wasip1/debug/rust-plugin-template.wasm";
     let wasm_bytes = std::fs::read(wasm_path)?;
     info!("Read {} kb from {}", wasm_bytes.len() / 1024, wasm_path);
 
     let handler = HostHandler {};
-    let handler = Host(handler);
     let handler = Arc::new(handler);
-    let plugin = TypedPlugin::new("Test Plugin", wasm_bytes, handler)?;
+    let mut server = CompositeServer::new();
+    server.register(GlobalNamespaceServer::new(handler.clone()));
+    let server = Arc::new(server);
 
-    let resp = plugin.ping("Hello Plugin!".into()).await?;
+    let plugin = Plugin::new("Test Plugin", wasm_bytes, server.clone())?;
+    let plugin = CompositeClient::new(Arc::new(plugin));
+
+    let resp = plugin.global().ping("Hello Plugin!".into()).await?;
     info!("Received message: {:?}", resp);
 
     sleep(Duration::from_millis(1000));
@@ -35,13 +42,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-struct HostHandler {}
-
-impl HostApi<RpcErrorCode> for HostHandler {}
-
 #[async_trait]
-impl GlobalNamespace<RpcErrorCode> for HostHandler {
-    async fn ping(&self, message: String) -> Result<String, RpcErrorCode> {
+impl GlobalNamespace for HostHandler {
+    type Error = RpcErrorCode;
+
+    async fn ping(&self, message: String) -> Result<String, Self::Error> {
         trace!("Host received ping with message: {}", message);
         Ok(format!("Host Pong: {}", message))
     }
