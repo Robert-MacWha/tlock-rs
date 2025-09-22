@@ -88,7 +88,7 @@ mod test {
             json = serde_json::to_string(&params).unwrap();
             assert_eq!(
                 json,
-                r#"[[1, 2, 3],"0x1234567890abcdef1234567890abcdef12345678"]"#
+                r#"[[1,2,3],"0x1234567890abcdef1234567890abcdef12345678"]"#
             );
         }
 
