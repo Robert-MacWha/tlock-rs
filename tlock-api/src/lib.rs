@@ -8,14 +8,10 @@ use wasmi_pdk::{
     transport::Transport,
 };
 
-use crate::{
-    global::{GlobalNamespace, GlobalNamespaceClient},
-    plugin::PluginNamespaceClient,
-};
+use crate::{global::GlobalNamespaceClient, plugin::PluginNamespaceClient};
 
 pub mod caip;
 pub mod eip155_keyring;
-pub mod flex_array;
 pub mod global;
 pub mod methods;
 pub mod namespace_eth;

@@ -10,5 +10,5 @@ pub trait GlobalNamespace: Send + Sync {
     type Error: ApiError;
 
     #[rpc_method(Methods::TlockPing)]
-    async fn ping(&self, _msg: String) -> Result<String, Self::Error>;
+    async fn ping(&self, msg: String) -> Result<String, Self::Error>;
 }

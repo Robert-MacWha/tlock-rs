@@ -9,6 +9,22 @@ pub enum Methods {
     #[strum(serialize = "plugin_name")]
     PluginName,
 
+    // Keyring Namespace
+    #[strum(serialize = "keyring_createAccount")]
+    KeyringCreateAccount,
+    #[strum(serialize = "eth_accounts")]
+    EthAccounts,
+    #[strum(serialize = "keyring_deleteAccount")]
+    KeyringDeleteAccount,
+    #[strum(serialize = "personal_sign")]
+    PersonalSign,
+    #[strum(serialize = "eth_signTypedData_v4")]
+    EthSignTypedDataV4,
+    #[strum(serialize = "eth_sendRawTransaction")]
+    EthSendRawTransaction,
+    #[strum(serialize = "eth_sendTransaction")]
+    EthSendTransaction,
+
     // Ethereum JSON-RPC Api
     // https://ethereum.org/en/developers/docs/apis/json-rpc/#json-rpc-methods
 
@@ -27,8 +43,6 @@ pub enum Methods {
     NetPeerCount,
 
     // Eth Namespace
-    #[strum(serialize = "eth_accounts")]
-    EthAccounts,
     #[strum(serialize = "eth_blockNumber")]
     EthBlockNumber,
     #[strum(serialize = "eth_call")]
@@ -90,12 +104,6 @@ pub enum Methods {
     // TODO: This is a Metamask method, not officially part of eth json-rpc. Should it be included?
     // #[strum(serialize = "eth_requestAccounts")]
     // EthRequestAccounts,
-    #[strum(serialize = "eth_sendRawTransaction")]
-    EthSendRawTransaction,
-    #[strum(serialize = "eth_sendTransaction")]
-    EthSendTransaction,
-    #[strum(serialize = "eth_signTypedData_v4")]
-    EthSignTypedDataV4,
     #[strum(serialize = "eth_subscribe")]
     EthSubscribe,
     #[strum(serialize = "eth_syncing")]
@@ -104,8 +112,6 @@ pub enum Methods {
     EthUninstallFilter,
     #[strum(serialize = "eth_unsubscribe")]
     EthUnsubscribe,
-    #[strum(serialize = "personal_sign")]
-    PersonalSign,
 
     // Wallet Namespace
     #[strum(serialize = "wallet_addEthereumChain")]

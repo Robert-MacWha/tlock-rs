@@ -84,26 +84,10 @@ pub struct EthDecryptParams {
     pub address: Address,
 }
 
-#[derive(Serialize, Deserialize)]
-pub struct EthSignTypedDataV4Params {
-    pub address: Address,
-    pub data: TypedData,
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct PersonalSignParams {
-    pub data: Bytes,
-    pub address: Address,
-}
-
 /// https://ethereum.org/en/developers/docs/apis/json-rpc/#json-rpc-methods
 #[async_trait]
 #[allow(unused_variables)]
 pub trait EthNamespace<E: ApiError>: Send + Sync {
-    async fn eth_accounts(&self) -> Result<Vec<Address>, E> {
-        Err(RpcErrorCode::MethodNotFound.into())
-    }
-
     async fn eth_block_number(&self) -> Result<BlockNumber, E> {
         Err(RpcErrorCode::MethodNotFound.into())
     }
@@ -225,21 +209,6 @@ pub trait EthNamespace<E: ApiError>: Send + Sync {
         Err(RpcErrorCode::MethodNotFound.into())
     }
 
-    async fn eth_send_raw_transaction(&self, tx: Bytes) -> Result<TxHash, E> {
-        Err(RpcErrorCode::MethodNotFound.into())
-    }
-
-    async fn eth_send_transaction(&self, tx: TransactionRequest) -> Result<TxHash, E> {
-        Err(RpcErrorCode::MethodNotFound.into())
-    }
-
-    async fn eth_sign_typed_data_v4(
-        &self,
-        params: EthSignTypedDataV4Params,
-    ) -> Result<Signature, E> {
-        Err(RpcErrorCode::MethodNotFound.into())
-    }
-
     async fn eth_syncing(&self) -> Result<SyncStatus, E> {
         Err(RpcErrorCode::MethodNotFound.into())
     }
@@ -256,9 +225,6 @@ pub trait EthNamespace<E: ApiError>: Send + Sync {
         Err(RpcErrorCode::MethodNotFound.into())
     }
 
-    async fn personal_sign(&self, data: Bytes, address: Address) -> Result<Signature, E> {
-        Err(RpcErrorCode::MethodNotFound.into())
-    }
     // TODO: This is a Metamask method, not officially part of eth json-rpc. Should it be included?
     // async fn eth_request_accounts(&self) -> Result<Vec<Address>, E>;
 }
