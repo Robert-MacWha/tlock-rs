@@ -4,10 +4,10 @@ use syn::parse_macro_input;
 
 /// Representation of a single RPC method extracted from a trait.
 struct RpcMethod {
-    name: syn::Ident,          // e.g. "tlock_ping"
-    method_enum: syn::Path,    // e.g. Methods::TlockPing
-    arg: Option<syn::PatType>, // zero or one argument
-    output: syn::Type,         // Result<Ret, Error>
+    name: syn::Ident,        // e.g. "tlock_ping"
+    method_enum: syn::Path,  // e.g. Methods::TlockPing
+    args: Vec<syn::PatType>, // some arguments
+    output: syn::Type,       // Result<Ret, Error>
 }
 
 /// Representation of an RPC trait we’re generating clients/servers for.
@@ -60,16 +60,14 @@ fn parse_trait(item: &syn::ItemTrait) -> syn::Result<RpcNamespace> {
 
             // Skip &self
             let mut inputs = sig.inputs.iter().skip(1);
-            let arg = match inputs.next() {
-                None => None,
-                Some(syn::FnArg::Typed(pat)) => Some((pat).clone()),
-                Some(other) => return Err(syn::Error::new_spanned(other, "unsupported arg")),
-            };
-            if inputs.next().is_some() {
-                return Err(syn::Error::new_spanned(
-                    &sig.ident,
-                    "only 0 or 1 arg allowed",
-                ));
+            let mut args = Vec::new();
+            while let Some(arg) = inputs.next() {
+                match arg {
+                    syn::FnArg::Typed(pat) => args.push((pat).clone()),
+                    syn::FnArg::Receiver(_) => {
+                        return Err(syn::Error::new_spanned(arg, "unexpected receiver"));
+                    }
+                }
             }
 
             // Output type
@@ -86,7 +84,7 @@ fn parse_trait(item: &syn::ItemTrait) -> syn::Result<RpcNamespace> {
             methods.push(RpcMethod {
                 name,
                 method_enum,
-                arg,
+                args,
                 output,
             });
         }
@@ -108,20 +106,24 @@ fn expand_namespace(ns: RpcNamespace, original: &syn::ItemTrait) -> proc_macro2:
         methods,
     } = ns;
 
-    // Client impl
+    // ---- Client impl ----
     let client_methods = methods.iter().map(|m| {
         let RpcMethod {
             name,
             method_enum,
-            arg,
+            args, // Vec<Arg> { pat: syn::Pat, ty: syn::Type }
             output,
         } = m;
-        if let Some(arg) = arg {
-            let pat = &arg.pat;
+
+        // split out patterns and types
+        let arg_pats: Vec<_> = args.iter().map(|a| &a.pat).collect();
+        let arg_tys: Vec<_> = args.iter().map(|a| &a.ty).collect();
+
+        if arg_pats.is_empty() {
+            // 0-arg path: send [] (empty positional params)
             quote! {
-                async fn #name(&self, #arg) -> #output {
-                    let req = ::serde_json::to_value(#pat)
-                        .map_err(|_| ::wasmi_pdk::rpc_message::RpcErrorCode::ParseError.into())?;
+                async fn #name(&self) -> #output {
+                    let req = ::serde_json::Value::Array(::std::vec::Vec::new());
                     let resp = self.transport
                         .call(&#method_enum.to_string(), req)
                         .await?;
@@ -131,12 +133,21 @@ fn expand_namespace(ns: RpcNamespace, original: &syn::ItemTrait) -> proc_macro2:
                 }
             }
         } else {
+            // 1+ args path: (T1, T2, ..., Tn) and (a1, a2, ..., an)
+            // `#(#x,)*` ensures the single-element tuple has a trailing comma.
             quote! {
-                async fn #name(&self) -> #output {
-                    let req = ::serde_json::Value::Null;
+                async fn #name(&self, #( #args ),* ) -> #output {
+                    type __Params = ( #( #arg_tys, )* );
+                    let __params: __Params = ( #( #arg_pats, )* );
+                    let __params = ::wasmi_pdk::flex_array::FlexArray(__params);
+
+                    let req = ::serde_json::to_value(__params)
+                        .map_err(|_| ::wasmi_pdk::rpc_message::RpcErrorCode::ParseError.into())?;
+
                     let resp = self.transport
                         .call(&#method_enum.to_string(), req)
                         .await?;
+
                     let resp = ::serde_json::from_value(resp.result)
                         .map_err(|_| ::wasmi_pdk::rpc_message::RpcErrorCode::ParseError.into())?;
                     Ok(resp)
@@ -145,22 +156,23 @@ fn expand_namespace(ns: RpcNamespace, original: &syn::ItemTrait) -> proc_macro2:
         }
     });
 
-    // Server arms
+    // ---- Server arms ----
     let server_arms = methods.iter().map(|m| {
         let RpcMethod {
             name,
             method_enum,
-            arg,
+            args,
             ..
         } = m;
-        if let Some(arg) = arg {
-            let pat = &arg.pat;
-            let ty = &arg.ty;
+
+        let arg_pats: Vec<_> = args.iter().map(|a| &a.pat).collect();
+        let arg_tys: Vec<_> = args.iter().map(|a| &a.ty).collect();
+
+        if arg_pats.is_empty() {
             quote! {
                 #method_enum => {
-                    let #pat: #ty = ::serde_json::from_value(params)
-                        .map_err(|_| ::wasmi_pdk::rpc_message::RpcErrorCode::ParseError.into())?;
-                    let result = self.inner.#name(#pat).await?;
+                    // Accept null or [] (or ignore whatever) — just call.
+                    let result = self.inner.#name().await?;
                     let result = ::serde_json::to_value(result)
                         .map_err(|_| ::wasmi_pdk::rpc_message::RpcErrorCode::ParseError.into())?;
                     Ok(result)
@@ -169,7 +181,13 @@ fn expand_namespace(ns: RpcNamespace, original: &syn::ItemTrait) -> proc_macro2:
         } else {
             quote! {
                 #method_enum => {
-                    let result = self.inner.#name().await?;
+                    type __Params = ( #( #arg_tys, )* );
+                    let ::wasmi_pdk::flex_array::FlexArray( ( #( #arg_pats, )* ) ): ::wasmi_pdk::flex_array::FlexArray<__Params> =
+                        ::serde_json::from_value(params)
+                            .map_err(|_| ::wasmi_pdk::rpc_message::RpcErrorCode::ParseError.into())?;
+
+
+                    let result = self.inner.#name( #( #arg_pats ),* ).await?;
                     let result = ::serde_json::to_value(result)
                         .map_err(|_| ::wasmi_pdk::rpc_message::RpcErrorCode::ParseError.into())?;
                     Ok(result)

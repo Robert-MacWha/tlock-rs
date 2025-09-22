@@ -1,6 +1,6 @@
 use std::ops::{Deref, DerefMut};
 
-use serde::{Deserialize, Deserializer, de::DeserializeOwned};
+use serde::{Deserialize, Deserializer, Serialize, de::DeserializeOwned};
 
 /// Transparent serde wrapper that allows trailing elements in arrays
 #[derive(Debug, Clone)]
@@ -19,9 +19,15 @@ impl<T> DerefMut for FlexArray<T> {
     }
 }
 
-impl<T> FlexArray<T> {
-    pub fn into_inner(self) -> T {
-        self.0
+impl<T> Serialize for FlexArray<T>
+where
+    T: Serialize,
+{
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.0.serialize(serializer)
     }
 }
 
@@ -65,6 +71,34 @@ mod test {
         a: i32,
         #[serde(default)]
         b: Option<String>,
+    }
+
+    #[test]
+    fn test_serialize_personal_sign_params() {
+        // Imagine we're in a function with params `data: Bytes, address: Address`
+        let data = vec![1, 2, 3];
+        let address: String = "0x1234567890abcdef1234567890abcdef12345678".into();
+
+        // Code on the serialization side
+        let json: String;
+        {
+            type Params = (Vec<i32>, String);
+            let params: Params = (data.clone(), address.clone());
+            let params = FlexArray(params);
+            json = serde_json::to_string(&params).unwrap();
+            assert_eq!(
+                json,
+                r#"[[1, 2, 3],"0x1234567890abcdef1234567890abcdef12345678"]"#
+            );
+        }
+
+        // Code on the deserialization side
+        {
+            type Params = (Vec<i32>, String);
+            let deserialized: FlexArray<Params> = serde_json::from_str(&json).unwrap();
+            assert_eq!(deserialized.0.0, data);
+            assert_eq!(deserialized.0.1, address);
+        }
     }
 
     #[test]
