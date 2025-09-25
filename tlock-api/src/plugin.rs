@@ -10,8 +10,10 @@ pub trait PluginNamespace: Send + Sync {
     type Error: ApiError;
 
     #[rpc_method(Methods::PluginName)]
+    /// Returns the name of the plugin.
     async fn name(&self) -> Result<String, Self::Error>;
 
     #[rpc_method(Methods::PluginVersion)]
+    /// Returns the version of the plugin.
     async fn version(&self) -> Result<String, Self::Error>;
 }

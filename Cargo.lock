@@ -1034,6 +1034,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "demo-keyring"
+version = "0.1.0"
+dependencies = [
+ "log",
+ "tlock-pdk",
+]
+
+[[package]]
 name = "der"
 version = "0.7.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"

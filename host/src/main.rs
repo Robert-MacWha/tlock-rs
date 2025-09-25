@@ -4,7 +4,7 @@ use tlock_hdk::{
     async_trait::async_trait,
     tlock_api::{
         CompositeClient, CompositeServer,
-        global::{GlobalNamespace, GlobalNamespaceServer},
+        tlock::{TlockNamespace, TlockNamespaceServer},
     },
     wasmi_hdk::{plugin::Plugin, wasmi_pdk::rpc_message::RpcErrorCode},
 };
@@ -28,7 +28,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let handler = HostHandler {};
     let handler = Arc::new(handler);
     let mut server = CompositeServer::new();
-    server.register(GlobalNamespaceServer::new(handler.clone()));
+    server.register(TlockNamespaceServer::new(handler.clone()));
     let server = Arc::new(server);
 
     let plugin = Plugin::new("Test Plugin", wasm_bytes, server.clone())?;
@@ -43,7 +43,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[async_trait]
-impl GlobalNamespace for HostHandler {
+impl TlockNamespace for HostHandler {
     type Error = RpcErrorCode;
 
     async fn ping(&self, message: String) -> Result<String, Self::Error> {

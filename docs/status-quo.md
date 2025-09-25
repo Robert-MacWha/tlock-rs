@@ -25,6 +25,21 @@
   - -No control over order flow
   - +Sandboxed
   - +No Walled garden
+- rotki
+  - https://rotki.com/integrations
+  - Really cool - looks like a much different approach to wallets.  It's got a whole bunch of customization already built-in, and some features I never would have thought of but seem really cool
+    - Customizable event notifications
+    - direct integration with exchanges
+    - integration with a bunch of third-party services ie defiliama, etherscan, Opensea, CoinGecko, etc.
+  - In their documentation it also seems like they support integrations with dapps, but in the app I can't find them.
+    - Apparently their integrations are modules, which can be found in the settings tab.  But there's only 9 there, while in the github / website there's 50+?  Not sure what's up here.
+  - Regardless.  The idea of having per-account modules is interesting.  Kinda flipped - instead of registering an account for a dapp, you register a dapp to be used by a given account.  
+    - I like this as a potential idea.  Maybe for plugins, instead of them accessing the keyring namespace and signing data, they should have their own per-plugin account created where control flow is:
+      - Send funds to the plugin account
+      - Plugin does stuff
+      - Plugin sends funds back to the main account.
+    - This way if permissions are granted, they're sandboxed.  Maybe worthwhile considering.  I guess that itself could be an option - if I made the router a plugin then it could do whatever account creation / routing shenanigans it wanted.
+  - I also really like their UI.  It's a little confusing, I think it could be laid out better.  But it's also very transparent.
 
 ## Why do this?
 

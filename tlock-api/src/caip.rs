@@ -1,10 +1,11 @@
-use alloy_primitives::Address;
 use serde::{Deserialize, Serialize};
 use std::fmt::Display;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ChainId {
     namespace: String,
+    /// None represents the wildcard "_" from caip-363
+    /// https://chainagnostic.org/CAIPs/caip-363
     reference: Option<String>,
 }
 

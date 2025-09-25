@@ -6,7 +6,7 @@ use wasmi_pdk::api::ApiError;
 /// Global namespace methods, implemented universally by all hosts and plugins.
 #[rpc_namespace]
 #[async_trait]
-pub trait GlobalNamespace: Send + Sync {
+pub trait TlockNamespace: Send + Sync {
     type Error: ApiError;
 
     #[rpc_method(Methods::TlockPing)]

@@ -12,23 +12,26 @@ pub enum Methods {
     // Keyring Namespace
     #[strum(serialize = "keyring_createAccount")]
     KeyringCreateAccount,
-    #[strum(serialize = "eth_accounts")]
-    EthAccounts,
     #[strum(serialize = "keyring_deleteAccount")]
     KeyringDeleteAccount,
+    #[strum(serialize = "eth_accounts")]
+    EthAccounts,
     #[strum(serialize = "personal_sign")]
     PersonalSign,
-    #[strum(serialize = "eth_signTypedData_v4")]
-    EthSignTypedDataV4,
+    //? Compatibility alias for MetaMask-style method
+    #[strum(serialize = "eth_signTypedData", serialize = "eth_signTypedData_v4")]
+    EthSignTypedData,
     #[strum(serialize = "eth_sendRawTransaction")]
     EthSendRawTransaction,
-    #[strum(serialize = "eth_sendTransaction")]
-    EthSendTransaction,
 
     // Ethereum JSON-RPC Api
     // https://ethereum.org/en/developers/docs/apis/json-rpc/#json-rpc-methods
 
     // Web3 Namespace
+    #[strum(serialize = "eth_sendTransaction")]
+    EthSendTransaction,
+    #[strum(serialize = "eth_getBalance")]
+    EthGetBalance,
     #[strum(serialize = "web3_clientVersion")]
     Web3ClientVersion,
     #[strum(serialize = "web3_sha3")]
@@ -51,16 +54,12 @@ pub enum Methods {
     EthChainId,
     #[strum(serialize = "eth_coinbase")]
     EthCoinbase,
-    #[strum(serialize = "eth_decrypt")]
-    EthDecrypt,
     #[strum(serialize = "eth_estimateGas")]
     EthEstimateGas,
     #[strum(serialize = "eth_feeHistory")]
     EthFeeHistory,
     #[strum(serialize = "eth_gasPrice")]
     EthGasPrice,
-    #[strum(serialize = "eth_getBalance")]
-    EthGetBalance,
     #[strum(serialize = "eth_getBlockByHash")]
     EthGetBlockByHash,
     #[strum(serialize = "eth_getBlockByNumber")]
@@ -71,8 +70,6 @@ pub enum Methods {
     EthGetBlockTransactionCountByNumber,
     #[strum(serialize = "eth_getCode")]
     EthGetCode,
-    #[strum(serialize = "eth_getEncryptionPublicKey")]
-    EthGetEncryptionPublicKey,
     #[strum(serialize = "eth_getFilterChanges")]
     EthGetFilterChanges,
     #[strum(serialize = "eth_getFilterLogs")]

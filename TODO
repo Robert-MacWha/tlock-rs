@@ -1,9 +1,0 @@
-- Switch to wasmer 6.1.0 as soon as it's released
-    - Need to use rc since there's a bug in 6.0.1 and I don't want to fall behind.
-
-
-  - Re-write wasmi-pdk and hdk to not use wasmi.
-    - Wasmi can't be compiled to wasm32-unknown-unknown. This is bad. So we need 
-    - to switch to using wasmi directly and injecting host functions, which is really really sad.
-      - Alternatively we could do it by patching wasmi to compile into wasm32-unknown-unknown. But that
-      - seems harder and I don't see a good reason for that.

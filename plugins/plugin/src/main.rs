@@ -5,8 +5,8 @@ use tlock_pdk::{
     register_plugin,
     tlock_api::{
         CompositeClient,
-        global::{self, GlobalNamespace},
         plugin::{self, PluginNamespace},
+        tlock::{self, TlockNamespace},
     },
     wasmi_pdk::rpc_message::RpcErrorCode,
 };
@@ -35,7 +35,7 @@ impl PluginNamespace for MyPlugin {
 }
 
 #[async_trait]
-impl GlobalNamespace for MyPlugin {
+impl TlockNamespace for MyPlugin {
     type Error = RpcErrorCode;
 
     async fn ping(&self, message: String) -> Result<String, Self::Error> {
@@ -47,6 +47,6 @@ register_plugin!(
     MyPlugin,
     [
         plugin::PluginNamespaceServer::new,
-        global::GlobalNamespaceServer::new
+        tlock::TlockNamespaceServer::new
     ]
 );

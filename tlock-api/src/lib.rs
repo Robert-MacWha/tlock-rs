@@ -8,25 +8,28 @@ use wasmi_pdk::{
     transport::Transport,
 };
 
-use crate::{global::GlobalNamespaceClient, plugin::PluginNamespaceClient};
+use crate::{plugin::PluginNamespaceClient, tlock::TlockNamespaceClient};
 
 pub mod caip;
 pub mod eip155_keyring;
-pub mod global;
+pub mod eip155_provider;
 pub mod methods;
-pub mod namespace_eth;
 pub mod plugin;
+pub mod tlock;
+pub use alloy_dyn_abi;
+pub use alloy_primitives;
+pub use alloy_rpc_types;
 
 pub struct CompositeClient<E: ApiError> {
     plugin: PluginNamespaceClient<E>,
-    global: GlobalNamespaceClient<E>,
+    global: TlockNamespaceClient<E>,
 }
 
 impl<E: ApiError> CompositeClient<E> {
     pub fn new(transport: Arc<dyn Transport<E> + Send + Sync>) -> Self {
         Self {
             plugin: PluginNamespaceClient::new(transport.clone()),
-            global: GlobalNamespaceClient::new(transport),
+            global: TlockNamespaceClient::new(transport),
         }
     }
 
@@ -34,7 +37,7 @@ impl<E: ApiError> CompositeClient<E> {
         &self.plugin
     }
 
-    pub fn global(&self) -> &GlobalNamespaceClient<E> {
+    pub fn global(&self) -> &TlockNamespaceClient<E> {
         &self.global
     }
 }
@@ -71,7 +74,7 @@ impl<E: ApiError> RequestHandler<E> for CompositeServer<E> {
             }
         }
 
-        warn!("Method not found: {}", method);
+        warn!("Method handler not found: {}", method);
         Err(E::from(RpcErrorCode::MethodNotFound))
     }
 }
