@@ -2298,6 +2298,7 @@ name = "rust-plugin-template"
 version = "0.1.0"
 dependencies = [
  "log",
+ "stderrlog",
  "tlock-pdk",
 ]
 
@@ -2908,10 +2909,7 @@ dependencies = [
 name = "tlock-hdk"
 version = "0.1.0"
 dependencies = [
- "async-trait",
- "serde_json",
  "tlock-api",
- "wasmi",
  "wasmi-hdk",
 ]
 
@@ -2922,11 +2920,7 @@ dependencies = [
  "async-trait",
  "futures",
  "serde_json",
- "stderrlog",
- "thiserror",
  "tlock-api",
- "tokio",
- "wasm-bindgen-futures",
  "wasmi-pdk",
 ]
 

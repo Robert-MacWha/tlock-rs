@@ -4,8 +4,5 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-wasmi-hdk = { path = "../wasmi/wasmi-hdk" }
 tlock-api = { path = "../tlock-api" }
-serde_json = "1.0.142"
-wasmi = "0.51.0"
-async-trait = "0.1.89"
+wasmi-hdk = { path = "../wasmi/wasmi-hdk" }

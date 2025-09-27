@@ -3,7 +3,6 @@ use std::sync::Arc;
 use tlock_pdk::{
     async_trait::async_trait,
     futures::executor::block_on,
-    stderrlog,
     wasmi_pdk::{
         api::RequestHandler, rpc_message::RpcErrorCode, serde_json::Value,
         transport::JsonRpcTransport,
@@ -34,7 +33,7 @@ impl RequestHandler<RpcErrorCode> for MyPlugin {
 
 fn main() {
     stderrlog::new()
-        .verbosity(::tlock_pdk::wasmi_pdk::stderrlog::LogLevelNum::Trace)
+        .verbosity(stderrlog::LogLevelNum::Trace)
         .init()
         .unwrap();
     log::info!("Starting plugin...");

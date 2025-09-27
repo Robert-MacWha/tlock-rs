@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 log = "0.4.27"
+stderrlog = "0.6.0"
 tlock-pdk = { path = "../../tlock-pdk" }
 
 [build]
