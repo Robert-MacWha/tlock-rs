@@ -2,39 +2,51 @@ use std::sync::Arc;
 
 use tlock_pdk::{
     async_trait::async_trait,
-    register_plugin,
-    tlock_api::{
-        CompositeClient,
-        domains::tlock::{TlockDomain, TlockDomainServer},
+    futures::executor::block_on,
+    stderrlog,
+    wasmi_pdk::{
+        api::RequestHandler, rpc_message::RpcErrorCode, serde_json::Value,
+        transport::JsonRpcTransport,
     },
-    wasmi_pdk::rpc_message::RpcErrorCode,
 };
 
 struct MyPlugin {
-    host: Arc<CompositeClient<RpcErrorCode>>,
+    host: Arc<JsonRpcTransport>,
 }
 
 impl MyPlugin {
-    pub fn new(host: Arc<CompositeClient<RpcErrorCode>>) -> Self {
+    pub fn new(host: Arc<JsonRpcTransport>) -> Self {
         Self { host }
     }
 }
 
 #[async_trait]
-impl TlockDomain for MyPlugin {
-    type Error = RpcErrorCode;
+impl RequestHandler<RpcErrorCode> for MyPlugin {
+    async fn handle(&self, method: &str, params: Value) -> Result<Value, RpcErrorCode> {
+        log::info!("Received request: method={}, params={}", method, params);
 
-    async fn ping(&self, message: String) -> Result<String, Self::Error> {
-        Ok(format!("Pong: {}", message))
-    }
-
-    async fn name(&self) -> Result<String, Self::Error> {
-        Ok("Test Async Plugin".to_string())
-    }
-
-    async fn version(&self) -> Result<String, Self::Error> {
-        Ok("1.0.0".to_string())
+        match method {
+            "ping" => Ok(Value::String("pong".to_string())),
+            _ => Err(RpcErrorCode::MethodNotFound),
+        }
     }
 }
 
-register_plugin!(MyPlugin, [TlockDomainServer::new]);
+fn main() {
+    stderrlog::new()
+        .verbosity(::tlock_pdk::wasmi_pdk::stderrlog::LogLevelNum::Trace)
+        .init()
+        .unwrap();
+    log::info!("Starting plugin...");
+
+    let reader = std::io::BufReader::new(::std::io::stdin());
+    let writer = std::io::stdout();
+    let transport = JsonRpcTransport::new(Box::new(reader), Box::new(writer));
+    let transport = Arc::new(transport);
+
+    let plugin = Arc::new(MyPlugin::new(transport.clone()));
+
+    block_on(async move {
+        let _ = transport.process_next_line(Some(plugin)).await;
+    });
+}

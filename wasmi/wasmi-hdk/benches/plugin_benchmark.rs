@@ -3,9 +3,10 @@ use log::info;
 use serde_json::Value;
 use std::{fs, path::PathBuf, sync::Arc};
 use tokio::runtime::Builder;
-use wasmi_hdk::plugin::Plugin;
+use wasmi_hdk::host_handler::HostHandler;
+use wasmi_hdk::plugin::{Plugin, PluginId};
 use wasmi_pdk::transport::Transport;
-use wasmi_pdk::{api::RequestHandler, async_trait::async_trait, rpc_message::RpcErrorCode};
+use wasmi_pdk::{async_trait::async_trait, rpc_message::RpcErrorCode};
 
 fn load_plugin_wasm() -> Vec<u8> {
     let wasm_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -18,8 +19,13 @@ fn load_plugin_wasm() -> Vec<u8> {
 struct MyHostHandler {}
 
 #[async_trait]
-impl RequestHandler<RpcErrorCode> for MyHostHandler {
-    async fn handle(&self, method: &str, _params: Value) -> Result<Value, RpcErrorCode> {
+impl HostHandler for MyHostHandler {
+    async fn handle(
+        &self,
+        plugin: PluginId,
+        method: &str,
+        _params: Value,
+    ) -> Result<Value, RpcErrorCode> {
         match method {
             "echo" => Ok(Value::String("echo".to_string())),
             _ => Err(RpcErrorCode::MethodNotFound),
@@ -37,7 +43,7 @@ pub fn bench_prime_sieve_small(c: &mut Criterion) {
     let wasm_bytes = load_plugin_wasm();
     let handler = Arc::new(MyHostHandler {});
 
-    let plugin = Plugin::new("test_plugin", wasm_bytes.clone(), handler).unwrap();
+    let plugin = Plugin::new("test_plugin", "0001".into(), wasm_bytes.clone(), handler).unwrap();
 
     c.bench_function("prime_sieve_small", |b| {
         b.iter(|| {
@@ -63,7 +69,7 @@ pub fn bench_prime_sieve_large(c: &mut Criterion) {
     let wasm_bytes = load_plugin_wasm();
     let handler = Arc::new(MyHostHandler {});
 
-    let plugin = Plugin::new("test_plugin", wasm_bytes.clone(), handler).unwrap();
+    let plugin = Plugin::new("test_plugin", "0001".into(), wasm_bytes.clone(), handler).unwrap();
 
     c.bench_function("prime_sieve_large", |b| {
         b.iter(|| {
@@ -79,14 +85,6 @@ pub fn bench_prime_sieve_large(c: &mut Criterion) {
     });
 }
 
-pub fn bench_prime_sieve_native(c: &mut Criterion) {
-    c.bench_function("prime_sieve_native", |b| {
-        b.iter(|| {
-            sieve_of_eratosthenes(100_000);
-        })
-    });
-}
-
 /// Benchmark sending many echo requests to the host, and receiving responses.
 pub fn bench_echo_many(c: &mut Criterion) {
     let rt = Builder::new_current_thread().enable_all().build().unwrap();
@@ -96,7 +94,7 @@ pub fn bench_echo_many(c: &mut Criterion) {
     let wasm_bytes = load_plugin_wasm();
     let handler = Arc::new(MyHostHandler {});
 
-    let plugin = Plugin::new("test_plugin", wasm_bytes.clone(), handler).unwrap();
+    let plugin = Plugin::new("test_plugin", "0001".into(), wasm_bytes.clone(), handler).unwrap();
 
     c.bench_function("many_echo", |b| {
         b.iter(|| {
@@ -116,27 +114,6 @@ criterion_group!(
     benches,
     bench_prime_sieve_small,
     bench_prime_sieve_large,
-    bench_prime_sieve_native,
     bench_echo_many
 );
 criterion_main!(benches);
-
-fn sieve_of_eratosthenes(limit: usize) -> Vec<usize> {
-    if limit < 2 {
-        return vec![];
-    }
-
-    let mut is_prime = vec![true; limit + 1];
-    is_prime[0] = false;
-    is_prime[1] = false;
-
-    for i in 2..=((limit as f64).sqrt() as usize) {
-        if is_prime[i] {
-            for j in ((i * i)..=limit).step_by(i) {
-                is_prime[j] = false;
-            }
-        }
-    }
-
-    (2..=limit).filter(|&i| is_prime[i]).collect()
-}

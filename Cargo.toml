@@ -5,7 +5,6 @@ members = [
     "tlock-hdk",
     "tlock-api",
     "plugins/plugin",
-    "plugins/demo-keyring",
     "wasmi/wasmi-async",
     "wasmi/wasmi-pdk",
     "wasmi/wasmi-hdk",

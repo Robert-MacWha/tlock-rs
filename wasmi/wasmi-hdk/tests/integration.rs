@@ -2,9 +2,10 @@ use log::info;
 use serde_json::Value;
 use std::{fs, path::PathBuf, sync::Arc, time::Duration};
 use tokio::time::{sleep, timeout};
-use wasmi_hdk::plugin::Plugin;
+use wasmi_hdk::host_handler::HostHandler;
+use wasmi_hdk::plugin::{Plugin, PluginId};
 use wasmi_pdk::transport::Transport;
-use wasmi_pdk::{api::RequestHandler, async_trait::async_trait, rpc_message::RpcErrorCode};
+use wasmi_pdk::{async_trait::async_trait, rpc_message::RpcErrorCode};
 
 fn load_plugin_wasm() -> Vec<u8> {
     let wasm_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -17,8 +18,13 @@ fn load_plugin_wasm() -> Vec<u8> {
 struct MyHostHandler {}
 
 #[async_trait]
-impl RequestHandler<RpcErrorCode> for MyHostHandler {
-    async fn handle(&self, method: &str, params: Value) -> Result<Value, RpcErrorCode> {
+impl HostHandler for MyHostHandler {
+    async fn handle(
+        &self,
+        plugin: PluginId,
+        method: &str,
+        params: Value,
+    ) -> Result<Value, RpcErrorCode> {
         info!("Host received method: {}, params: {:?}", method, params);
 
         sleep(Duration::from_millis(100)).await;
@@ -47,7 +53,7 @@ async fn test_plugin() {
 
     let result = timeout(Duration::from_secs(1), async {
         info!("Running test...");
-        let plugin = Plugin::new("test_plugin", wasm_bytes, handler).unwrap();
+        let plugin = Plugin::new("test_plugin", "0001".into(), wasm_bytes, handler).unwrap();
         plugin.call("ping", Value::Null).await.unwrap();
     })
     .await;
@@ -69,7 +75,7 @@ async fn test_prime_sieve() {
     let handler = Arc::new(MyHostHandler {});
 
     let result = timeout(Duration::from_secs(2), async {
-        let plugin = Plugin::new("test_plugin", wasm_bytes, handler).unwrap();
+        let plugin = Plugin::new("test_plugin", "0001".into(), wasm_bytes, handler).unwrap();
 
         let response = plugin
             .call("prime_sieve", Value::Number(1000.into()))

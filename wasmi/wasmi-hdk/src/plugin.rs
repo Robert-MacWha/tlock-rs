@@ -1,28 +1,29 @@
-use std::{
-    io::BufReader,
-    sync::{Arc, atomic::AtomicU64},
-};
+use std::{io::BufReader, sync::Arc};
 
 use futures::{AsyncBufReadExt, FutureExt};
 use log::info;
 use serde_json::Value;
 use thiserror::Error;
 use wasmi_pdk::{
-    api::{ApiError, RequestHandler},
+    api::RequestHandler,
     async_trait::async_trait,
-    rpc_message::{RpcErrorCode, RpcResponse},
+    rpc_message::{RpcError, RpcErrorCode, RpcResponse},
     transport::{JsonRpcTransport, Transport},
 };
 
 use crate::{
     compiled_plugin::CompiledPlugin,
+    host_handler::HostHandler,
     plugin_instance::{PluginInstance, SpawnError},
 };
+
+pub type PluginId = String;
 
 /// Plugin is an async-capable instance of a plugin
 pub struct Plugin {
     name: String,
-    handler: Arc<dyn RequestHandler<RpcErrorCode>>,
+    id: PluginId,
+    handler: Arc<dyn HostHandler>,
     compiled: CompiledPlugin,
 }
 
@@ -39,13 +40,15 @@ pub enum PluginError {
 impl Plugin {
     pub fn new(
         name: &str,
+        id: PluginId,
         wasm_bytes: Vec<u8>,
-        handler: Arc<dyn RequestHandler<RpcErrorCode>>,
+        handler: Arc<dyn HostHandler>,
     ) -> Result<Self, wasmi::Error> {
         let compiled = CompiledPlugin::new(wasm_bytes.clone())?;
 
         Ok(Plugin {
             name: name.to_string(),
+            id,
             handler,
             compiled,
         })
@@ -68,12 +71,15 @@ impl Transport<PluginError> for Plugin {
         }
         .fuse();
 
+        let handler = PluginCallback {
+            handler: self.handler.clone(),
+            uuid: self.id.clone(),
+        };
+        let handler = Arc::new(handler);
+
         let buf_reader = BufReader::new(stdout_reader);
-        let transport = JsonRpcTransport::with_handler(
-            Box::new(buf_reader),
-            Box::new(stdin_writer),
-            self.handler.clone(),
-        );
+        let transport =
+            JsonRpcTransport::with_handler(Box::new(buf_reader), Box::new(stdin_writer), handler);
         let rpc_task = transport.call(method, params).fuse();
 
         futures::pin_mut!(stderr_task, rpc_task);
@@ -84,5 +90,17 @@ impl Transport<PluginError> for Plugin {
         instance.kill();
 
         Ok(res)
+    }
+}
+
+struct PluginCallback {
+    handler: Arc<dyn HostHandler>,
+    uuid: String,
+}
+
+#[async_trait]
+impl RequestHandler<RpcErrorCode> for PluginCallback {
+    async fn handle(&self, method: &str, params: Value) -> Result<Value, RpcErrorCode> {
+        self.handler.handle(self.uuid.clone(), method, params).await
     }
 }
