@@ -106,6 +106,8 @@ fn expand_namespace(ns: RpcNamespace, original: &syn::ItemTrait) -> proc_macro2:
         methods,
     } = ns;
 
+    let method_variants: Vec<&syn::Path> = methods.iter().map(|m| &m.method_enum).collect();
+
     // ---- Client impl ----
     let client_methods = methods.iter().map(|m| {
         let RpcMethod {
@@ -139,7 +141,7 @@ fn expand_namespace(ns: RpcNamespace, original: &syn::ItemTrait) -> proc_macro2:
                 async fn #name(&self, #( #args ),* ) -> #output {
                     type __Params = ( #( #arg_tys, )* );
                     let __params: __Params = ( #( #arg_pats, )* );
-                    let __params = ::wasmi_pdk::flex_array::FlexArray(__params);
+                    let __params = ::wasmi_pdk::params::Params(__params);
 
                     let req = ::serde_json::to_value(__params)
                         .map_err(|_| ::wasmi_pdk::rpc_message::RpcErrorCode::ParseError.into())?;
@@ -182,7 +184,7 @@ fn expand_namespace(ns: RpcNamespace, original: &syn::ItemTrait) -> proc_macro2:
             quote! {
                 #method_enum => {
                     type __Params = ( #( #arg_tys, )* );
-                    let ::wasmi_pdk::flex_array::FlexArray( ( #( #arg_pats, )* ) ): ::wasmi_pdk::flex_array::FlexArray<__Params> =
+                    let ::wasmi_pdk::params::Params( ( #( #arg_pats, )* ) ): ::wasmi_pdk::params::Params<__Params> =
                         ::serde_json::from_value(params)
                             .map_err(|_| ::wasmi_pdk::rpc_message::RpcErrorCode::ParseError.into())?;
 
@@ -204,6 +206,10 @@ fn expand_namespace(ns: RpcNamespace, original: &syn::ItemTrait) -> proc_macro2:
         }
 
         impl<E: ::wasmi_pdk::api::ApiError> #client_name<E> {
+            pub const METHODS: &'static [Methods] = &[
+                #( #method_variants ),*
+            ];
+
             pub fn new(transport: ::std::sync::Arc<dyn ::wasmi_pdk::transport::Transport<E> + Send + Sync>) -> Self {
                 Self { transport }
             }

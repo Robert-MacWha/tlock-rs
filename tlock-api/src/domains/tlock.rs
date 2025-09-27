@@ -3,10 +3,10 @@ use async_trait::async_trait;
 use rpc_namespace::{rpc_method, rpc_namespace};
 use wasmi_pdk::api::ApiError;
 
-/// Plugin namespace, implemented by all plugins.
+/// Global domain methods, implemented universally by all hosts and plugins.
 #[rpc_namespace]
 #[async_trait]
-pub trait PluginNamespace: Send + Sync {
+pub trait TlockDomain: Send + Sync {
     type Error: ApiError;
 
     #[rpc_method(Methods::PluginName)]
@@ -16,4 +16,7 @@ pub trait PluginNamespace: Send + Sync {
     #[rpc_method(Methods::PluginVersion)]
     /// Returns the version of the plugin.
     async fn version(&self) -> Result<String, Self::Error>;
+
+    #[rpc_method(Methods::TlockPing)]
+    async fn ping(&self, msg: String) -> Result<String, Self::Error>;
 }

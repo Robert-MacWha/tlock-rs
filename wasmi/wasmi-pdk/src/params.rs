@@ -2,24 +2,26 @@ use std::ops::{Deref, DerefMut};
 
 use serde::{Deserialize, Deserializer, Serialize, de::DeserializeOwned};
 
-/// Transparent serde wrapper that allows trailing elements in arrays
+/// Transparent serde wrapper that can deserialize from either an array
+/// (with support for ignoring trailing elements) or an object with named
+/// fields. Useful for handling json-rpc params which may use either style.
 #[derive(Debug, Clone)]
-pub struct FlexArray<T>(pub T);
+pub struct Params<T>(pub T);
 
-impl<T> Deref for FlexArray<T> {
+impl<T> Deref for Params<T> {
     type Target = T;
     fn deref(&self) -> &T {
         &self.0
     }
 }
 
-impl<T> DerefMut for FlexArray<T> {
+impl<T> DerefMut for Params<T> {
     fn deref_mut(&mut self) -> &mut T {
         &mut self.0
     }
 }
 
-impl<T> Serialize for FlexArray<T>
+impl<T> Serialize for Params<T>
 where
     T: Serialize,
 {
@@ -31,7 +33,7 @@ where
     }
 }
 
-impl<'de, T> Deserialize<'de> for FlexArray<T>
+impl<'de, T> Deserialize<'de> for Params<T>
 where
     T: DeserializeOwned,
 {
@@ -47,7 +49,7 @@ where
         if let Value::Array(mut arr) = value.clone() {
             while !arr.is_empty() {
                 match serde_json::from_value(Value::Array(arr.clone())) {
-                    Ok(result) => return Ok(FlexArray(result)),
+                    Ok(result) => return Ok(Params(result)),
                     Err(_) => {
                         arr.pop();
                     }
@@ -57,7 +59,7 @@ where
 
         // Non-arrays or empty arrays
         serde_json::from_value(value)
-            .map(FlexArray)
+            .map(Params)
             .map_err(serde::de::Error::custom)
     }
 }
@@ -82,9 +84,9 @@ mod test {
         // Code on the serialization side
         let json: String;
         {
-            type Params = (Vec<i32>, String);
-            let params: Params = (data.clone(), address.clone());
-            let params = FlexArray(params);
+            type ParamsType = (Vec<i32>, String);
+            let params: ParamsType = (data.clone(), address.clone());
+            let params = Params(params);
             json = serde_json::to_string(&params).unwrap();
             assert_eq!(
                 json,
@@ -94,8 +96,8 @@ mod test {
 
         // Code on the deserialization side
         {
-            type Params = (Vec<i32>, String);
-            let deserialized: FlexArray<Params> = serde_json::from_str(&json).unwrap();
+            type ParamsType = (Vec<i32>, String);
+            let deserialized: Params<ParamsType> = serde_json::from_str(&json).unwrap();
             assert_eq!(deserialized.0.0, data);
             assert_eq!(deserialized.0.1, address);
         }
@@ -104,7 +106,7 @@ mod test {
     #[test]
     fn test_flex_array_deserialize_normal() {
         let json = r#"{"a": 42, "b": "hello"}"#;
-        let result: FlexArray<TestStruct> = serde_json::from_str(json).unwrap();
+        let result: Params<TestStruct> = serde_json::from_str(json).unwrap();
         assert_eq!(result.a, 42);
         assert_eq!(result.b, Some("hello".into()));
     }
@@ -112,7 +114,7 @@ mod test {
     #[test]
     fn test_flex_array_deserialize_positional() {
         let json = r#"[42, "hello"]"#;
-        let result: FlexArray<TestStruct> = serde_json::from_str(json).unwrap();
+        let result: Params<TestStruct> = serde_json::from_str(json).unwrap();
         assert_eq!(result.a, 42);
         assert_eq!(result.b, Some("hello".into()));
     }
@@ -120,7 +122,7 @@ mod test {
     #[test]
     fn test_flex_array_deserialize_missing() {
         let json = r#"[42]"#;
-        let result: FlexArray<TestStruct> = serde_json::from_str(json).unwrap();
+        let result: Params<TestStruct> = serde_json::from_str(json).unwrap();
         assert_eq!(result.a, 42);
         assert_eq!(result.b, None);
     }
@@ -128,7 +130,7 @@ mod test {
     #[test]
     fn test_flex_array_deserialize_extra() {
         let json = r#"[42, "hello", true, 3.14]"#;
-        let result: FlexArray<TestStruct> = serde_json::from_str(json).unwrap();
+        let result: Params<TestStruct> = serde_json::from_str(json).unwrap();
         assert_eq!(result.a, 42);
         assert_eq!(result.b, Some("hello".into()));
     }
@@ -141,7 +143,7 @@ mod test {
     #[test]
     fn test_invalid_optional_type() {
         let json = r#"[42, 100]"#; // b should be a string
-        let result: FlexArray<TestStruct> = serde_json::from_str(json).unwrap();
+        let result: Params<TestStruct> = serde_json::from_str(json).unwrap();
         assert_eq!(result.a, 42);
         assert_eq!(result.b, None);
     }
@@ -149,14 +151,14 @@ mod test {
     #[test]
     fn test_missing_required() {
         let json = r#"[]"#;
-        let result: Result<FlexArray<TestStruct>, _> = serde_json::from_str(json);
+        let result: Result<Params<TestStruct>, _> = serde_json::from_str(json);
         assert!(result.is_err());
     }
 
     #[test]
     fn test_invalid_required_type() {
         let json = r#"["12", false]"#; // a should be a number
-        let result: Result<FlexArray<TestStruct>, _> = serde_json::from_str(json);
+        let result: Result<Params<TestStruct>, _> = serde_json::from_str(json);
         assert!(result.is_err());
     }
 }

@@ -5,8 +5,7 @@ use tlock_pdk::{
     register_plugin,
     tlock_api::{
         CompositeClient,
-        plugin::{self, PluginNamespace},
-        tlock::{self, TlockNamespace},
+        domains::tlock::{TlockDomain, TlockDomainServer},
     },
     wasmi_pdk::rpc_message::RpcErrorCode,
 };
@@ -22,8 +21,12 @@ impl MyPlugin {
 }
 
 #[async_trait]
-impl PluginNamespace for MyPlugin {
+impl TlockDomain for MyPlugin {
     type Error = RpcErrorCode;
+
+    async fn ping(&self, message: String) -> Result<String, Self::Error> {
+        Ok(format!("Pong: {}", message))
+    }
 
     async fn name(&self) -> Result<String, Self::Error> {
         Ok("Test Async Plugin".to_string())
@@ -34,19 +37,4 @@ impl PluginNamespace for MyPlugin {
     }
 }
 
-#[async_trait]
-impl TlockNamespace for MyPlugin {
-    type Error = RpcErrorCode;
-
-    async fn ping(&self, message: String) -> Result<String, Self::Error> {
-        Ok(format!("Pong: {}", message))
-    }
-}
-
-register_plugin!(
-    MyPlugin,
-    [
-        plugin::PluginNamespaceServer::new,
-        tlock::TlockNamespaceServer::new
-    ]
-);
+register_plugin!(MyPlugin, [TlockDomainServer::new]);

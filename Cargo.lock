@@ -2946,6 +2946,7 @@ dependencies = [
  "serde",
  "serde_json",
  "simple_logger",
+ "thiserror",
  "tlock-hdk",
  "tokio",
 ]

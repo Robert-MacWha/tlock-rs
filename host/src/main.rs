@@ -4,7 +4,7 @@ use tlock_hdk::{
     async_trait::async_trait,
     tlock_api::{
         CompositeClient, CompositeServer,
-        tlock::{TlockNamespace, TlockNamespaceServer},
+        domains::tlock::{TlockDomain, TlockDomainServer},
     },
     wasmi_hdk::{plugin::Plugin, wasmi_pdk::rpc_message::RpcErrorCode},
 };
@@ -28,13 +28,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let handler = HostHandler {};
     let handler = Arc::new(handler);
     let mut server = CompositeServer::new();
-    server.register(TlockNamespaceServer::new(handler.clone()));
+    server.register(TlockDomainServer::new(handler.clone()));
     let server = Arc::new(server);
 
     let plugin = Plugin::new("Test Plugin", wasm_bytes, server.clone())?;
     let plugin = CompositeClient::new(Arc::new(plugin));
 
-    let resp = plugin.global().ping("Hello Plugin!".into()).await?;
+    let resp = plugin.tlock().ping("Hello Plugin!".into()).await?;
     info!("Received message: {:?}", resp);
 
     sleep(Duration::from_millis(1000));
@@ -43,11 +43,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[async_trait]
-impl TlockNamespace for HostHandler {
+impl TlockDomain for HostHandler {
     type Error = RpcErrorCode;
 
     async fn ping(&self, message: String) -> Result<String, Self::Error> {
         trace!("Host received ping with message: {}", message);
         Ok(format!("Host Pong: {}", message))
+    }
+
+    async fn name(&self) -> Result<String, Self::Error> {
+        Ok("Host".to_string())
+    }
+
+    async fn version(&self) -> Result<String, Self::Error> {
+        Ok(env!("CARGO_PKG_VERSION").to_string())
     }
 }

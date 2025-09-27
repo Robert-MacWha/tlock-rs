@@ -8,40 +8,53 @@ use wasmi_pdk::{
     transport::Transport,
 };
 
-use crate::{plugin::PluginNamespaceClient, tlock::TlockNamespaceClient};
-
-pub mod caip;
-pub mod eip155_keyring;
-pub mod eip155_provider;
 pub mod methods;
-pub mod plugin;
-pub mod tlock;
 pub use alloy_dyn_abi;
 pub use alloy_primitives;
 pub use alloy_rpc_types;
 
+use crate::domains::{
+    eip155_keyring::Eip155KeyringClient, host::HostDomainClient, tlock::TlockDomainClient,
+};
+pub mod domains;
+pub mod routes;
+
+/// A composite client that provides typed access to all supported domains.
 pub struct CompositeClient<E: ApiError> {
-    plugin: PluginNamespaceClient<E>,
-    global: TlockNamespaceClient<E>,
+    tlock: TlockDomainClient<E>,
+    host: HostDomainClient<E>,
+    eip155_keyring: Eip155KeyringClient<E>,
+    // eip155_provider: Eip155ProviderClient<E>,
 }
 
 impl<E: ApiError> CompositeClient<E> {
     pub fn new(transport: Arc<dyn Transport<E> + Send + Sync>) -> Self {
         Self {
-            plugin: PluginNamespaceClient::new(transport.clone()),
-            global: TlockNamespaceClient::new(transport),
+            tlock: TlockDomainClient::new(transport.clone()),
+            host: HostDomainClient::new(transport.clone()),
+            eip155_keyring: Eip155KeyringClient::new(transport.clone()),
+            // eip155_provider: Eip155ProviderClient::new(transport.clone()),
         }
     }
 
-    pub fn plugin(&self) -> &PluginNamespaceClient<E> {
-        &self.plugin
+    pub fn tlock(&self) -> &TlockDomainClient<E> {
+        &self.tlock
     }
 
-    pub fn global(&self) -> &TlockNamespaceClient<E> {
-        &self.global
+    pub fn host(&self) -> &HostDomainClient<E> {
+        &self.host
     }
+
+    pub fn eip155_keyring(&self) -> &Eip155KeyringClient<E> {
+        &self.eip155_keyring
+    }
+
+    // pub fn eip155_provider(&self) -> &Eip155ProviderClient<E> {
+    //     &self.eip155_provider
+    // }
 }
 
+/// A composite server that can route requests to any registered domain handler.
 pub struct CompositeServer<E: ApiError> {
     servers: Vec<Box<dyn RequestHandler<E> + Send + Sync>>,
 }
