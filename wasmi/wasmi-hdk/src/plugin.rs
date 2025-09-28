@@ -7,7 +7,7 @@ use thiserror::Error;
 use wasmi_pdk::{
     api::RequestHandler,
     async_trait::async_trait,
-    rpc_message::{RpcError, RpcErrorCode, RpcResponse},
+    rpc_message::{RpcErrorCode, RpcResponse},
     transport::{JsonRpcTransport, Transport},
 };
 

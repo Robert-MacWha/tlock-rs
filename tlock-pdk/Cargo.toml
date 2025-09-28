@@ -7,5 +7,5 @@ edition = "2024"
 tlock-api = { path = "../tlock-api" }
 wasmi-pdk = { path = "../wasmi/wasmi-pdk" }
 async-trait = "0.1.89"
-futures = "0.3.31"
 serde_json = "1.0.142"
+futures = "0.3.31"

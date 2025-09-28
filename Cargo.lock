@@ -1460,6 +1460,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "host"
+version = "0.1.0"
+dependencies = [
+ "log",
+ "serde",
+ "serde_json",
+ "simple_logger",
+ "thiserror",
+ "tlock-hdk",
+ "tokio",
+]
+
+[[package]]
 name = "iana-time-zone"
 version = "0.1.63"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1945,6 +1958,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "plugin-template"
+version = "0.1.0"
+dependencies = [
+ "log",
+ "stderrlog",
+ "tlock-pdk",
+]
+
+[[package]]
 name = "powerfmt"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2291,15 +2313,6 @@ dependencies = [
  "futures",
  "tokio",
  "wasm-bindgen-futures",
-]
-
-[[package]]
-name = "rust-plugin-template"
-version = "0.1.0"
-dependencies = [
- "log",
- "stderrlog",
- "tlock-pdk",
 ]
 
 [[package]]
@@ -2902,6 +2915,7 @@ dependencies = [
  "serde_json",
  "strum",
  "strum_macros",
+ "wasmi-hdk",
  "wasmi-pdk",
 ]
 
@@ -2909,8 +2923,11 @@ dependencies = [
 name = "tlock-hdk"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
+ "serde_json",
  "tlock-api",
  "wasmi-hdk",
+ "wasmi-pdk",
 ]
 
 [[package]]
@@ -2922,19 +2939,6 @@ dependencies = [
  "serde_json",
  "tlock-api",
  "wasmi-pdk",
-]
-
-[[package]]
-name = "tlock-rs"
-version = "0.1.0"
-dependencies = [
- "log",
- "serde",
- "serde_json",
- "simple_logger",
- "thiserror",
- "tlock-hdk",
- "tokio",
 ]
 
 [[package]]

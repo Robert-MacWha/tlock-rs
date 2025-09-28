@@ -4,11 +4,11 @@ members = [
     "tlock-pdk",
     "tlock-hdk",
     "tlock-api",
-    "plugins/plugin",
+    "plugins/plugin-template",
+    "wasmi/runtime",
     "wasmi/wasmi-async",
     "wasmi/wasmi-pdk",
     "wasmi/wasmi-hdk",
-    "wasmi/rpc-namespace",
     "wasmi/test-plugin",
 ]
 

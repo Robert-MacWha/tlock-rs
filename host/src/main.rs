@@ -1,12 +1,13 @@
-use log::{info, trace};
+use log::info;
 use std::{sync::Arc, thread::sleep, time::Duration};
 use tlock_hdk::{
-    async_trait::async_trait,
+    dispatcher::{Dispatcher, HostRpcHandler},
+    tlock_api::{Ping, RpcMethod},
     wasmi_hdk::{
-        host_handler::HostHandler,
         plugin::{Plugin, PluginId},
-        wasmi_pdk::rpc_message::RpcErrorCode,
+        wasmi_pdk::{async_trait::async_trait, rpc_message::RpcErrorCode},
     },
+    wasmi_pdk::transport::Transport,
 };
 
 struct Host {}
@@ -21,13 +22,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .ok();
 
     info!("Running single-threaded");
-    let wasm_path = "target/wasm32-wasip1/debug/rust-plugin-template.wasm";
+    let wasm_path = "target/wasm32-wasip1/release/plugin-template.wasm";
     let wasm_bytes = std::fs::read(wasm_path)?;
     info!("Read {} kb from {}", wasm_bytes.len() / 1024, wasm_path);
 
     let host = Host {};
-    let host = Arc::new(host);
-    let plugin = Plugin::new("Test Plugin", "0001".into(), wasm_bytes, host.clone())?;
+    let mut dispatcher = Dispatcher::new(host);
+    dispatcher.register::<Ping>();
+    let dispatcher = Arc::new(dispatcher);
+
+    let plugin = Plugin::new("Test Plugin", "0001".into(), wasm_bytes, dispatcher)?;
+    let plugin = Arc::new(plugin);
+    let resp = Ping.call(plugin, ()).await?;
 
     sleep(Duration::from_millis(1000));
 
@@ -35,17 +41,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[async_trait]
-impl HostHandler for Host {
-    async fn handle(
-        &self,
-        plugin: PluginId,
-        method: &str,
-        params: serde_json::Value,
-    ) -> Result<serde_json::Value, RpcErrorCode> {
-        trace!(
-            "HostHandler received request: method={}, params={}",
-            method, params
-        );
-        Err(RpcErrorCode::MethodNotFound)
+impl HostRpcHandler<Ping> for Host {
+    async fn invoke(&self, _plugin_id: PluginId, _params: ()) -> Result<String, RpcErrorCode> {
+        Ok("pong from host".to_string())
     }
 }
