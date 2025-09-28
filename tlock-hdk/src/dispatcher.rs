@@ -6,8 +6,12 @@ use tlock_api::RpcMethod;
 use wasmi_hdk::{host_handler::HostHandler, plugin::PluginId};
 use wasmi_pdk::rpc_message::RpcErrorCode;
 
+/// RpcHandler trait can be implemented by a struct to handle RPC calls for a
+/// specific method M.
+///
+/// Methods must be registered with a Dispatcher instance.
 #[async_trait]
-pub trait HostRpcHandler<M: RpcMethod>: Send + Sync {
+pub trait RpcHandler<M: RpcMethod>: Send + Sync {
     async fn invoke(
         &self,
         plugin_id: PluginId,
@@ -30,7 +34,7 @@ struct HandlerImpl<M: RpcMethod>(std::marker::PhantomData<M>);
 #[async_trait]
 impl<T, M> ErasedHandler<T> for HandlerImpl<M>
 where
-    T: HostRpcHandler<M> + Send + Sync,
+    T: RpcHandler<M> + Send + Sync,
     M: RpcMethod + 'static,
 {
     async fn dispatch(
@@ -46,6 +50,13 @@ where
     }
 }
 
+/// A dispatcher routes incoming RPC requests to the appropriate handler based on
+/// the method name. Methods must be registered with the dispatcher, and then
+/// the dispatcher can be used as a RequestHandler to direct incoming requests
+/// to the correct typed handler.
+///
+/// Separate plugin and host dispatchers are needed
+/// because the host requires added context (the PluginId) when invoking handlers.
 pub struct Dispatcher<T: Send + Sync> {
     handlers: HashMap<&'static str, Box<dyn ErasedHandler<T>>>,
     target: T,
@@ -61,7 +72,7 @@ impl<T: Send + Sync> Dispatcher<T> {
 
     pub fn register<M: RpcMethod + 'static>(&mut self)
     where
-        T: HostRpcHandler<M> + Send + Sync + 'static,
+        T: RpcHandler<M> + Send + Sync + 'static,
     {
         self.handlers.insert(
             M::NAME,

@@ -1,13 +1,12 @@
 use log::info;
 use std::{sync::Arc, thread::sleep, time::Duration};
 use tlock_hdk::{
-    dispatcher::{Dispatcher, HostRpcHandler},
+    dispatcher::{Dispatcher, RpcHandler},
     tlock_api::{Ping, RpcMethod},
     wasmi_hdk::{
         plugin::{Plugin, PluginId},
         wasmi_pdk::{async_trait::async_trait, rpc_message::RpcErrorCode},
     },
-    wasmi_pdk::transport::Transport,
 };
 
 struct Host {}
@@ -35,13 +34,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let plugin = Arc::new(plugin);
     let resp = Ping.call(plugin, ()).await?;
 
+    info!("Response from plugin: {}", resp);
+
     sleep(Duration::from_millis(1000));
 
     Ok(())
 }
 
 #[async_trait]
-impl HostRpcHandler<Ping> for Host {
+impl RpcHandler<Ping> for Host {
     async fn invoke(&self, _plugin_id: PluginId, _params: ()) -> Result<String, RpcErrorCode> {
         Ok("pong from host".to_string())
     }

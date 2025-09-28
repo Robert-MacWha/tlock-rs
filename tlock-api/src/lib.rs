@@ -18,6 +18,7 @@ pub trait RpcMethod: Send + Sync {
 
     const NAME: &'static str;
 
+    /// Call this RPC method on the given transport with the provided params.
     async fn call<E, T>(&self, transport: Arc<T>, params: Self::Params) -> Result<Self::Output, E>
     where
         E: ApiError,

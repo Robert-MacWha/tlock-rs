@@ -9,6 +9,10 @@ use wasmi_pdk::{
     rpc_message::RpcErrorCode,
 };
 
+/// RpcHandler trait can be implemented by a struct to handle RPC calls for a
+/// specific method M.
+///
+/// Methods must be registered with a Dispatcher instance.
 #[async_trait]
 pub trait RpcHandler<M: RpcMethod>: Send + Sync {
     async fn invoke(&self, params: M::Params) -> Result<M::Output, RpcErrorCode>;
@@ -42,6 +46,10 @@ where
     }
 }
 
+/// A dispatcher routes incoming RPC requests to the appropriate handler based on
+/// the method name. Methods must be registered with the dispatcher, and then
+/// the dispatcher can be used as a RequestHandler to direct incoming requests
+/// to the correct typed handler.
 pub struct Dispatcher<T: Send + Sync> {
     handlers: HashMap<&'static str, Box<dyn ErasedHandler<T>>>,
     target: Arc<T>,
