@@ -53,6 +53,10 @@ impl Plugin {
             compiled,
         })
     }
+
+    pub fn id(&self) -> PluginId {
+        self.id.clone()
+    }
 }
 
 #[async_trait]

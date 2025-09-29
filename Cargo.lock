@@ -1463,6 +1463,7 @@ dependencies = [
 name = "host"
 version = "0.1.0"
 dependencies = [
+ "alloy-primitives",
  "log",
  "serde",
  "serde_json",

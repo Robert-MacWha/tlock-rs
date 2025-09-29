@@ -54,7 +54,7 @@ macro_rules! register_plugin {
                 .init()
                 .unwrap();
 
-            log::info!("Starting plugin...");
+            log::trace!("Starting plugin...");
 
             // Setup stdio transport
             let writer = io::stdout();

@@ -1,0 +1,22 @@
+- Host
+  - Storage
+    - Get
+    - Set
+    - Delete
+  - Network
+    - Requests
+  - Entities
+    - Create
+    - Delete
+- Vault
+    - Designed to hold various assets.  Vaults can transfer and receive assets, and will broadcast what assets they're compatible with.  Vaults are NOT always evm addresses.  They're intentionally designed to be a generic "thing that can store value", and the implementation details of that value storage (is it an EOA? A coinbase account? A proxy for railgun? Or a multisig?  Who knows!). This means that vaults need to be very careful to ensure they always correctly handle assets, and only accept assets they're capable of handling. For example, a vault fronting coinbase should never accept NFTs, or a vault fronting a multisig should only accept assets on chains where the multisig is deployed. 
+  - Balance
+    - Lists all the assets the vault currently contains and their balances
+  - Transfer
+    - Transfers an asset held by the vault to another address
+  - GetReceiptAddress 
+    - Gets the address that should be used by the vault to receive a particular 
+  - OnReceive
+    - Callback for when the vault receives assets.  This can be used to handle arbitrary actions to reset the state of the vault (for example calling APIs, further moving funds from the receipt address, etc).
+- Eth Provider
+    - Eth Providers provide the standard evm json-rpc api for other plugins. Such as `eth_call`

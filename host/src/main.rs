@@ -1,15 +1,14 @@
+use ::host::host::Host;
 use log::info;
 use std::{sync::Arc, thread::sleep, time::Duration};
 use tlock_hdk::{
     dispatcher::{Dispatcher, RpcHandler},
-    tlock_api::{Ping, RpcMethod},
+    tlock_api::{RpcMethod, global, host, vault},
     wasmi_hdk::{
         plugin::{Plugin, PluginId},
         wasmi_pdk::{async_trait::async_trait, rpc_message::RpcErrorCode},
     },
 };
-
-struct Host {}
 
 //? current_thread uses single-threaded mode, simulating the browser environment
 #[tokio::main(flavor = "current_thread")]
@@ -25,25 +24,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let wasm_bytes = std::fs::read(wasm_path)?;
     info!("Read {} kb from {}", wasm_bytes.len() / 1024, wasm_path);
 
-    let host = Host {};
-    let mut dispatcher = Dispatcher::new(host);
-    dispatcher.register::<Ping>();
+    let host = Host::new();
+    let host = Arc::new(host);
+    let mut dispatcher = Dispatcher::new(host.clone());
+    dispatcher.register::<global::Ping>();
+    dispatcher.register::<host::CreateEntity>();
+    dispatcher.register::<vault::BalanceOf>();
+    dispatcher.register::<vault::Transfer>();
+    dispatcher.register::<vault::GetReceiptAddress>();
+    dispatcher.register::<vault::OnReceive>();
+
     let dispatcher = Arc::new(dispatcher);
 
     let plugin = Plugin::new("Test Plugin", "0001".into(), wasm_bytes, dispatcher)?;
     let plugin = Arc::new(plugin);
-    let resp = Ping.call(plugin, ()).await?;
+    host.register_plugin(plugin.clone());
+
+    let resp = global::Ping.call(plugin, ()).await?;
 
     info!("Response from plugin: {}", resp);
 
     sleep(Duration::from_millis(1000));
 
     Ok(())
-}
-
-#[async_trait]
-impl RpcHandler<Ping> for Host {
-    async fn invoke(&self, _plugin_id: PluginId, _params: ()) -> Result<String, RpcErrorCode> {
-        Ok("pong from host".to_string())
-    }
 }

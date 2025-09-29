@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 use async_trait::async_trait;
 use serde_json::Value;
@@ -59,11 +59,11 @@ where
 /// because the host requires added context (the PluginId) when invoking handlers.
 pub struct Dispatcher<T: Send + Sync> {
     handlers: HashMap<&'static str, Box<dyn ErasedHandler<T>>>,
-    target: T,
+    target: Arc<T>,
 }
 
 impl<T: Send + Sync> Dispatcher<T> {
-    pub fn new(target: T) -> Self {
+    pub fn new(target: Arc<T>) -> Self {
         Self {
             handlers: HashMap::new(),
             target,

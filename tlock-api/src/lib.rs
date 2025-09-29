@@ -4,13 +4,18 @@ use async_trait::async_trait;
 use serde::{Serialize, de::DeserializeOwned};
 use wasmi_pdk::{api::ApiError, rpc_message::RpcErrorCode, transport::Transport};
 
-pub type EntityId = String;
+pub mod caip;
+pub mod entities;
 
 // TODO: Consider adding a `mod sealed::Sealed {}` to prevent external impl, forcing
 // plugins to only use provided methods.
 //
 // That's already somewhat enforced since the host will only call / recognize
 // these methods, but could be nice to make it explicit.
+// TODO: Or alternatively, perhaps move it into the `wasmi_pdk` crate, since
+// it should work fine for any RPC system.
+// TODO: Also consider forwards compatibility with associated types, maybe wrap
+// them as named structs to allow adding fields later without introducing breaking changes.
 #[async_trait]
 pub trait RpcMethod: Send + Sync {
     type Params: DeserializeOwned + Serialize + Send + Sync;
@@ -33,21 +38,100 @@ pub trait RpcMethod: Send + Sync {
     }
 }
 
-// Global Methods
-pub struct Ping;
+/// The global namespace contains methods that are not specific to any particular
+/// domain.
+pub mod global {
+    use super::RpcMethod;
 
-impl RpcMethod for Ping {
-    type Params = ();
-    type Output = String;
+    /// Simple health check
+    pub struct Ping;
+    impl RpcMethod for Ping {
+        type Params = ();
+        type Output = String;
 
-    const NAME: &'static str = "ping";
+        const NAME: &'static str = "tlock_ping";
+    }
 }
 
-pub struct CreateEntity;
+/// The host namespace contains methods for interacting with the host and
+/// performing privileged operations.
+pub mod host {
+    use crate::{RpcMethod, entities::EntityId};
 
-impl RpcMethod for CreateEntity {
-    type Params = EntityId;
-    type Output = ();
+    /// Request the host creates a new entity with the given ID and this
+    /// plugin as its owner.
+    pub struct CreateEntity;
 
-    const NAME: &'static str = "create_entity";
+    impl RpcMethod for CreateEntity {
+        type Params = EntityId;
+        type Output = ();
+
+        const NAME: &'static str = "host_create_entity";
+    }
+}
+
+/// The vault namespace contains methods for interacting with vaults, transferring
+/// funds between different accounts.
+///
+/// TODO: Find a better way to differentiate between entity IDs and account IDs.
+/// Right now, each vault is referenced by its entity ID (which is an `AccountId`),
+/// but that `AccountId` doesn't necessarily have to be owned by the vault plugin,
+/// and could be any arbitrary account (or the vault might manage multiple on-chain
+/// accounts) internally. Regardless - using the same type for these two different
+/// concepts is confusing and error-prone.
+///  
+/// Perhaps we should introduce a VaultId (maybe IDs for each domain) that's distinct,
+/// or perhaps we can use a generic EntityId and just store a hashmap of domains ->
+/// lists of entity IDs.  
+pub mod vault {
+    use alloy_primitives::U256;
+
+    use crate::{
+        RpcMethod,
+        caip::{AccountId, AssetId},
+        entities::VaultId,
+    };
+
+    /// Get the balance for all assets in a given account.
+    pub struct BalanceOf;
+    impl RpcMethod for BalanceOf {
+        type Params = VaultId;
+        type Output = Vec<(AssetId, U256)>;
+
+        const NAME: &'static str = "vault_balance_of";
+    }
+
+    /// Transfer an amount from one account to another.
+    pub struct Transfer;
+    impl RpcMethod for Transfer {
+        type Params = (VaultId, AccountId, AssetId, U256); // (from, to, asset, amount)
+        type Output = Result<(), String>;
+
+        const NAME: &'static str = "vault_transfer";
+    }
+
+    /// Gets the receipt address for a particular account and asset. Accounts can
+    /// also use this to block deposits from unsupported assets or asset classes.
+    ///  
+    /// Because vault implementations are black boxes, any plugin sending an asset
+    /// to a vault MUST first call this method to ensure the asset is supported and
+    /// the destination address is correct. Destination addresses may change over time,
+    /// as might the supported assets.
+    pub struct GetReceiptAddress;
+    impl RpcMethod for GetReceiptAddress {
+        type Params = (VaultId, AssetId); // (to, asset)
+        type Output = Result<AccountId, String>;
+
+        const NAME: &'static str = "vault_get_receipt_address";
+    }
+
+    /// Receive an amount in an account. It is called by the host after a transfer
+    /// has been confirmed.
+    pub struct OnReceive;
+    impl RpcMethod for OnReceive {
+        type Params = (VaultId, AssetId); // (to, amount)
+        type Output = ();
+
+        const NAME: &'static str = "vault_receive";
+    }
 }
