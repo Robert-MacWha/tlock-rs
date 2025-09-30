@@ -2,12 +2,9 @@ use ::host::host::Host;
 use log::info;
 use std::{sync::Arc, thread::sleep, time::Duration};
 use tlock_hdk::{
-    dispatcher::{Dispatcher, RpcHandler},
+    dispatcher::Dispatcher,
     tlock_api::{RpcMethod, global, host, vault},
-    wasmi_hdk::{
-        plugin::{Plugin, PluginId},
-        wasmi_pdk::{async_trait::async_trait, rpc_message::RpcErrorCode},
-    },
+    wasmi_hdk::plugin::Plugin,
 };
 
 //? current_thread uses single-threaded mode, simulating the browser environment

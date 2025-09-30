@@ -72,17 +72,6 @@ pub mod host {
 
 /// The vault namespace contains methods for interacting with vaults, transferring
 /// funds between different accounts.
-///
-/// TODO: Find a better way to differentiate between entity IDs and account IDs.
-/// Right now, each vault is referenced by its entity ID (which is an `AccountId`),
-/// but that `AccountId` doesn't necessarily have to be owned by the vault plugin,
-/// and could be any arbitrary account (or the vault might manage multiple on-chain
-/// accounts) internally. Regardless - using the same type for these two different
-/// concepts is confusing and error-prone.
-///  
-/// Perhaps we should introduce a VaultId (maybe IDs for each domain) that's distinct,
-/// or perhaps we can use a generic EntityId and just store a hashmap of domains ->
-/// lists of entity IDs.  
 pub mod vault {
     use alloy_primitives::U256;
 

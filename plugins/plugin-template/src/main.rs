@@ -24,7 +24,6 @@ impl MyPlugin {
 impl RpcHandler<global::Ping> for MyPlugin {
     async fn invoke(&self, _params: ()) -> Result<String, RpcErrorCode> {
         global::Ping.call(self.transport.clone(), ()).await?;
-
         Ok("pong".to_string())
     }
 }
