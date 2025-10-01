@@ -4,32 +4,240 @@ use std::{
 };
 
 use alloy_primitives::U256;
-use log::info;
+use log::{info, warn};
 use tlock_hdk::{
     dispatcher::RpcHandler,
     tlock_api::{
+        RpcMethod,
         caip::{AccountId, AssetId},
-        entities::{EntityId, ToEntityId, VaultId},
-        global, host, vault,
+        entities::{Domain, EntityId, VaultId},
+        global, host, plugin,
+        vault::{self, BalanceOf},
     },
-    wasmi_hdk::plugin::{Plugin, PluginId},
+    wasmi_hdk::plugin::{Plugin, PluginError, PluginId},
     wasmi_pdk::{async_trait::async_trait, rpc_message::RpcErrorCode},
 };
 
 pub struct Host {
     plugins: Mutex<HashMap<PluginId, Arc<Plugin>>>,
+    entities: Mutex<HashMap<EntityId, PluginId>>,
+    domains: Mutex<HashMap<Domain, Vec<EntityId>>>,
+
+    state: Mutex<HashMap<PluginId, Vec<u8>>>,
 }
 
 impl Host {
     pub fn new() -> Self {
         Self {
             plugins: Mutex::new(HashMap::new()),
+            entities: Mutex::new(HashMap::new()),
+            domains: Mutex::new(HashMap::new()),
+            state: Mutex::new(HashMap::new()),
         }
     }
 
-    pub fn register_plugin(&self, plugin: Arc<Plugin>) {
+    pub async fn register_plugin(&self, new_plugin: Arc<Plugin>) -> Result<(), PluginError> {
         let mut plugins = self.plugins.lock().unwrap();
-        plugins.insert(plugin.id(), plugin);
+        plugins.insert(new_plugin.id(), new_plugin.clone());
+
+        info!("Registered plugin {}", new_plugin.id());
+
+        match plugin::Init.call(new_plugin.clone(), ()).await {
+            Err(PluginError::RpcError(RpcErrorCode::MethodNotFound))
+            | Err(PluginError::RpcError(RpcErrorCode::MethodNotSupported)) => {
+                info!(
+                    "Plugin {} does not implement Init, skipping",
+                    new_plugin.id()
+                );
+                Ok(())
+            }
+            Err(e) => return Err(e),
+            Ok(_) => Ok(()),
+        }
+    }
+
+    pub fn list_entities(&self) -> Vec<EntityId> {
+        let entities = self.entities.lock().unwrap();
+        entities.keys().cloned().collect()
+    }
+
+    pub fn list_entities_by_domain(&self, domain: &Domain) -> Vec<EntityId> {
+        let domains = self.domains.lock().unwrap();
+        domains.get(domain).cloned().unwrap_or_default()
+    }
+
+    pub fn get_plugin(&self, plugin_id: &PluginId) -> Option<Arc<Plugin>> {
+        let plugins = self.plugins.lock().unwrap();
+        plugins.get(plugin_id).cloned()
+    }
+
+    pub async fn ping_plugin(&self, plugin_id: &PluginId) -> Result<String, RpcErrorCode> {
+        let plugin = if let Some(plugin) = self.get_plugin(plugin_id) {
+            plugin
+        } else {
+            warn!("Plugin {} not found", plugin_id);
+            return Err(RpcErrorCode::InvalidParams);
+        };
+
+        let resp = global::Ping.call(plugin, ()).await.map_err(|e| {
+            warn!("Error calling Ping on plugin {}: {:?}", plugin_id, e);
+            e.as_rpc_code()
+        })?;
+        Ok(resp)
+    }
+}
+
+impl Host {
+    pub fn ping(&self) -> Result<String, RpcErrorCode> {
+        Ok("Pong from host".to_string())
+    }
+
+    pub fn register_entity(
+        &self,
+        plugin_id: &PluginId,
+        entity_id: EntityId,
+    ) -> Result<(), RpcErrorCode> {
+        let mut entities = self.entities.lock().unwrap();
+        if let Some(existing_plugin_id) = entities.get(&entity_id) {
+            if existing_plugin_id == plugin_id {
+                return Ok(());
+            } else {
+                warn!(
+                    "Entity {:?} is already registered by plugin {}",
+                    entity_id, existing_plugin_id
+                );
+                return Err(RpcErrorCode::InvalidParams);
+            }
+        }
+
+        entities.insert(entity_id.clone(), plugin_id.clone());
+
+        let mut domains = self.domains.lock().unwrap();
+        domains
+            .entry(entity_id.domain())
+            .or_default()
+            .push(entity_id.clone());
+        Ok(())
+    }
+
+    pub async fn get_state(&self, plugin_id: &PluginId) -> Result<Option<Vec<u8>>, RpcErrorCode> {
+        Ok(self.state.lock().unwrap().get(plugin_id).cloned())
+    }
+
+    pub async fn set_state(
+        &self,
+        plugin_id: &PluginId,
+        state_data: Vec<u8>,
+    ) -> Result<(), RpcErrorCode> {
+        self.state
+            .lock()
+            .unwrap()
+            .insert(plugin_id.clone(), state_data);
+        Ok(())
+    }
+
+    pub async fn balance_of(
+        &self,
+        vault_id: VaultId,
+    ) -> Result<Vec<(AssetId, U256)>, RpcErrorCode> {
+        let entity_id = vault_id.as_entity_id();
+        let plugin_id = {
+            let entities = self.entities.lock().unwrap();
+            match entities.get(&entity_id) {
+                Some(pid) => pid.clone(), // or copy if Copy
+                None => {
+                    warn!("No plugin registered for vault {:?}", vault_id);
+                    return Err(RpcErrorCode::InvalidParams);
+                }
+            }
+        };
+
+        let plugin = if let Some(plugin) = self.get_plugin(&plugin_id) {
+            plugin
+        } else {
+            warn!("Plugin {} not found", plugin_id);
+            return Err(RpcErrorCode::InvalidParams);
+        };
+
+        let balance = BalanceOf.call(plugin, vault_id).await.map_err(|e| {
+            warn!("Error calling BalanceOf on plugin {}: {:?}", plugin_id, e);
+            e.as_rpc_code()
+        })?;
+        Ok(balance)
+    }
+
+    pub async fn transfer(
+        &self,
+        plugin_id: &PluginId,
+        vault_id: VaultId,
+        to: AccountId,
+        asset: AssetId,
+        amount: U256,
+    ) -> Result<Result<(), String>, RpcErrorCode> {
+        let plugin = if let Some(plugin) = self.get_plugin(plugin_id) {
+            plugin
+        } else {
+            warn!("Plugin {} not found", plugin_id);
+            return Err(RpcErrorCode::InvalidParams);
+        };
+
+        let result = vault::Transfer
+            .call(plugin, (vault_id, to, asset, amount))
+            .await
+            .map_err(|e| {
+                warn!("Error calling Transfer on plugin {}: {:?}", plugin_id, e);
+                e.as_rpc_code()
+            })?;
+        Ok(result)
+    }
+
+    pub async fn get_receipt_address(
+        &self,
+        plugin_id: &PluginId,
+        vault_id: VaultId,
+        asset: AssetId,
+    ) -> Result<Result<AccountId, String>, RpcErrorCode> {
+        let plugin = if let Some(plugin) = self.get_plugin(plugin_id) {
+            plugin
+        } else {
+            warn!("Plugin {} not found", plugin_id);
+            return Err(RpcErrorCode::InvalidParams);
+        };
+
+        let result = vault::GetReceiptAddress
+            .call(plugin, (vault_id, asset))
+            .await
+            .map_err(|e| {
+                warn!(
+                    "Error calling GetReceiptAddress on plugin {}: {:?}",
+                    plugin_id, e
+                );
+                e.as_rpc_code()
+            })?;
+        Ok(result)
+    }
+
+    pub async fn on_receive(
+        &self,
+        plugin_id: &PluginId,
+        vault_id: VaultId,
+        asset: AssetId,
+    ) -> Result<(), RpcErrorCode> {
+        let plugin = if let Some(plugin) = self.get_plugin(plugin_id) {
+            plugin
+        } else {
+            warn!("Plugin {} not found", plugin_id);
+            return Err(RpcErrorCode::InvalidParams);
+        };
+
+        vault::OnReceive
+            .call(plugin, (vault_id, asset))
+            .await
+            .map_err(|e| {
+                warn!("Error calling OnReceive on plugin {}: {:?}", plugin_id, e);
+                e.as_rpc_code()
+            })?;
+        Ok(())
     }
 }
 
@@ -37,19 +245,38 @@ impl Host {
 impl RpcHandler<global::Ping> for Host {
     async fn invoke(&self, plugin_id: PluginId, _params: ()) -> Result<String, RpcErrorCode> {
         info!("Plugin {} sent ping", plugin_id);
-        Ok(format!("Pong from host"))
+        self.ping()
     }
 }
 
 #[async_trait]
-impl RpcHandler<host::CreateEntity> for Host {
-    async fn invoke(&self, plugin_id: PluginId, params: EntityId) -> Result<(), RpcErrorCode> {
+impl RpcHandler<host::RegisterEntity> for Host {
+    async fn invoke(&self, plugin_id: PluginId, entity_id: EntityId) -> Result<(), RpcErrorCode> {
         info!(
-            "Plugin {} requested creation of entity {:?}",
-            plugin_id, params
+            "Plugin {} requested registration of entity {:?}",
+            plugin_id, entity_id
         );
+        self.register_entity(&plugin_id, entity_id)
+    }
+}
 
-        Err(RpcErrorCode::MethodNotFound)
+#[async_trait]
+impl RpcHandler<host::GetState> for Host {
+    async fn invoke(
+        &self,
+        plugin_id: PluginId,
+        _params: (),
+    ) -> Result<Option<Vec<u8>>, RpcErrorCode> {
+        info!("Plugin {} requested its state", plugin_id);
+        self.get_state(&plugin_id).await
+    }
+}
+
+#[async_trait]
+impl RpcHandler<host::SetState> for Host {
+    async fn invoke(&self, plugin_id: PluginId, state_data: Vec<u8>) -> Result<(), RpcErrorCode> {
+        info!("Plugin {} requested to set its state", plugin_id);
+        self.set_state(&plugin_id, state_data).await
     }
 }
 
@@ -58,11 +285,10 @@ impl RpcHandler<vault::BalanceOf> for Host {
     async fn invoke(
         &self,
         plugin_id: PluginId,
-        params: VaultId,
+        vault_id: VaultId,
     ) -> Result<Vec<(AssetId, U256)>, RpcErrorCode> {
-        info!("Plugin {} requested balance of {:?}", plugin_id, params);
-
-        Err(RpcErrorCode::MethodNotFound)
+        info!("Plugin {} requested balance of {:?}", plugin_id, vault_id);
+        self.balance_of(vault_id).await
     }
 }
 
@@ -75,15 +301,11 @@ impl RpcHandler<vault::Transfer> for Host {
     ) -> Result<Result<(), String>, RpcErrorCode> {
         let (vault, to, asset, amount) = params;
         info!(
-            "Plugin {} requested transfer of {} {:?} from {:?} to {:?}",
-            plugin_id,
-            amount,
-            asset,
-            vault.to_id(),
-            to
+            "Plugin {} requested transfer of {} {:?} from vault {:?} to {:?}",
+            plugin_id, amount, asset, vault, to
         );
 
-        Err(RpcErrorCode::MethodNotFound)
+        self.transfer(&plugin_id, vault, to, asset, amount).await
     }
 }
 
@@ -94,12 +316,13 @@ impl RpcHandler<vault::GetReceiptAddress> for Host {
         plugin_id: PluginId,
         params: (VaultId, AssetId),
     ) -> Result<Result<AccountId, String>, RpcErrorCode> {
+        let (vault_id, asset) = params;
         info!(
-            "Plugin {} requested receipt address for {:?}",
-            plugin_id, params
+            "Plugin {} requested receipt address for asset {:?} in vault {:?}",
+            plugin_id, asset, vault_id
         );
 
-        Err(RpcErrorCode::MethodNotFound)
+        self.get_receipt_address(&plugin_id, vault_id, asset).await
     }
 }
 
@@ -110,11 +333,12 @@ impl RpcHandler<vault::OnReceive> for Host {
         plugin_id: PluginId,
         params: (VaultId, AssetId),
     ) -> Result<(), RpcErrorCode> {
+        let (vault_id, asset) = params;
         info!(
-            "Plugin {} notified of received asset {:?}",
-            plugin_id, params
+            "Plugin {} notified of receipt of asset {:?} in vault {:?}",
+            plugin_id, asset, vault_id
         );
 
-        Err(RpcErrorCode::MethodNotFound)
+        self.on_receive(&plugin_id, vault_id, asset).await
     }
 }

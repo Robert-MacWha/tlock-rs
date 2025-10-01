@@ -1179,6 +1179,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "example-vault"
+version = "0.1.0"
+dependencies = [
+ "log",
+ "serde",
+ "serde_json",
+ "stderrlog",
+ "tlock-pdk",
+]
+
+[[package]]
 name = "fastrand"
 version = "2.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2811,6 +2822,8 @@ dependencies = [
 name = "test-plugin"
 version = "0.1.0"
 dependencies = [
+ "serde",
+ "serde_json",
  "wasmi-pdk",
 ]
 

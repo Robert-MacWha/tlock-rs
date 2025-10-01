@@ -76,7 +76,10 @@ impl<T: Send + Sync> Dispatcher<T> {
     pub async fn dispatch(&self, method: &str, params: Value) -> Result<Value, RpcErrorCode> {
         match self.handlers.get(method) {
             Some(handler) => handler.dispatch(&self.target, params).await,
-            None => Err(RpcErrorCode::MethodNotFound),
+            None => {
+                warn!("No handler registered for method: {}", method);
+                Err(RpcErrorCode::MethodNotFound)
+            }
         }
     }
 }

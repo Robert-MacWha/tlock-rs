@@ -1,4 +1,4 @@
-use std::{io::BufReader, sync::Arc};
+use std::{fmt::Display, io::BufReader, sync::Arc};
 
 use futures::{AsyncBufReadExt, FutureExt};
 use log::info;
@@ -17,7 +17,26 @@ use crate::{
     plugin_instance::{PluginInstance, SpawnError},
 };
 
-pub type PluginId = String;
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct PluginId(String);
+
+impl From<PluginId> for String {
+    fn from(plugin_id: PluginId) -> Self {
+        plugin_id.0
+    }
+}
+
+impl From<&str> for PluginId {
+    fn from(s: &str) -> Self {
+        PluginId(s.to_owned())
+    }
+}
+
+impl Display for PluginId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
 
 /// Plugin is an async-capable instance of a plugin
 pub struct Plugin {
@@ -56,6 +75,24 @@ impl Plugin {
 
     pub fn id(&self) -> PluginId {
         self.id.clone()
+    }
+}
+
+impl PluginError {
+    pub fn as_rpc_code(&self) -> RpcErrorCode {
+        match self {
+            PluginError::RpcError(code) => *code,
+            _ => RpcErrorCode::InternalError,
+        }
+    }
+}
+
+impl From<PluginError> for RpcErrorCode {
+    fn from(err: PluginError) -> Self {
+        match err {
+            PluginError::RpcError(code) => code,
+            _ => RpcErrorCode::InternalError,
+        }
     }
 }
 
@@ -99,7 +136,7 @@ impl Transport<PluginError> for Plugin {
 
 struct PluginCallback {
     handler: Arc<dyn HostHandler>,
-    uuid: String,
+    uuid: PluginId,
 }
 
 #[async_trait]

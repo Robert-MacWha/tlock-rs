@@ -1,5 +1,5 @@
+use serde_json::{self, Value};
 use std::sync::Arc;
-
 use wasmi_pdk::{
     api::RequestHandler,
     async_trait::async_trait,
@@ -7,7 +7,6 @@ use wasmi_pdk::{
     plugin_factory::PluginFactory,
     register_plugin,
     rpc_message::RpcErrorCode,
-    serde_json::{self, Value},
     transport::{JsonRpcTransport, Transport},
 };
 

@@ -6,6 +6,9 @@ use wasmi_pdk::{api::ApiError, rpc_message::RpcErrorCode, transport::Transport};
 
 pub mod caip;
 pub mod entities;
+pub use alloy_dyn_abi;
+pub use alloy_primitives;
+pub use alloy_rpc_types;
 
 // TODO: Consider adding a `mod sealed::Sealed {}` to prevent external impl, forcing
 // plugins to only use provided methods.
@@ -58,15 +61,49 @@ pub mod global {
 pub mod host {
     use crate::{RpcMethod, entities::EntityId};
 
-    /// Request the host creates a new entity with the given ID and this
+    /// Request the host registers a new entity with the given ID and this
     /// plugin as its owner.
-    pub struct CreateEntity;
+    pub struct RegisterEntity;
 
-    impl RpcMethod for CreateEntity {
+    impl RpcMethod for RegisterEntity {
         type Params = EntityId;
         type Output = ();
 
-        const NAME: &'static str = "host_create_entity";
+        const NAME: &'static str = "host_register_entity";
+    }
+
+    /// Get the plugin's persistent state from the host.
+    ///
+    /// Returns `None` if no state has been stored.
+    pub struct GetState;
+    impl RpcMethod for GetState {
+        type Params = ();
+        type Output = Option<Vec<u8>>;
+
+        const NAME: &'static str = "host_get_state";
+    }
+
+    /// Sets the plugin's persistent state to the host.
+    pub struct SetState;
+    impl RpcMethod for SetState {
+        type Params = Vec<u8>;
+        type Output = ();
+
+        const NAME: &'static str = "host_set_state";
+    }
+}
+
+/// The plugin namespace contains methods implemented by plugins, generally
+/// used by the host for lifecycle management.
+pub mod plugin {
+    /// Initialize the plugin, called by the host the first time a new plugin
+    /// is registered.
+    pub struct Init;
+    impl super::RpcMethod for Init {
+        type Params = ();
+        type Output = ();
+
+        const NAME: &'static str = "plugin_init";
     }
 }
 

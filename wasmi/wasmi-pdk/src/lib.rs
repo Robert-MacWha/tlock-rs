@@ -5,7 +5,5 @@ pub mod transport;
 pub use async_trait;
 pub use futures;
 pub use log;
-pub use serde;
-pub use serde_json;
 pub use stderrlog;
 // pub mod params;

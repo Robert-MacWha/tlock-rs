@@ -63,8 +63,6 @@ impl WasiCtx {
 
 /// Adds the WASI context to the given wasmi linker.
 pub fn add_to_linker(linker: &mut wasmi::Linker<WasiCtx>) -> Result<(), wasmi::Error> {
-    info!("Adding WASI functions to linker...");
-
     linker.func_wrap("wasi_snapshot_preview1", " args_get", args_get)?;
     linker.func_wrap("wasi_snapshot_preview1", " args_sizes_get", args_sizes_get)?;
     linker.func_wrap("wasi_snapshot_preview1", "environ_get", env_get)?;
