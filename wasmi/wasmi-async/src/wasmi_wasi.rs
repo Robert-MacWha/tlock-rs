@@ -1,4 +1,3 @@
-use rand::TryRngCore;
 use std::io::{Read, Write};
 
 use log::{info, trace};
@@ -462,8 +461,6 @@ fn clock_time_get(
     Errno::Success as i32
 }
 
-// TODO: Implement for wasm32-unknown-unknown target
-
 fn random_get(mut caller: wasmi::Caller<'_, WasiCtx>, buf_ptr: i32, buf_len: i32) -> i32 {
     trace!("wasi random_get({}, {})", buf_ptr, buf_len);
 
@@ -473,7 +470,7 @@ fn random_get(mut caller: wasmi::Caller<'_, WasiCtx>, buf_ptr: i32, buf_len: i32
         .expect("guest must have memory");
 
     let mut buf = vec![0u8; buf_len as usize];
-    if let Err(e) = rand::rngs::OsRng.try_fill_bytes(&mut buf) {
+    if let Err(e) = getrandom::fill(&mut buf) {
         eprintln!("random_get failed: {:?}", e);
         return Errno::Io as i32;
     }

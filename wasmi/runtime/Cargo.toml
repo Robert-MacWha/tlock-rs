@@ -8,5 +8,5 @@ futures = "0.3.31"
 wasm-bindgen-futures = "0.4.50"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-tokio = {version = "1.47.1", features = ["full"]}
+tokio = {version = "1.47.1", features = ["rt", "macros"]}
 
