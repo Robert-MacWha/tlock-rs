@@ -1,12 +1,15 @@
 use serde_json::{self, Value};
-use std::sync::Arc;
+use std::{
+    io::{stderr, stdin, stdout},
+    sync::Arc,
+};
 use wasmi_pdk::{
     api::RequestHandler,
     async_trait::async_trait,
-    log,
-    plugin_factory::PluginFactory,
-    register_plugin,
+    futures::executor::block_on,
     rpc_message::RpcErrorCode,
+    tracing::{error, info, level_filters::LevelFilter, trace},
+    tracing_subscriber::fmt,
     transport::{JsonRpcTransport, Transport},
 };
 
@@ -14,42 +17,42 @@ struct MyPlugin {
     host: Arc<JsonRpcTransport>,
 }
 
-impl PluginFactory for MyPlugin {
-    fn new(transport: Arc<JsonRpcTransport>) -> Self {
-        Self { host: transport }
+impl MyPlugin {
+    fn new(host: Arc<JsonRpcTransport>) -> Self {
+        Self { host }
     }
 }
 
 #[async_trait]
 impl RequestHandler<RpcErrorCode> for MyPlugin {
     async fn handle(&self, method: &str, params: Value) -> Result<Value, RpcErrorCode> {
-        log::info!("Received method: {}, params: {:?}", method, params);
+        info!("Received method: {}, params: {:?}", method, params);
 
         match method {
             "ping" => {
                 // Send a ping request, expect to receive a "pong" response.
-                log::info!("Sending ping");
+                info!("Sending ping");
                 let resp = self.host.call("ping", Value::Null).await?;
-                log::info!("Received response: {:?}", resp);
+                info!("Received response: {:?}", resp);
 
                 if resp.id != 0 {
-                    log::error!("Incorrect response id: expected {}, got {}", 0, resp.id);
+                    error!("Incorrect response id: expected {}, got {}", 0, resp.id);
                     return Err(RpcErrorCode::InternalError);
                 }
 
                 if resp.result != Value::String("pong".to_string()) {
-                    log::error!("Incorrect response result: {:?}", resp.result);
+                    error!("Incorrect response result: {:?}", resp.result);
                     return Err(RpcErrorCode::InternalError);
                 }
 
-                log::info!("Ping successful, returning");
+                info!("Ping successful, returning");
                 Ok(Value::String("pong".to_string()))
             }
             "prime_sieve" => {
                 let limit = params.as_u64().ok_or(RpcErrorCode::InvalidParams)? as usize;
                 let primes = sieve_of_eratosthenes(limit);
 
-                log::info!("Generated {} primes up to {}", primes.len(), limit);
+                info!("Generated {} primes up to {}", primes.len(), limit);
 
                 Ok(serde_json::json!({
                     "count": primes.len(),
@@ -62,12 +65,12 @@ impl RequestHandler<RpcErrorCode> for MyPlugin {
                     let resp = self.host.call("echo", Value::Number(i.into())).await?;
 
                     if resp.id != i as u64 {
-                        log::error!("Incorrect response id: expected {}, got {}", i, resp.id);
+                        error!("Incorrect response id: expected {}, got {}", i, resp.id);
                         return Err(RpcErrorCode::InternalError);
                     }
 
                     if resp.result != Value::Number(i.into()) {
-                        log::error!("Incorrect response result: {:?}", resp.result);
+                        error!("Incorrect response result: {:?}", resp.result);
                         return Err(RpcErrorCode::InternalError);
                     }
                 }
@@ -99,4 +102,27 @@ fn sieve_of_eratosthenes(limit: usize) -> Vec<usize> {
     (2..=limit).filter(|&i| is_prime[i]).collect()
 }
 
-register_plugin!(MyPlugin);
+fn main() {
+    fmt()
+        .with_max_level(LevelFilter::TRACE)
+        .with_writer(stderr)
+        .compact()
+        .with_ansi(false)
+        .without_time()
+        .init();
+    trace!("Starting plugin...");
+
+    let reader = std::io::BufReader::new(stdin());
+    let writer = stdout();
+    let transport = JsonRpcTransport::new(Box::new(reader), Box::new(writer));
+    let transport = Arc::new(transport);
+
+    let plugin = MyPlugin::new(transport.clone());
+    let plugin = Arc::new(plugin);
+
+    let runtime_future = async move {
+        let _ = transport.process_next_line(Some(plugin)).await;
+    };
+
+    block_on(runtime_future);
+}

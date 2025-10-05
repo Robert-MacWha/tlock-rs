@@ -1,10 +1,13 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::HashMap,
+    sync::Weak,
+};
 
 use async_trait::async_trait;
 use serde_json::Value;
 use tlock_api::RpcMethod;
 use wasmi_hdk::{host_handler::HostHandler, plugin::PluginId};
-use wasmi_pdk::rpc_message::RpcErrorCode;
+use wasmi_pdk::{rpc_message::RpcErrorCode, tracing::warn};
 
 /// RpcHandler trait can be implemented by a struct to handle RPC calls for a
 /// specific method M.
@@ -59,11 +62,11 @@ where
 /// because the host requires added context (the PluginId) when invoking handlers.
 pub struct Dispatcher<T: Send + Sync> {
     handlers: HashMap<&'static str, Box<dyn ErasedHandler<T>>>,
-    target: Arc<T>,
+    target: Weak<T>,
 }
 
 impl<T: Send + Sync> Dispatcher<T> {
-    pub fn new(target: Arc<T>) -> Self {
+    pub fn new(target: Weak<T>) -> Self {
         Self {
             handlers: HashMap::new(),
             target,
@@ -86,8 +89,13 @@ impl<T: Send + Sync> Dispatcher<T> {
         method: &str,
         params: Value,
     ) -> Result<Value, RpcErrorCode> {
+        let target = self.target.upgrade().ok_or_else(|| {
+            warn!("Dispatcher target has been dropped");
+            RpcErrorCode::InternalError
+        })?;
+
         match self.handlers.get(method) {
-            Some(handler) => handler.dispatch(&self.target, plugin_id, params).await,
+            Some(handler) => handler.dispatch(&target, plugin_id, params).await,
             None => Err(RpcErrorCode::MethodNotFound),
         }
     }

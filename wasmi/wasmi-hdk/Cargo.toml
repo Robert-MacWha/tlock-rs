@@ -3,9 +3,6 @@ name = "wasmi-hdk"
 version = "0.1.0"
 edition = "2024"
 
-[features]
-tokio-runtime = ["dep:tokio"]
-
 [[bench]]
 name = "plugin_benchmark"
 harness = false
@@ -20,14 +17,12 @@ runtime = { path = "../runtime" }
 wasmi-pdk = { path = "../wasmi-pdk" }
 wasmi-async = { path = "../wasmi-async" }
 wasmi = "0.51.0"
-
 serde_json = "1.0.142"
 thiserror = "2.0.12"
-log = "0.4.27"
+tracing = "0.1.41"
 futures = "0.3.31"
-tokio = { version = "1.0", features = ["rt", "macros"], optional = true }
 
 [dev-dependencies]
 criterion = "0.7.0"
-simple_logger = "5.0.0"
-tokio = { version = "1.0", features = ["rt", "macros"] }
+tokio = { version = "1.0", features = ["rt", "macros", "time"] }
+tracing-test = { version = "0.2.5", features = ["no-env-filter"] }

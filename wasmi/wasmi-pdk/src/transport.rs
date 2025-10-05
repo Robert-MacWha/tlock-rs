@@ -9,9 +9,9 @@ use futures::{
     channel::oneshot::{self, Sender},
     lock::Mutex,
 };
-use log::{trace, warn};
 use runtime::yield_now;
 use serde_json::Value;
+use tracing::{trace, warn};
 
 use crate::{
     api::{ApiError, RequestHandler},
@@ -175,7 +175,7 @@ impl JsonRpcTransport {
                 method,
                 params,
             }) => {
-                let handler = handler.ok_or(RpcErrorCode::MethodNotFound)?;
+                let handler = handler.ok_or(RpcErrorCode::ResourceUnavailable)?;
                 match handler.handle(&method, params).await {
                     Ok(result) => {
                         let response = RpcMessage::RpcResponse(RpcResponse {
@@ -206,6 +206,12 @@ impl JsonRpcTransport {
     async fn next_line(&self) -> Result<String, RpcErrorCode> {
         let mut line = String::new();
 
+        // Loop until we get a line, awaiting if we would block
+        //? Uses a loop here instead of an async reader since need this to
+        //? also work in the plugin wasi environment. There it'll receive the
+        //? `WouldBlock` error from the host's non-blocking pipe, but since
+        //? it's just getting that through stdio it can't be async. And using
+        //? async stdio won't work well because wasi.
         loop {
             match self.reader.lock().await.read_line(&mut line) {
                 Ok(0) => {

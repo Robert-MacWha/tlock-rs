@@ -37,6 +37,7 @@ impl PluginInstance {
             NonBlockingPipeWriter,
             NonBlockingPipeReader,
             NonBlockingPipeReader,
+            impl Future<Output = ()>,
         ),
         SpawnError,
     > {
@@ -47,7 +48,7 @@ impl PluginInstance {
         let (stdout_reader, stdout_writer) = non_blocking_pipe();
         let (stderr_reader, stderr_writer) = non_blocking_pipe();
 
-        start_plugin(
+        let fut = start_plugin(
             compiled,
             is_running.clone(),
             stdin_reader,
@@ -60,6 +61,7 @@ impl PluginInstance {
             stdin_writer,
             stdout_reader,
             stderr_reader,
+            fut,
         ))
     }
 
@@ -80,7 +82,7 @@ fn start_plugin<R, W1, W2>(
     stdin_reader: R,
     stdout_writer: W1,
     stderr_writer: W2,
-) -> Result<(), SpawnError>
+) -> Result<impl Future<Output = ()>, SpawnError>
 where
     R: Read + Send + Sync + 'static,
     W1: Write + Send + Sync + 'static,
@@ -103,7 +105,7 @@ where
         .get_func(&store, "_start")
         .ok_or(SpawnError::StartNotFound)?;
 
-    spawn_wasm(store, start_func, is_running, None);
+    let fut = spawn_wasm(store, start_func, is_running.clone(), None);
 
-    Ok(())
+    Ok(fut)
 }

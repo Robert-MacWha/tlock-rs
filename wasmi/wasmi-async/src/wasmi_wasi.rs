@@ -1,7 +1,6 @@
-use rand::TryRngCore;
 use std::io::{Read, Write};
 
-use log::{info, trace};
+use tracing::{info, trace};
 
 pub struct WasiCtx {
     args: Vec<String>,
@@ -63,8 +62,8 @@ impl WasiCtx {
 
 /// Adds the WASI context to the given wasmi linker.
 pub fn add_to_linker(linker: &mut wasmi::Linker<WasiCtx>) -> Result<(), wasmi::Error> {
-    linker.func_wrap("wasi_snapshot_preview1", " args_get", args_get)?;
-    linker.func_wrap("wasi_snapshot_preview1", " args_sizes_get", args_sizes_get)?;
+    linker.func_wrap("wasi_snapshot_preview1", "args_get", args_get)?;
+    linker.func_wrap("wasi_snapshot_preview1", "args_sizes_get", args_sizes_get)?;
     linker.func_wrap("wasi_snapshot_preview1", "environ_get", env_get)?;
     linker.func_wrap("wasi_snapshot_preview1", "environ_sizes_get", env_sizes_get)?;
     linker.func_wrap("wasi_snapshot_preview1", "fd_read", fd_read)?;
@@ -74,6 +73,8 @@ pub fn add_to_linker(linker: &mut wasmi::Linker<WasiCtx>) -> Result<(), wasmi::E
     linker.func_wrap("wasi_snapshot_preview1", "fd_close", fd_close)?;
     linker.func_wrap("wasi_snapshot_preview1", "random_get", random_get)?;
     linker.func_wrap("wasi_snapshot_preview1", "proc_exit", proc_exit)?;
+    // TODO: Implement actual yielding once I figure out how
+    linker.func_wrap("wasi_snapshot_preview1", "sched_yield", || -> i32 { 0 })?;
 
     Ok(())
 }
@@ -246,7 +247,13 @@ fn fd_read(
                 Some(r) => match r.read(&mut host_buf) {
                     Ok(n) => n,
                     Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                        trace!("fd_read: WouldBlock");
+                        trace!("fd_read: WouldBlock, yielding to host");
+                        // TODO: Would probably better to yield here instead of setting fuel to 0.
+                        // I haven't tested, but I expect interrupting & restarting execution like this
+                        // is somewhat expensive.
+                        // TODO: And also possibly setting some early-return check?  Since
+                        // I notice we're polling this *a lot* while waiting for the host to
+                        // respond.
                         caller.set_fuel(0).unwrap(); // Stops execution, yielding to the host and allowing other tasks to run.
                         return Errno::Again as i32;
                     }
@@ -462,8 +469,6 @@ fn clock_time_get(
     Errno::Success as i32
 }
 
-// TODO: Implement for wasm32-unknown-unknown target
-
 fn random_get(mut caller: wasmi::Caller<'_, WasiCtx>, buf_ptr: i32, buf_len: i32) -> i32 {
     trace!("wasi random_get({}, {})", buf_ptr, buf_len);
 
@@ -473,7 +478,7 @@ fn random_get(mut caller: wasmi::Caller<'_, WasiCtx>, buf_ptr: i32, buf_len: i32
         .expect("guest must have memory");
 
     let mut buf = vec![0u8; buf_len as usize];
-    if let Err(e) = rand::rngs::OsRng.try_fill_bytes(&mut buf) {
+    if let Err(e) = getrandom::fill(&mut buf) {
         eprintln!("random_get failed: {:?}", e);
         return Errno::Io as i32;
     }

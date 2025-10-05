@@ -1,13 +1,21 @@
 use serde_json::Value;
 use std::{fs, path::PathBuf, sync::Arc};
-use wasmi_hdk::plugin::Plugin;
-use wasmi_pdk::{api::RequestHandler, async_trait::async_trait, rpc_message::RpcErrorCode};
+use wasmi_hdk::{
+    host_handler::HostHandler,
+    plugin::{Plugin, PluginId},
+};
+use wasmi_pdk::{async_trait::async_trait, rpc_message::RpcErrorCode, transport::Transport};
 
 struct MyHostHandler {}
 
 #[async_trait]
-impl RequestHandler<RpcErrorCode> for MyHostHandler {
-    async fn handle(&self, method: &str, _params: Value) -> Result<Value, RpcErrorCode> {
+impl HostHandler for MyHostHandler {
+    async fn handle(
+        &self,
+        _plugin: PluginId,
+        method: &str,
+        _params: Value,
+    ) -> Result<Value, RpcErrorCode> {
         match method {
             "echo" => Ok(Value::String("echo".to_string())),
             _ => Err(RpcErrorCode::MethodNotFound),
@@ -21,11 +29,12 @@ fn load_plugin_wasm() -> Vec<u8> {
     fs::read(wasm_path).expect("Failed to read plugin WASM file")
 }
 
-#[tokio::main]
+#[tokio::main(flavor = "current_thread")]
 async fn main() {
     let wasm_bytes = load_plugin_wasm();
     let handler = Arc::new(MyHostHandler {});
-    let plugin = Plugin::new("test_plugin", wasm_bytes, handler).unwrap();
+    let id = "0001".into();
+    let plugin = Plugin::new("test_plugin", &id, wasm_bytes, handler).unwrap();
 
     for i in 0..1000 {
         println!("Iteration {}/1000", i + 1);

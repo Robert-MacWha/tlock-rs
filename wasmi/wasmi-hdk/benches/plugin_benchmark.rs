@@ -1,8 +1,9 @@
+// TODO: Merge this + the integration test version to avoid duplication & inconsistency
 use criterion::{Criterion, criterion_group, criterion_main};
-use log::info;
 use serde_json::Value;
 use std::{fs, path::PathBuf, sync::Arc};
 use tokio::runtime::Builder;
+use tracing::info;
 use wasmi_hdk::host_handler::HostHandler;
 use wasmi_hdk::plugin::{Plugin, PluginId};
 use wasmi_pdk::transport::Transport;
@@ -17,17 +18,16 @@ fn load_plugin_wasm() -> Vec<u8> {
 }
 
 struct MyHostHandler {}
-
 #[async_trait]
 impl HostHandler for MyHostHandler {
     async fn handle(
         &self,
-        plugin: PluginId,
+        _id: PluginId,
         method: &str,
-        _params: Value,
+        params: Value,
     ) -> Result<Value, RpcErrorCode> {
         match method {
-            "echo" => Ok(Value::String("echo".to_string())),
+            "echo" => Ok(params),
             _ => Err(RpcErrorCode::MethodNotFound),
         }
     }
@@ -38,12 +38,11 @@ impl HostHandler for MyHostHandler {
 pub fn bench_prime_sieve_small(c: &mut Criterion) {
     let rt = Builder::new_current_thread().enable_all().build().unwrap();
 
-    info!("Starting small prime sieve test...");
-
     let wasm_bytes = load_plugin_wasm();
     let handler = Arc::new(MyHostHandler {});
 
-    let plugin = Plugin::new("test_plugin", "0001".into(), wasm_bytes.clone(), handler).unwrap();
+    let id = "0001".into();
+    let plugin = Plugin::new("test_plugin", &id, wasm_bytes.clone(), handler).unwrap();
 
     c.bench_function("prime_sieve_small", |b| {
         b.iter(|| {
@@ -64,12 +63,11 @@ pub fn bench_prime_sieve_small(c: &mut Criterion) {
 pub fn bench_prime_sieve_large(c: &mut Criterion) {
     let rt = Builder::new_current_thread().enable_all().build().unwrap();
 
-    info!("Starting large prime sieve test...");
-
     let wasm_bytes = load_plugin_wasm();
     let handler = Arc::new(MyHostHandler {});
 
-    let plugin = Plugin::new("test_plugin", "0001".into(), wasm_bytes.clone(), handler).unwrap();
+    let id = "0001".into();
+    let plugin = Plugin::new("test_plugin", &id, wasm_bytes.clone(), handler).unwrap();
 
     c.bench_function("prime_sieve_large", |b| {
         b.iter(|| {
@@ -89,12 +87,11 @@ pub fn bench_prime_sieve_large(c: &mut Criterion) {
 pub fn bench_echo_many(c: &mut Criterion) {
     let rt = Builder::new_current_thread().enable_all().build().unwrap();
 
-    info!("Starting many echo test...");
-
     let wasm_bytes = load_plugin_wasm();
     let handler = Arc::new(MyHostHandler {});
 
-    let plugin = Plugin::new("test_plugin", "0001".into(), wasm_bytes.clone(), handler).unwrap();
+    let id = "0001".into();
+    let plugin = Plugin::new("test_plugin", &id, wasm_bytes.clone(), handler).unwrap();
 
     c.bench_function("many_echo", |b| {
         b.iter(|| {

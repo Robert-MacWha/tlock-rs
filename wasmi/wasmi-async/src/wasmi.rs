@@ -1,8 +1,8 @@
 use std::sync::{Arc, atomic::AtomicBool};
 
-use log::{error, trace};
-use runtime::{spawn_local, yield_now};
+use runtime::yield_now;
 use thiserror::Error;
+use tracing::{error, trace};
 use wasmi::{Func, Store};
 
 #[derive(Error, Debug)]
@@ -35,18 +35,15 @@ pub fn spawn_wasm<T: Send + Sync + 'static>(
     start_func: Func,
     is_running: Arc<AtomicBool>,
     max_fuel: Option<u64>,
-) -> Arc<AtomicBool> {
-    spawn_local({
-        let is_running = is_running.clone();
-        async move {
-            if let Err(e) = run_wasm(store, start_func, is_running.clone(), max_fuel).await {
-                error!("Plugin error: {:?}", e);
-            }
-            is_running.store(false, std::sync::atomic::Ordering::SeqCst);
+) -> impl Future<Output = ()> {
+    trace!("Spawning plugin task");
+    let is_running = is_running.clone();
+    return async move {
+        if let Err(e) = run_wasm(store, start_func, is_running.clone(), max_fuel).await {
+            error!("Plugin error: {:?}", e);
         }
-    });
-
-    is_running
+        is_running.store(false, std::sync::atomic::Ordering::SeqCst);
+    };
 }
 
 /// run_wasm manages the plugin's lifecycle. Essentially - because
@@ -60,6 +57,7 @@ async fn run_wasm<T>(
     is_running: Arc<AtomicBool>,
     max_fuel: Option<u64>,
 ) -> Result<(), RunError> {
+    trace!("Plugin task started");
     let max_fuel = max_fuel.unwrap_or(MAX_FUEL);
 
     //? Starts with zero fuel so we fall into the resumable loop that yields

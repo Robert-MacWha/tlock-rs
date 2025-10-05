@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll, Waker};
 
 use futures::AsyncRead;
-use log::info;
+use tracing::info;
 
 struct Inner {
     buf: VecDeque<u8>,
@@ -112,6 +112,7 @@ impl Write for NonBlockingPipeWriter {
 impl Drop for NonBlockingPipeWriter {
     fn drop(&mut self) {
         let mut inner = self.inner.lock().unwrap();
+        info!("Pipe writer dropped, closing pipe");
         inner.closed = true;
         if let Some(waker) = inner.waker.take() {
             waker.wake();
