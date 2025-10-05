@@ -5,8 +5,8 @@ use serde_json::Value;
 use tlock_api::RpcMethod;
 use wasmi_pdk::{
     api::RequestHandler,
-    log::{debug, info, trace, warn},
     rpc_message::RpcErrorCode,
+    tracing::{debug, info, trace, warn},
 };
 
 /// RpcHandler trait can be implemented by a struct to handle RPC calls for a

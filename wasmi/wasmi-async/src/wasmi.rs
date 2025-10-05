@@ -1,11 +1,8 @@
-use std::{
-    future::poll_fn,
-    sync::{Arc, atomic::AtomicBool},
-};
+use std::sync::{Arc, atomic::AtomicBool};
 
-use log::{debug, error, trace};
-use runtime::{spawn_local, yield_now};
+use runtime::yield_now;
 use thiserror::Error;
+use tracing::{debug, error, trace};
 use wasmi::{Func, Store};
 
 #[derive(Error, Debug)]
@@ -31,7 +28,7 @@ pub enum RunError {
 /// async yielding into the `run_wasm` function so it works better in single-thread
 /// environments (like within wasm when building to target the web).  If this later
 /// becomes a performance issue we can test it properly.
-const MAX_FUEL: u64 = 10_000;
+const MAX_FUEL: u64 = 100_000;
 
 pub fn spawn_wasm<T: Send + Sync + 'static>(
     store: Store<T>,
@@ -39,10 +36,9 @@ pub fn spawn_wasm<T: Send + Sync + 'static>(
     is_running: Arc<AtomicBool>,
     max_fuel: Option<u64>,
 ) -> impl Future<Output = ()> {
-    debug!("Spawning plugin task");
+    trace!("Spawning plugin task");
     let is_running = is_running.clone();
     return async move {
-        debug!("Plugin task started");
         if let Err(e) = run_wasm(store, start_func, is_running.clone(), max_fuel).await {
             error!("Plugin error: {:?}", e);
         }
@@ -61,11 +57,11 @@ async fn run_wasm<T>(
     is_running: Arc<AtomicBool>,
     max_fuel: Option<u64>,
 ) -> Result<(), RunError> {
+    trace!("Plugin task started");
     let max_fuel = max_fuel.unwrap_or(MAX_FUEL);
 
     //? Starts with zero fuel so we fall into the resumable loop that yields
     store.set_fuel(0).unwrap();
-    debug!("Starting plugin");
     let mut resumable = start_func.call_resumable(&mut store, &[], &mut [])?;
 
     loop {
@@ -83,8 +79,7 @@ async fn run_wasm<T>(
                 let top_up = required.max(max_fuel);
                 store.set_fuel(top_up).unwrap();
 
-                // trace!("Plugin out of fuel, yielding...");
-                debug!("Plugin out of fuel, yielding...");
+                trace!("Plugin out of fuel, yielding...");
                 yield_now().await;
 
                 match out_of_fuel.resume(&mut store, &mut []) {

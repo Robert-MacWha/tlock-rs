@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll, Waker};
 
 use futures::AsyncRead;
-use log::info;
+use tracing::info;
 
 struct Inner {
     buf: VecDeque<u8>,

@@ -7,7 +7,7 @@ use async_trait::async_trait;
 use serde_json::Value;
 use tlock_api::RpcMethod;
 use wasmi_hdk::{host_handler::HostHandler, plugin::PluginId};
-use wasmi_pdk::{log::warn, rpc_message::RpcErrorCode};
+use wasmi_pdk::{rpc_message::RpcErrorCode, tracing::warn};
 
 /// RpcHandler trait can be implemented by a struct to handle RPC calls for a
 /// specific method M.

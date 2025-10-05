@@ -1,6 +1,5 @@
-use log::info;
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, io::stderr, sync::Arc};
 use tlock_pdk::{
     async_trait::async_trait,
     dispatcher::{Dispatcher, RpcHandler},
@@ -12,7 +11,12 @@ use tlock_pdk::{
         entities::{EntityId, VaultId},
         global, host, plugin, vault,
     },
-    wasmi_pdk::{rpc_message::RpcErrorCode, transport::JsonRpcTransport},
+    wasmi_pdk::{
+        rpc_message::RpcErrorCode,
+        tracing::{error, info},
+        tracing_subscriber::fmt,
+        transport::JsonRpcTransport,
+    },
 };
 
 struct MyVaultPlugin {
@@ -35,7 +39,7 @@ impl MyVaultPlugin {
 #[async_trait]
 impl RpcHandler<plugin::Init> for MyVaultPlugin {
     async fn invoke(&self, _params: ()) -> Result<(), RpcErrorCode> {
-        log::info!("Calling Init on Vault Plugin");
+        info!("Calling Init on Vault Plugin");
 
         //? Create a new vault entity and register it
         let account_id = AccountId::new(1, address!("0x0102030405060708090a0b0c0d0e0f1011121314"));
@@ -52,7 +56,7 @@ impl RpcHandler<plugin::Init> for MyVaultPlugin {
         state.vaults.insert(vault_id, account_id);
 
         let state = serde_json::to_vec(&state).map_err(|e| {
-            log::error!("Failed to serialize state: {}", e);
+            error!("Failed to serialize state: {}", e);
             RpcErrorCode::InternalError
         })?;
         host::SetState.call(self.transport.clone(), state).await?;
@@ -79,14 +83,14 @@ impl RpcHandler<vault::BalanceOf> for MyVaultPlugin {
             .call(self.transport.clone(), ())
             .await?
             .ok_or_else(|| {
-                log::error!("`BalanceOf` called before `Init`");
+                error!("`BalanceOf` called before `Init`");
                 RpcErrorCode::InternalError
             })?;
 
         info!("State bytes length: {}", state_bytes.len());
 
         let state: PluginState = serde_json::from_slice(&state_bytes).map_err(|e| {
-            log::error!("Failed to deserialize state: {}", e);
+            error!("Failed to deserialize state: {}", e);
             RpcErrorCode::InternalError
         })?;
 
@@ -94,13 +98,13 @@ impl RpcHandler<vault::BalanceOf> for MyVaultPlugin {
 
         let vaults = state.vaults;
         let account_id = vaults.get(&vault_id).ok_or_else(|| {
-            log::error!("Vault ID not found in state: {}", vault_id);
+            error!("Vault ID not found in state: {}", vault_id);
             RpcErrorCode::InvalidParams
         })?;
 
         //? Here you would normally query the balances from an external source.
         //? For this example, we'll return a dummy balance.
-        log::info!("Fetching balances for account: {:?}", account_id);
+        info!("Fetching balances for account: {:?}", account_id);
         let dummy_asset_id = AssetId::new(
             1,
             "erc20".into(),
@@ -112,11 +116,8 @@ impl RpcHandler<vault::BalanceOf> for MyVaultPlugin {
 }
 
 fn main() {
-    stderrlog::new()
-        .verbosity(stderrlog::LogLevelNum::Trace)
-        .init()
-        .unwrap();
-    log::trace!("Starting plugin...");
+    fmt().with_writer(stderr).init();
+    info!("Starting plugin...");
 
     let reader = std::io::BufReader::new(::std::io::stdin());
     let writer = std::io::stdout();

@@ -19,10 +19,10 @@ wasmi-async = { path = "../wasmi-async" }
 wasmi = "0.51.0"
 serde_json = "1.0.142"
 thiserror = "2.0.12"
-log = "0.4.27"
+tracing = "0.1.41"
 futures = "0.3.31"
 
 [dev-dependencies]
 criterion = "0.7.0"
-simple_logger = "5.0.0"
 tokio = { version = "1.0", features = ["rt", "macros", "time"] }
+tracing-test = "0.2.5"

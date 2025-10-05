@@ -1,11 +1,14 @@
-use std::sync::Arc;
+use std::{io::stderr, sync::Arc};
 
 use tlock_pdk::{
     async_trait::async_trait,
     dispatcher::{Dispatcher, RpcHandler},
     futures::executor::block_on,
     tlock_api::{RpcMethod, global},
-    wasmi_pdk::{rpc_message::RpcErrorCode, transport::JsonRpcTransport},
+    wasmi_pdk::{
+        rpc_message::RpcErrorCode, tracing::info, tracing_subscriber::fmt,
+        transport::JsonRpcTransport,
+    },
 };
 
 struct MyPlugin {
@@ -29,11 +32,8 @@ impl RpcHandler<global::Ping> for MyPlugin {
 }
 
 fn main() {
-    stderrlog::new()
-        .verbosity(stderrlog::LogLevelNum::Trace)
-        .init()
-        .unwrap();
-    log::trace!("Starting plugin...");
+    fmt().with_writer(stderr).init();
+    info!("Starting plugin...");
 
     let reader = std::io::BufReader::new(::std::io::stdin());
     let writer = std::io::stdout();

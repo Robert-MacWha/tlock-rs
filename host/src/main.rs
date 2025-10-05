@@ -1,17 +1,13 @@
 use ::host::host::Host;
-use log::info;
-use std::{sync::Arc, thread::sleep, time::Duration};
+use std::{io::stderr, sync::Arc, thread::sleep, time::Duration};
 use tlock_hdk::tlock_api::entities::VaultId;
+use tracing::info;
+use tracing_subscriber::fmt;
 
 //? current_thread uses single-threaded mode, simulating the browser environment
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    simple_logger::SimpleLogger::new()
-        .with_level(log::LevelFilter::Debug)
-        .with_colors(true)
-        .init()
-        .ok();
-
+    fmt().with_writer(stderr).init();
     info!("Running single-threaded");
 
     let host = Host::new();

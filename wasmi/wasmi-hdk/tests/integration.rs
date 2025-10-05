@@ -1,7 +1,9 @@
-use log::info;
 use serde_json::Value;
 use std::{fs, path::PathBuf, sync::Arc, time::Duration};
 use tokio::time::{sleep, timeout};
+use tracing::info;
+use tracing::level_filters::LevelFilter;
+use tracing_test::traced_test;
 use wasmi_hdk::host_handler::HostHandler;
 use wasmi_hdk::plugin::{Plugin, PluginId};
 use wasmi_pdk::transport::Transport;
@@ -21,7 +23,7 @@ struct MyHostHandler {}
 impl HostHandler for MyHostHandler {
     async fn handle(
         &self,
-        plugin: PluginId,
+        _id: PluginId,
         method: &str,
         params: Value,
     ) -> Result<Value, RpcErrorCode> {
@@ -39,14 +41,9 @@ impl HostHandler for MyHostHandler {
 }
 
 #[tokio::test]
+#[traced_test]
 async fn test_plugin() {
-    simple_logger::SimpleLogger::new()
-        .with_level(log::LevelFilter::Trace)
-        .with_colors(true)
-        .init()
-        .ok();
-
-    log::info!("Starting test_plugin...");
+    info!("Starting test_plugin...");
 
     let wasm_bytes = load_plugin_wasm();
     let handler = Arc::new(MyHostHandler {});
@@ -63,13 +60,8 @@ async fn test_plugin() {
 }
 
 #[tokio::test]
+#[traced_test]
 async fn test_prime_sieve() {
-    simple_logger::SimpleLogger::new()
-        .with_level(log::LevelFilter::Trace)
-        .with_colors(true)
-        .init()
-        .ok();
-
     info!("Starting prime sieve test...");
 
     let wasm_bytes = load_plugin_wasm();

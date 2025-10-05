@@ -5,7 +5,6 @@ use std::{
 };
 
 use alloy_primitives::U256;
-use log::{info, trace, warn};
 use tlock_hdk::{
     dispatcher::{Dispatcher, RpcHandler},
     tlock_api::{
@@ -18,6 +17,7 @@ use tlock_hdk::{
     wasmi_hdk::plugin::{Plugin, PluginError, PluginId},
     wasmi_pdk::{async_trait::async_trait, rpc_message::RpcErrorCode},
 };
+use tracing::{info, trace, warn};
 
 pub struct Host {
     plugins: Mutex<HashMap<PluginId, Arc<Plugin>>>,

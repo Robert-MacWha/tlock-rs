@@ -9,9 +9,9 @@ use futures::{
     channel::oneshot::{self, Sender},
     lock::Mutex,
 };
-use log::{trace, warn};
 use runtime::yield_now;
 use serde_json::Value;
+use tracing::{trace, warn};
 
 use crate::{
     api::{ApiError, RequestHandler},

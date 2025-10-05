@@ -4,9 +4,9 @@ use futures::{
     AsyncBufReadExt, FutureExt,
     future::{Either, select},
 };
-use log::{info, warn};
 use serde_json::Value;
 use thiserror::Error;
+use tracing::{info, warn};
 use wasmi_pdk::{
     api::RequestHandler,
     async_trait::async_trait,
@@ -140,25 +140,10 @@ impl Transport<PluginError> for Plugin {
 
         let instance_task = instance_task.fuse();
         futures::pin_mut!(rpc_task, instance_task, stderr_task);
-        let either = select(rpc_task, select(instance_task, stderr_task)).await;
+        let (res, _, _) = futures::join!(rpc_task, instance_task, stderr_task);
         instance.kill();
-
-        let res = match either {
-            Either::Left((resp, _)) => resp,
-            Either::Right((_, _)) => {
-                warn!("Plugin {} died unexpectedly", self.id);
-                return Err(PluginError::PluginDied);
-            }
-        };
         let res = res?;
         Ok(res)
-
-        // spawn_local(instance_fut);
-        // spawn_local(stderr_task);
-
-        // let res = rpc_task.await?;
-        // instance.kill();
-        // Ok(res)
     }
 }
 

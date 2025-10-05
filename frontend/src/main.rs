@@ -10,10 +10,8 @@ use tlock_hdk::{
     tlock_api::entities::EntityId,
     wasmi_hdk::plugin::{PluginError, PluginId},
 };
-use tracing_log::LogTracer;
 
 fn main() {
-    LogTracer::init().expect("failed to init log tracer");
     dioxus::launch(app);
 }
 

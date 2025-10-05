@@ -1,8 +1,8 @@
 use criterion::{Criterion, criterion_group, criterion_main};
-use log::info;
 use serde_json::Value;
 use std::{fs, path::PathBuf, sync::Arc};
 use tokio::runtime::Builder;
+use tracing::info;
 use wasmi_hdk::host_handler::HostHandler;
 use wasmi_hdk::plugin::{Plugin, PluginId};
 use wasmi_pdk::transport::Transport;
@@ -22,7 +22,7 @@ struct MyHostHandler {}
 impl HostHandler for MyHostHandler {
     async fn handle(
         &self,
-        plugin: PluginId,
+        _id: PluginId,
         method: &str,
         _params: Value,
     ) -> Result<Value, RpcErrorCode> {
@@ -37,8 +37,6 @@ impl HostHandler for MyHostHandler {
 /// of calling into the wasm module.
 pub fn bench_prime_sieve_small(c: &mut Criterion) {
     let rt = Builder::new_current_thread().enable_all().build().unwrap();
-
-    info!("Starting small prime sieve test...");
 
     let wasm_bytes = load_plugin_wasm();
     let handler = Arc::new(MyHostHandler {});
@@ -65,8 +63,6 @@ pub fn bench_prime_sieve_small(c: &mut Criterion) {
 pub fn bench_prime_sieve_large(c: &mut Criterion) {
     let rt = Builder::new_current_thread().enable_all().build().unwrap();
 
-    info!("Starting large prime sieve test...");
-
     let wasm_bytes = load_plugin_wasm();
     let handler = Arc::new(MyHostHandler {});
 
@@ -90,8 +86,6 @@ pub fn bench_prime_sieve_large(c: &mut Criterion) {
 /// Benchmark sending many echo requests to the host, and receiving responses.
 pub fn bench_echo_many(c: &mut Criterion) {
     let rt = Builder::new_current_thread().enable_all().build().unwrap();
-
-    info!("Starting many echo test...");
 
     let wasm_bytes = load_plugin_wasm();
     let handler = Arc::new(MyHostHandler {});
