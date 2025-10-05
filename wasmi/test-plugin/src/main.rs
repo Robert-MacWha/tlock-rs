@@ -106,6 +106,9 @@ fn main() {
     fmt()
         .with_max_level(LevelFilter::TRACE)
         .with_writer(stderr)
+        .compact()
+        .with_ansi(false)
+        .without_time()
         .init();
     trace!("Starting plugin...");
 

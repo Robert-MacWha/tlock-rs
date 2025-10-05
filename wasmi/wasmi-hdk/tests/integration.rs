@@ -29,12 +29,12 @@ impl HostHandler for MyHostHandler {
     ) -> Result<Value, RpcErrorCode> {
         info!("Host received method: {}, params: {:?}", method, params);
 
-        sleep(Duration::from_millis(100)).await;
-
-        info!("Host processing complete for method: {}", method);
-
         match method {
-            "ping" => Ok(serde_json::json!("pong")),
+            "ping" => {
+                sleep(Duration::from_millis(100)).await;
+                Ok(serde_json::json!("pong"))
+            }
+            "echo" => Ok(params),
             _ => Err(RpcErrorCode::MethodNotFound),
         }
     }
@@ -49,7 +49,6 @@ async fn test_plugin() {
     let handler = Arc::new(MyHostHandler {});
 
     let result = timeout(Duration::from_secs(1), async {
-        info!("Running test...");
         let id = "0001".into();
         let plugin = Plugin::new("test_plugin", &id, wasm_bytes, handler).unwrap();
         plugin.call("ping", Value::Null).await.unwrap();
@@ -85,4 +84,25 @@ async fn test_prime_sieve() {
     .await;
 
     result.expect("Prime sieve test timed out");
+}
+
+#[tokio::test]
+#[traced_test]
+async fn test_many_echo() {
+    info!("Starting many echo test...");
+
+    let wasm_bytes = load_plugin_wasm();
+    let handler = Arc::new(MyHostHandler {});
+
+    let result = timeout(Duration::from_secs(5), async {
+        let id = "0001".into();
+        let plugin = Plugin::new("test_plugin", &id, wasm_bytes, handler).unwrap();
+        plugin
+            .call("many_echo", Value::Number(200.into()))
+            .await
+            .unwrap();
+    })
+    .await;
+
+    result.expect("Many echo test timed out");
 }

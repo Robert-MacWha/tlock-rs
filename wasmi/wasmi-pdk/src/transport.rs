@@ -175,7 +175,7 @@ impl JsonRpcTransport {
                 method,
                 params,
             }) => {
-                let handler = handler.ok_or(RpcErrorCode::MethodNotFound)?;
+                let handler = handler.ok_or(RpcErrorCode::ResourceUnavailable)?;
                 match handler.handle(&method, params).await {
                     Ok(result) => {
                         let response = RpcMessage::RpcResponse(RpcResponse {

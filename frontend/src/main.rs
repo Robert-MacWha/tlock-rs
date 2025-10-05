@@ -2,8 +2,6 @@ use dioxus::{
     logger::tracing::{error, info},
     prelude::*,
 };
-use futures::channel::oneshot;
-use gloo_timers::callback::Timeout;
 use host::host::Host;
 use std::{collections::HashMap, sync::Arc};
 use tlock_hdk::{
@@ -97,25 +95,6 @@ fn control_panel() -> Element {
                 }
             };
 
-            // let t1 = async {
-            //     for i in 0..=10 {
-            //         info!("Task 1: {i}");
-            //         sleep(100).await;
-            //     }
-            //     "done 1"
-            // };
-
-            // let t2 = async {
-            //     for i in 0..=10 {
-            //         info!("Task 2: {i}");
-            //         sleep(100).await;
-            //     }
-            //     "done 2"
-            // };
-
-            // let (r1, r2) = futures::join!(t1, t2);
-            // info!("Tasks finished: {:?}, {:?}", r1, r2);
-
             match state.load_plugin(&file, file_name).await {
                 Ok(id) => {
                     info!("Loaded plugin with id: {}", id);
@@ -176,14 +155,4 @@ fn entities_list() -> Element {
             }
         }
     }
-}
-
-async fn sleep(millis: u32) {
-    let (send, recv) = oneshot::channel();
-
-    let _timeout = Timeout::new(millis, move || {
-        let _ = send.send(());
-    });
-
-    let _ = recv.await;
 }

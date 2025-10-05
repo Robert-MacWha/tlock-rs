@@ -1,3 +1,4 @@
+// TODO: Merge this + the integration test version to avoid duplication & inconsistency
 use criterion::{Criterion, criterion_group, criterion_main};
 use serde_json::Value;
 use std::{fs, path::PathBuf, sync::Arc};
@@ -17,17 +18,16 @@ fn load_plugin_wasm() -> Vec<u8> {
 }
 
 struct MyHostHandler {}
-
 #[async_trait]
 impl HostHandler for MyHostHandler {
     async fn handle(
         &self,
         _id: PluginId,
         method: &str,
-        _params: Value,
+        params: Value,
     ) -> Result<Value, RpcErrorCode> {
         match method {
-            "echo" => Ok(Value::String("echo".to_string())),
+            "echo" => Ok(params),
             _ => Err(RpcErrorCode::MethodNotFound),
         }
     }
