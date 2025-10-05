@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "host",
+    "frontend",
     "tlock-pdk",
     "tlock-hdk",
     "tlock-api",
@@ -14,3 +15,13 @@ members = [
 ]
 
 resolver = "2"
+
+[profile.wasm-dev]
+inherits = "dev"
+opt-level = 1
+
+[profile.server-dev]
+inherits = "dev"
+
+[profile.android-dev]
+inherits = "dev"

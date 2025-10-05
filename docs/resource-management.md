@@ -16,15 +16,23 @@ Importantly, there will generally be a 1:many relationship between plugins and e
 
 ## Routing
 
-One of the host's key jobs is the routing of requests to the respective plugin. The goal of the router is to ensure that requests are, whenever possible, automatically sent to the target (and only the target) plugin or plugins.
+One of the host's key jobs is the routing of messages to the respective plugin. The goal of the router is to ensure that messages are, whenever possible, automatically sent to the target (and only the target) plugin or plugins.  Tlock utilizes two kinds of messages, requests and events.
 
-> For example: if a `sign_personal` request is received by the host, it will forward that request to the entity which is known to provide said account.
+### Requests
 
-The host knows which plugin to route requests to via scoping rules exposed by the plugins. A plugin creating or modifying an entity must attach scoping rules which are dependant on the entity's type. Generally these scoping rules are based on caip asset IDs. 
+Requests are specific messages that should be sent to a single, unique entity.  Often the caller of the request will expect a definitive response, and will wait on that response before proceeding.  The host knows which plugin to route requests to via scoping rules exposed by the plugins. A plugin creating or modifying an entity must attach scoping rules which are dependant on the entity's type. Generally these scoping rules are based on caip asset IDs. 
 
 > For example an Eip155Address entity may have the scoping rule `eip155:1:0x8f72fcf695523A6FC7DD97EafDd7A083c386b7b6`, `eip155:56:0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48`, or `eip155:_:0x799d0db297dc1b5d114f3562c1ec30c9f7fdae39`. Requests will be forwarded to entities when the request's scope matches the entity's scope, and preferentially be forwarded to more specifically scoped entities.
 
 Different domains will have different scoping rules. So a `eth_personal` request may follow the caip-10 ID for scoping, while `eth_block_number` will follow caip-10. In cases where routing can't be inferred automatically (for example with `keyring_createAccount` or `tlock_ping`), the plugin ID will be used to select a specific plugin. 
+
+### Events
+
+Events are messages which are broadcast to any plugins which are listening to said event.  Events cannot return data.
+
+
+# Scratchbook
+--------------------------------------------------------------
 
 ### Requesting Routing
 

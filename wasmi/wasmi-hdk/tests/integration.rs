@@ -53,7 +53,8 @@ async fn test_plugin() {
 
     let result = timeout(Duration::from_secs(1), async {
         info!("Running test...");
-        let plugin = Plugin::new("test_plugin", "0001".into(), wasm_bytes, handler).unwrap();
+        let id = "0001".into();
+        let plugin = Plugin::new("test_plugin", &id, wasm_bytes, handler).unwrap();
         plugin.call("ping", Value::Null).await.unwrap();
     })
     .await;
@@ -75,7 +76,8 @@ async fn test_prime_sieve() {
     let handler = Arc::new(MyHostHandler {});
 
     let result = timeout(Duration::from_secs(2), async {
-        let plugin = Plugin::new("test_plugin", "0001".into(), wasm_bytes, handler).unwrap();
+        let id = "0001".into();
+        let plugin = Plugin::new("test_plugin", &id, wasm_bytes, handler).unwrap();
 
         let response = plugin
             .call("prime_sieve", Value::Number(1000.into()))

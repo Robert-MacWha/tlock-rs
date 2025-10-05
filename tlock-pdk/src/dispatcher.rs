@@ -5,7 +5,7 @@ use serde_json::Value;
 use tlock_api::RpcMethod;
 use wasmi_pdk::{
     api::RequestHandler,
-    log::{info, trace, warn},
+    log::{debug, info, trace, warn},
     rpc_message::RpcErrorCode,
 };
 
@@ -32,7 +32,7 @@ where
     M: RpcMethod + 'static,
 {
     async fn dispatch(&self, target: &T, params: Value) -> Result<Value, RpcErrorCode> {
-        trace!("Dispatching method: {}", M::NAME);
+        debug!("Dispatching method: {}", M::NAME);
         let parsed: M::Params = serde_json::from_value(params.clone()).map_err(|_| {
             warn!(
                 "Failed to parse params for method {}, {:?}",

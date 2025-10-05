@@ -1,7 +1,10 @@
 use std::{fmt::Display, io::BufReader, sync::Arc};
 
-use futures::{AsyncBufReadExt, FutureExt};
-use log::info;
+use futures::{
+    AsyncBufReadExt, FutureExt,
+    future::{Either, select},
+};
+use log::{info, warn};
 use serde_json::Value;
 use thiserror::Error;
 use wasmi_pdk::{
@@ -17,6 +20,7 @@ use crate::{
     plugin_instance::{PluginInstance, SpawnError},
 };
 
+/// TODO: Adjust this so it's a UUID and copyable
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct PluginId(String);
 
@@ -29,6 +33,12 @@ impl From<PluginId> for String {
 impl From<&str> for PluginId {
     fn from(s: &str) -> Self {
         PluginId(s.to_owned())
+    }
+}
+
+impl From<String> for PluginId {
+    fn from(s: String) -> Self {
+        PluginId(s)
     }
 }
 
@@ -59,7 +69,7 @@ pub enum PluginError {
 impl Plugin {
     pub fn new(
         name: &str,
-        id: PluginId,
+        id: &PluginId,
         wasm_bytes: Vec<u8>,
         handler: Arc<dyn HostHandler>,
     ) -> Result<Self, wasmi::Error> {
@@ -67,10 +77,14 @@ impl Plugin {
 
         Ok(Plugin {
             name: name.to_string(),
-            id,
+            id: id.clone(),
             handler,
             compiled,
         })
+    }
+
+    pub fn name(&self) -> &str {
+        &self.name
     }
 
     pub fn id(&self) -> PluginId {
@@ -99,14 +113,15 @@ impl From<PluginError> for RpcErrorCode {
 #[async_trait]
 impl Transport<PluginError> for Plugin {
     async fn call(&self, method: &str, params: Value) -> Result<RpcResponse, PluginError> {
-        let (instance, stdin_writer, stdout_reader, stderr_reader) =
+        let (instance, stdin_writer, stdout_reader, stderr_reader, instance_task) =
             PluginInstance::new(self.compiled.clone())?;
 
+        let name = self.name.clone();
         let stderr_task = async move {
             let mut buf_reader = futures::io::BufReader::new(stderr_reader);
             let mut line = String::new();
             while buf_reader.read_line(&mut line).await.is_ok_and(|n| n > 0) {
-                info!(target: "plugin", "[{}] {}", self.name, line.trim_end());
+                info!(target: "plugin", "[{}] {}", name, line.trim_end());
                 line.clear();
             }
         }
@@ -123,14 +138,27 @@ impl Transport<PluginError> for Plugin {
             JsonRpcTransport::with_handler(Box::new(buf_reader), Box::new(stdin_writer), handler);
         let rpc_task = transport.call(method, params).fuse();
 
-        futures::pin_mut!(stderr_task, rpc_task);
-
-        let (res, _) = futures::join!(rpc_task, stderr_task);
-        let res = res?;
-
+        let instance_task = instance_task.fuse();
+        futures::pin_mut!(rpc_task, instance_task, stderr_task);
+        let either = select(rpc_task, select(instance_task, stderr_task)).await;
         instance.kill();
 
+        let res = match either {
+            Either::Left((resp, _)) => resp,
+            Either::Right((_, _)) => {
+                warn!("Plugin {} died unexpectedly", self.id);
+                return Err(PluginError::PluginDied);
+            }
+        };
+        let res = res?;
         Ok(res)
+
+        // spawn_local(instance_fut);
+        // spawn_local(stderr_task);
+
+        // let res = rpc_task.await?;
+        // instance.kill();
+        // Ok(res)
     }
 }
 

@@ -206,6 +206,12 @@ impl JsonRpcTransport {
     async fn next_line(&self) -> Result<String, RpcErrorCode> {
         let mut line = String::new();
 
+        // Loop until we get a line, awaiting if we would block
+        //? Uses a loop here instead of an async reader since need this to
+        //? also work in the plugin wasi environment. There it'll receive the
+        //? `WouldBlock` error from the host's non-blocking pipe, but since
+        //? it's just getting that through stdio it can't be async. And using
+        //? async stdio won't work well because wasi.
         loop {
             match self.reader.lock().await.read_line(&mut line) {
                 Ok(0) => {

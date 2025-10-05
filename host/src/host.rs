@@ -1,12 +1,13 @@
 use std::{
     collections::HashMap,
+    hash::{self, DefaultHasher, Hash, Hasher},
     sync::{Arc, Mutex},
 };
 
 use alloy_primitives::U256;
-use log::{info, warn};
+use log::{info, trace, warn};
 use tlock_hdk::{
-    dispatcher::RpcHandler,
+    dispatcher::{Dispatcher, RpcHandler},
     tlock_api::{
         RpcMethod,
         caip::{AccountId, AssetId},
@@ -36,12 +37,50 @@ impl Host {
         }
     }
 
-    pub async fn register_plugin(&self, new_plugin: Arc<Plugin>) -> Result<(), PluginError> {
-        let mut plugins = self.plugins.lock().unwrap();
-        plugins.insert(new_plugin.id(), new_plugin.clone());
+    /// Load a plugin from wasm bytes, register it, and return its PluginId
+    pub async fn load_plugin(
+        self: &Arc<Host>,
+        wasm_bytes: &[u8],
+        name: &str,
+    ) -> Result<PluginId, PluginError> {
+        let dispatcher = self.get_dispatcher();
+
+        let mut s = DefaultHasher::new();
+        wasm_bytes.hash(&mut s);
+        let id = s.finish().to_string().into();
+        let plugin = Plugin::new(name, &id, wasm_bytes.to_vec(), dispatcher)
+            .map_err(|e| PluginError::SpawnError(e.into()))?;
+
+        self.register_plugin(plugin).await?;
+        info!("Loaded plugin '{}' with id {}", name, id);
+        Ok(id)
+    }
+
+    /// Creates a dispatcher with all Host RPC methods registered
+    pub fn get_dispatcher(self: &Arc<Host>) -> Arc<Dispatcher<Host>> {
+        let mut dispatcher = Dispatcher::new(Arc::downgrade(&self));
+        dispatcher.register::<global::Ping>();
+        dispatcher.register::<host::RegisterEntity>();
+        dispatcher.register::<host::GetState>();
+        dispatcher.register::<host::SetState>();
+        dispatcher.register::<vault::BalanceOf>();
+        dispatcher.register::<vault::Transfer>();
+        dispatcher.register::<vault::GetReceiptAddress>();
+        dispatcher.register::<vault::OnReceive>();
+
+        let dispatcher = Arc::new(dispatcher);
+        dispatcher
+    }
+
+    /// Register a plugin with the host, calling its Init method if it exists
+    pub async fn register_plugin(&self, new_plugin: Plugin) -> Result<(), PluginError> {
+        let new_plugin = Arc::new(new_plugin);
+        self.plugins
+            .lock()
+            .unwrap()
+            .insert(new_plugin.id(), new_plugin.clone());
 
         info!("Registered plugin {}", new_plugin.id());
-
         match plugin::Init.call(new_plugin.clone(), ()).await {
             Err(PluginError::RpcError(RpcErrorCode::MethodNotFound))
             | Err(PluginError::RpcError(RpcErrorCode::MethodNotSupported)) => {
@@ -51,9 +90,19 @@ impl Host {
                 );
                 Ok(())
             }
-            Err(e) => return Err(e),
-            Ok(_) => Ok(()),
+            Err(e) => {
+                warn!("Error calling Init on plugin {}: {:?}", new_plugin.id(), e);
+                return Err(e);
+            }
+            Ok(_) => {
+                info!("Plugin {} initialized", new_plugin.id());
+                Ok(())
+            }
         }
+    }
+
+    pub fn get_entities(&self) -> HashMap<EntityId, PluginId> {
+        self.entities.lock().unwrap().clone()
     }
 
     pub fn list_entities(&self) -> Vec<EntityId> {
