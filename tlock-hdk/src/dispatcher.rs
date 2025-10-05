@@ -1,6 +1,6 @@
 use std::{
     collections::HashMap,
-    sync::{Arc, Weak},
+    sync::Weak,
 };
 
 use async_trait::async_trait;

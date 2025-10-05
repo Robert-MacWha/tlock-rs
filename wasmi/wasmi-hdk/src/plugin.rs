@@ -2,11 +2,10 @@ use std::{fmt::Display, io::BufReader, sync::Arc};
 
 use futures::{
     AsyncBufReadExt, FutureExt,
-    future::{Either, select},
 };
 use serde_json::Value;
 use thiserror::Error;
-use tracing::{info, warn};
+use tracing::info;
 use wasmi_pdk::{
     api::RequestHandler,
     async_trait::async_trait,

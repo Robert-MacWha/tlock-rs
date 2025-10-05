@@ -1,6 +1,6 @@
 use std::{
     collections::HashMap,
-    hash::{self, DefaultHasher, Hash, Hasher},
+    hash::{DefaultHasher, Hash, Hasher},
     sync::{Arc, Mutex},
 };
 
@@ -17,7 +17,7 @@ use tlock_hdk::{
     wasmi_hdk::plugin::{Plugin, PluginError, PluginId},
     wasmi_pdk::{async_trait::async_trait, rpc_message::RpcErrorCode},
 };
-use tracing::{info, trace, warn};
+use tracing::{info, warn};
 
 pub struct Host {
     plugins: Mutex<HashMap<PluginId, Arc<Plugin>>>,

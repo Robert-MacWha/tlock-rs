@@ -6,7 +6,7 @@ use tlock_api::RpcMethod;
 use wasmi_pdk::{
     api::RequestHandler,
     rpc_message::RpcErrorCode,
-    tracing::{debug, info, trace, warn},
+    tracing::{debug, warn},
 };
 
 /// RpcHandler trait can be implemented by a struct to handle RPC calls for a
