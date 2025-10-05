@@ -28,11 +28,11 @@ impl HostContext {
     ) -> Result<PluginId, PluginError> {
         let id = self.host.load_plugin(wasm_bytes, name).await?;
 
-        // let mut plugins = self.plugins;
-        // plugins.push((id.clone(), name.to_string()));
+        let mut plugins = self.plugins;
+        plugins.push((id.clone(), name.to_string()));
 
-        // let plugin_entities = self.host.get_entities();
-        // self.entities.set(plugin_entities);
+        let plugin_entities = self.host.get_entities();
+        self.entities.set(plugin_entities);
 
         Ok(id)
     }

@@ -2,7 +2,6 @@ use serde_json::Value;
 use std::{fs, path::PathBuf, sync::Arc, time::Duration};
 use tokio::time::{sleep, timeout};
 use tracing::info;
-use tracing::level_filters::LevelFilter;
 use tracing_test::traced_test;
 use wasmi_hdk::host_handler::HostHandler;
 use wasmi_hdk::plugin::{Plugin, PluginId};
