@@ -20,7 +20,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     host.ping_plugin(&example_vault_id).await?;
 
-    host.list_entities()
+    host.get_entities()
         .iter()
         .for_each(|e| info!("Looked up registered entity: {}", e));
 
