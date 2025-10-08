@@ -1,6 +1,7 @@
 use dioxus::prelude::*;
 
 pub mod components;
+pub mod contexts;
 
 #[derive(PartialEq, Clone)]
 pub enum Component {

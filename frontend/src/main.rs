@@ -2,53 +2,18 @@ use dioxus::{
     logger::tracing::{error, info},
     prelude::*,
 };
+use frontend::{components::entity::Entity, contexts::host::HostContext};
 use host::host::Host;
-use std::{collections::HashMap, sync::Arc};
-use tlock_hdk::{
-    tlock_api::entities::EntityId,
-    wasmi_hdk::plugin::{PluginError, PluginId},
-};
-
+use std::sync::Arc;
 fn main() {
     dioxus::launch(app);
-}
-
-#[derive(Clone)]
-struct HostContext {
-    host: Arc<Host>,
-    plugins: Signal<Vec<(PluginId, String)>>,
-    entities: Signal<HashMap<EntityId, PluginId>>,
-}
-
-impl HostContext {
-    async fn load_plugin(
-        &mut self,
-        wasm_bytes: &[u8],
-        name: &str,
-    ) -> Result<PluginId, PluginError> {
-        let id = self.host.load_plugin(wasm_bytes, name).await?;
-
-        let mut plugins = self.plugins;
-        plugins.push((id.clone(), name.to_string()));
-
-        let plugin_entities = self.host.get_entities();
-        self.entities.set(plugin_entities);
-
-        Ok(id)
-    }
 }
 
 #[component]
 fn app() -> Element {
     let host = Arc::new(Host::new());
-    let plugins = use_signal(|| Vec::new());
-    let entities = use_signal(|| HashMap::new());
-
-    use_context_provider(|| HostContext {
-        host,
-        plugins,
-        entities,
-    });
+    let host_context = HostContext::new(host);
+    use_context_provider(|| host_context);
 
     rsx! {
         document::Stylesheet { href: asset!("/assets/bootstrap.css") }
@@ -127,13 +92,14 @@ fn control_panel() -> Element {
 fn plugin_list() -> Element {
     let state = use_context::<HostContext>();
     let plugins = state.plugins.read();
+    let named_plugins = plugins.iter().filter_map(|id| state.host.get_plugin(id));
 
     rsx! {
         div {
             "Plugin List:",
             ul {
-                for plugin in plugins.iter() {
-                    li { key: "{plugin.0}", "{plugin.1} ({plugin.0})" }
+                for plugin in named_plugins {
+                    li { key: "{plugin.id()}", "{plugin.name()} ({plugin.id()})" }
                 }
             }
         }
@@ -149,8 +115,11 @@ fn entities_list() -> Element {
         div {
             "Entities List:",
             ul {
-                for (entity_id, plugin_id) in entities.iter() {
-                    li { key: "{entity_id}", "{entity_id} (from plugin {plugin_id})" }
+                for entity_id in entities.iter() {
+                    li {
+                        key: "{entity_id}",
+                        Entity { id: entity_id.clone() }
+                     }
                 }
             }
         }

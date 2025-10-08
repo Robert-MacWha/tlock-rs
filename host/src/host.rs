@@ -101,42 +101,48 @@ impl Host {
         }
     }
 
-    pub fn get_entities(&self) -> HashMap<EntityId, PluginId> {
-        self.entities.lock().unwrap().clone()
-    }
-
-    pub fn list_entities(&self) -> Vec<EntityId> {
+    /// Get all registered entities
+    pub fn get_entities(&self) -> Vec<EntityId> {
         let entities = self.entities.lock().unwrap();
         entities.keys().cloned().collect()
     }
 
-    pub fn list_entities_by_domain(&self, domain: &Domain) -> Vec<EntityId> {
+    /// Get all registered plugins
+    pub fn get_plugins(&self) -> Vec<PluginId> {
+        let plugins = self.plugins.lock().unwrap();
+        plugins.keys().cloned().collect()
+    }
+
+    /// Get all entities for a given domain
+    pub fn get_entities_by_domain(&self, domain: &Domain) -> Vec<EntityId> {
         let domains = self.domains.lock().unwrap();
         domains.get(domain).cloned().unwrap_or_default()
     }
 
+    /// Get a plugin by its PluginId
     pub fn get_plugin(&self, plugin_id: &PluginId) -> Option<Arc<Plugin>> {
         let plugins = self.plugins.lock().unwrap();
         plugins.get(plugin_id).cloned()
     }
 
-    fn get_plugin_id_for_entity(&self, entity_id: &EntityId) -> Result<PluginId, RpcErrorCode> {
+    /// Get the PluginId responsible for a given EntityId
+    pub fn get_entity_plugin_id(&self, entity_id: &EntityId) -> Option<PluginId> {
         let entities = self.entities.lock().unwrap();
-        match entities.get(entity_id) {
-            Some(pid) => Ok(pid.clone()),
-            None => {
-                warn!("No plugin registered for entity {:?}", entity_id);
-                Err(RpcErrorCode::InvalidParams)
-            }
-        }
+        entities.get(entity_id).cloned()
     }
 
-    fn get_plugin_for_entity(&self, entity_id: &EntityId) -> Result<Arc<Plugin>, RpcErrorCode> {
-        let plugin_id = self.get_plugin_id_for_entity(entity_id)?;
-        self.get_plugin(&plugin_id).ok_or_else(|| {
-            warn!("Plugin {} not found", plugin_id);
+    pub fn get_entity_plugin(&self, entity_id: &EntityId) -> Option<Arc<Plugin>> {
+        let plugin_id = self.get_entity_plugin_id(entity_id)?;
+        self.get_plugin(&plugin_id)
+    }
+
+    ///? Helper to get the plugin or return an RpcErrorCode if not found
+    fn get_entity_plugin_error(&self, entity_id: &EntityId) -> Result<Arc<Plugin>, RpcErrorCode> {
+        let plugin = self.get_entity_plugin(entity_id).ok_or_else(|| {
+            warn!("Entity {:?} not found", entity_id);
             RpcErrorCode::InvalidParams
-        })
+        })?;
+        Ok(plugin)
     }
 
     pub async fn ping_plugin(&self, plugin_id: &PluginId) -> Result<String, RpcErrorCode> {
@@ -209,7 +215,7 @@ impl Host {
         vault_id: VaultId,
     ) -> Result<Vec<(AssetId, U256)>, RpcErrorCode> {
         let entity_id = vault_id.as_entity_id();
-        let plugin = self.get_plugin_for_entity(&entity_id)?;
+        let plugin = self.get_entity_plugin_error(&entity_id)?;
 
         let balance = BalanceOf.call(plugin, vault_id).await.map_err(|e| {
             warn!("Error calling BalanceOf: {:?}", e);
@@ -226,7 +232,7 @@ impl Host {
         amount: U256,
     ) -> Result<Result<(), String>, RpcErrorCode> {
         let entity_id = vault_id.as_entity_id();
-        let plugin = self.get_plugin_for_entity(&entity_id)?;
+        let plugin = self.get_entity_plugin_error(&entity_id)?;
 
         let result = vault::Transfer
             .call(plugin, (vault_id, to, asset, amount))
@@ -244,7 +250,7 @@ impl Host {
         asset: AssetId,
     ) -> Result<Result<AccountId, String>, RpcErrorCode> {
         let entity_id = vault_id.as_entity_id();
-        let plugin = self.get_plugin_for_entity(&entity_id)?;
+        let plugin = self.get_entity_plugin_error(&entity_id)?;
 
         let result = vault::GetReceiptAddress
             .call(plugin, (vault_id, asset))
@@ -258,7 +264,7 @@ impl Host {
 
     pub async fn on_receive(&self, vault_id: VaultId, asset: AssetId) -> Result<(), RpcErrorCode> {
         let entity_id = vault_id.as_entity_id();
-        let plugin = self.get_plugin_for_entity(&entity_id)?;
+        let plugin = self.get_entity_plugin_error(&entity_id)?;
 
         vault::OnReceive
             .call(plugin, (vault_id, asset))
