@@ -1,6 +1,6 @@
-use dioxus::{html::button, prelude::*};
+use dioxus::prelude::*;
 use dioxus_logger::tracing::info;
-use tlock_hdk::tlock_api::{entities::VaultId, vault::BalanceOf};
+use tlock_hdk::tlock_api::entities::VaultId;
 
 use crate::contexts::host::HostContext;
 

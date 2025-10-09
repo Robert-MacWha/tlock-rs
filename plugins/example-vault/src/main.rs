@@ -8,8 +8,9 @@ use tlock_pdk::{
         RpcMethod,
         alloy_primitives::{U256, address},
         caip::{AccountId, AssetId},
-        entities::{EntityId, VaultId},
-        global, host, plugin, vault,
+        component::Component,
+        entities::{EntityId, PageId, VaultId},
+        global, host, page, plugin, vault,
     },
     wasmi_pdk::{
         rpc_message::RpcErrorCode,
@@ -41,27 +42,35 @@ impl RpcHandler<plugin::Init> for MyVaultPlugin {
     async fn invoke(&self, _params: ()) -> Result<(), RpcErrorCode> {
         info!("Calling Init on Vault Plugin");
 
-        //? Create a new vault entity and register it
-        let account_id = AccountId::new(1, address!("0x0102030405060708090a0b0c0d0e0f1011121314"));
-        let vault_id = VaultId::new(account_id.to_string());
-        let entity_id = EntityId::Vault(vault_id.clone());
+        //? Register the vault's page
+        let page_id = PageId::new("vault_page".to_string());
         host::RegisterEntity
-            .call(self.transport.clone(), entity_id)
+            .call(self.transport.clone(), EntityId::from(page_id))
             .await?;
 
-        //? Save the vault account ID in the plugin state for future reference
-        let mut state = PluginState {
-            vaults: HashMap::new(),
-        };
-        state.vaults.insert(vault_id, account_id);
-
-        let state = serde_json::to_vec(&state).map_err(|e| {
-            error!("Failed to serialize state: {}", e);
-            RpcErrorCode::InternalError
-        })?;
-        host::SetState.call(self.transport.clone(), state).await?;
-
         Ok(())
+
+        // //? Create a new vault entity and register it
+        // let account_id = AccountId::new(1, address!("0x0102030405060708090a0b0c0d0e0f1011121314"));
+        // let vault_id = VaultId::new(account_id.to_string());
+        // let entity_id = EntityId::Vault(vault_id.clone());
+        // host::RegisterEntity
+        //     .call(self.transport.clone(), entity_id)
+        //     .await?;
+
+        // //? Save the vault account ID in the plugin state for future reference
+        // let mut state = PluginState {
+        //     vaults: HashMap::new(),
+        // };
+        // state.vaults.insert(vault_id, account_id);
+
+        // let state = serde_json::to_vec(&state).map_err(|e| {
+        //     error!("Failed to serialize state: {}", e);
+        //     RpcErrorCode::InternalError
+        // })?;
+        // host::SetState.call(self.transport.clone(), state).await?;
+
+        // Ok(())
     }
 }
 
@@ -115,6 +124,31 @@ impl RpcHandler<vault::BalanceOf> for MyVaultPlugin {
     }
 }
 
+#[async_trait]
+impl RpcHandler<page::OnPageLoad> for MyVaultPlugin {
+    async fn invoke(&self, page_id: u32) -> Result<(), RpcErrorCode> {
+        info!("Page loaded in Vault Plugin");
+
+        let component = Component::Text {
+            text: "Hello from Vault Plugin!".to_string(),
+        };
+
+        host::SetInterface
+            .call(self.transport.clone(), (page_id, component))
+            .await?;
+
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl RpcHandler<page::OnPageUpdate> for MyVaultPlugin {
+    async fn invoke(&self, (page_id, event): (u32, page::PageEvent)) -> Result<(), RpcErrorCode> {
+        info!("Page updated in Vault Plugin: {:?}", event);
+        Ok(())
+    }
+}
+
 fn main() {
     fmt().with_writer(stderr).init();
     info!("Starting plugin...");
@@ -131,6 +165,7 @@ fn main() {
     dispatcher.register::<global::Ping>();
     dispatcher.register::<plugin::Init>();
     dispatcher.register::<vault::BalanceOf>();
+    dispatcher.register::<page::OnPageLoad>();
 
     let dispatcher = Arc::new(dispatcher);
 

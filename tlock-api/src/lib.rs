@@ -9,6 +9,8 @@ pub mod entities;
 pub use alloy_dyn_abi;
 pub use alloy_primitives;
 pub use alloy_rpc_types;
+pub mod component;
+pub mod domains;
 
 // TODO: Consider adding a `mod sealed::Sealed {}` to prevent external impl, forcing
 // plugins to only use provided methods.
@@ -59,7 +61,7 @@ pub mod global {
 /// The host namespace contains methods for interacting with the host and
 /// performing privileged operations.
 pub mod host {
-    use crate::{RpcMethod, entities::EntityId};
+    use crate::{RpcMethod, component::Component, entities::EntityId};
 
     /// Request the host registers a new entity with the given ID and this
     /// plugin as its owner.
@@ -90,6 +92,15 @@ pub mod host {
         type Output = ();
 
         const NAME: &'static str = "host_set_state";
+    }
+
+    /// Sets an interface for a given interface ID.
+    pub struct SetInterface;
+    impl RpcMethod for SetInterface {
+        type Params = (u32, Component); // (interface_id, component)
+        type Output = ();
+
+        const NAME: &'static str = "host_set_interface";
     }
 }
 
@@ -127,7 +138,7 @@ pub mod vault {
         const NAME: &'static str = "vault_balance_of";
     }
 
-    /// Transfer an amount from one account to another.
+    /// Transfer an amount of some asset from this vault to another account.
     pub struct Transfer;
     impl RpcMethod for Transfer {
         type Params = (VaultId, AccountId, AssetId, U256); // (from, to, asset, amount)
@@ -143,6 +154,7 @@ pub mod vault {
     /// to a vault MUST first call this method to ensure the asset is supported and
     /// the destination address is correct. Destination addresses may change over time,
     /// as might the supported assets.
+    /// TODO: Consider making this automatic via the host? Not sure how.
     pub struct GetReceiptAddress;
     impl RpcMethod for GetReceiptAddress {
         type Params = (VaultId, AssetId); // (to, asset)
@@ -159,5 +171,36 @@ pub mod vault {
         type Output = ();
 
         const NAME: &'static str = "vault_receive";
+    }
+}
+
+pub mod page {
+    use serde::{Deserialize, Serialize};
+
+    use crate::RpcMethod;
+
+    /// Called by the host when a registered page is loaded in the frontend. The
+    /// plugin should setup any necessary interfaces with `host::SetInterface` here,
+    /// dependant on the plugin's internal state.
+    pub struct OnPageLoad;
+    impl RpcMethod for OnPageLoad {
+        type Params = u32; // (interface_id) // TODO Can I infer this interface id from the host? Perhaps, look into it.
+        type Output = ();
+
+        const NAME: &'static str = "page_on_load";
+    }
+
+    #[derive(Serialize, Deserialize, Debug)]
+    pub enum PageEvent {
+        ButtonClicked(u32), // (button_id)
+    }
+
+    /// Called by the host when a registered page is updated in the frontend.
+    pub struct OnPageUpdate;
+    impl RpcMethod for OnPageUpdate {
+        type Params = (u32, PageEvent); // (interface_id, event)
+        type Output = ();
+
+        const NAME: &'static str = "page_on_update";
     }
 }

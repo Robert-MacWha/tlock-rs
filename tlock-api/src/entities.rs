@@ -1,17 +1,43 @@
 use serde::{Deserialize, Serialize};
 use std::fmt::{self, Display};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum Domain {
-    Vault,
+use crate::domains::Domain;
+
+/// Entities are uniquely identified registerable objects in tlock that act as
+/// instances of a domain implemented by a particular plugin.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum EntityId {
+    Vault(VaultId),
+    Page(PageId),
 }
 
-impl Display for Domain {
+impl EntityId {
+    pub fn domain(&self) -> Domain {
+        match self {
+            EntityId::Vault(_) => Domain::Vault,
+            EntityId::Page(_) => Domain::Page,
+        }
+    }
+}
+
+impl Display for EntityId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Domain::Vault => write!(f, "vault"),
+            EntityId::Vault(v) => v.fmt(f),
+            EntityId::Page(p) => p.fmt(f),
         }
+    }
+}
+
+impl From<VaultId> for EntityId {
+    fn from(id: VaultId) -> Self {
+        EntityId::Vault(id)
+    }
+}
+
+impl From<PageId> for EntityId {
+    fn from(id: PageId) -> Self {
+        EntityId::Page(id)
     }
 }
 
@@ -19,31 +45,12 @@ impl Display for Domain {
 pub struct VaultId(String);
 
 impl VaultId {
-    pub const DOMAIN: Domain = Domain::Vault;
-
     pub fn new(id: String) -> Self {
         Self(id)
     }
 
-    pub fn domain(&self) -> Domain {
-        Self::DOMAIN
-    }
-
     pub fn as_entity_id(&self) -> EntityId {
         EntityId::Vault(self.clone())
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum EntityId {
-    Vault(VaultId),
-}
-
-impl EntityId {
-    pub fn domain(&self) -> Domain {
-        match self {
-            EntityId::Vault(_) => Domain::Vault,
-        }
     }
 }
 
@@ -53,16 +60,21 @@ impl Display for VaultId {
     }
 }
 
-impl Display for EntityId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            EntityId::Vault(v) => v.fmt(f),
-        }
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct PageId(String);
+
+impl PageId {
+    pub fn new(id: String) -> Self {
+        Self(id)
+    }
+
+    pub fn as_entity_id(&self) -> EntityId {
+        EntityId::Page(self.clone())
     }
 }
 
-impl From<VaultId> for EntityId {
-    fn from(id: VaultId) -> Self {
-        EntityId::Vault(id)
+impl Display for PageId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "page:{}", self.0)
     }
 }

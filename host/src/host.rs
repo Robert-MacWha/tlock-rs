@@ -10,8 +10,10 @@ use tlock_hdk::{
     tlock_api::{
         RpcMethod,
         caip::{AccountId, AssetId},
-        entities::{Domain, EntityId, VaultId},
-        global, host, plugin,
+        component::Component,
+        domains::Domain,
+        entities::{EntityId, PageId, VaultId},
+        global, host, page, plugin,
         vault::{self, BalanceOf},
     },
     wasmi_hdk::plugin::{Plugin, PluginError, PluginId},
@@ -63,10 +65,13 @@ impl Host {
         dispatcher.register::<host::RegisterEntity>();
         dispatcher.register::<host::GetState>();
         dispatcher.register::<host::SetState>();
+        dispatcher.register::<host::SetInterface>();
         dispatcher.register::<vault::BalanceOf>();
         dispatcher.register::<vault::Transfer>();
         dispatcher.register::<vault::GetReceiptAddress>();
         dispatcher.register::<vault::OnReceive>();
+        dispatcher.register::<page::OnPageLoad>();
+        dispatcher.register::<page::OnPageUpdate>();
 
         let dispatcher = Arc::new(dispatcher);
         dispatcher
@@ -210,6 +215,19 @@ impl Host {
         Ok(())
     }
 
+    pub async fn set_interface(
+        &self,
+        plugin_id: &PluginId,
+        interface_id: u32,
+        component: Component,
+    ) -> Result<(), RpcErrorCode> {
+        info!(
+            "Plugin {} requested set interface {}: {:?}",
+            plugin_id, interface_id, component
+        );
+        Ok(())
+    }
+
     pub async fn balance_of(
         &self,
         vault_id: VaultId,
@@ -275,6 +293,54 @@ impl Host {
             })?;
         Ok(())
     }
+
+    pub async fn on_page_load(
+        &self,
+        plugin_id: &PluginId,
+        interface_id: u32,
+    ) -> Result<(), RpcErrorCode> {
+        let plugin = if let Some(plugin) = self.get_plugin(plugin_id) {
+            plugin
+        } else {
+            warn!("Plugin {} not found", plugin_id);
+            return Err(RpcErrorCode::InvalidParams);
+        };
+
+        page::OnPageLoad
+            .call(plugin, interface_id)
+            .await
+            .map_err(|e| {
+                warn!("Error calling OnPageLoad on plugin {}: {:?}", plugin_id, e);
+                e.as_rpc_code()
+            })?;
+        Ok(())
+    }
+
+    pub async fn on_page_update(
+        &self,
+        plugin_id: &PluginId,
+        interface_id: u32,
+        event: page::PageEvent,
+    ) -> Result<(), RpcErrorCode> {
+        let plugin = if let Some(plugin) = self.get_plugin(plugin_id) {
+            plugin
+        } else {
+            warn!("Plugin {} not found", plugin_id);
+            return Err(RpcErrorCode::InvalidParams);
+        };
+
+        page::OnPageUpdate
+            .call(plugin, (interface_id, event))
+            .await
+            .map_err(|e| {
+                warn!(
+                    "Error calling OnPageUpdate on plugin {}: {:?}",
+                    plugin_id, e
+                );
+                e.as_rpc_code()
+            })?;
+        Ok(())
+    }
 }
 
 #[async_trait]
@@ -313,6 +379,19 @@ impl RpcHandler<host::SetState> for Host {
     async fn invoke(&self, plugin_id: PluginId, state_data: Vec<u8>) -> Result<(), RpcErrorCode> {
         info!("Plugin {} requested to set its state", plugin_id);
         self.set_state(&plugin_id, state_data).await
+    }
+}
+
+#[async_trait]
+impl RpcHandler<host::SetInterface> for Host {
+    async fn invoke(
+        &self,
+        plugin_id: PluginId,
+        params: (u32, Component),
+    ) -> Result<(), RpcErrorCode> {
+        let (interface_id, component) = params;
+        self.set_interface(&plugin_id, interface_id, component)
+            .await
     }
 }
 
@@ -376,5 +455,31 @@ impl RpcHandler<vault::OnReceive> for Host {
         );
 
         self.on_receive(vault_id, asset).await
+    }
+}
+
+#[async_trait]
+impl RpcHandler<page::OnPageLoad> for Host {
+    async fn invoke(&self, plugin_id: PluginId, interface_id: u32) -> Result<(), RpcErrorCode> {
+        info!(
+            "Plugin {} requested OnPageLoad for interface {}",
+            plugin_id, interface_id
+        );
+        self.on_page_load(&plugin_id, interface_id).await
+    }
+}
+
+#[async_trait]
+impl RpcHandler<page::OnPageUpdate> for Host {
+    async fn invoke(
+        &self,
+        plugin_id: PluginId,
+        (interface_id, event): (u32, page::PageEvent),
+    ) -> Result<(), RpcErrorCode> {
+        info!(
+            "Plugin {} sent OnPageUpdate for interface {}: {:?}",
+            plugin_id, interface_id, event
+        );
+        self.on_page_update(&plugin_id, interface_id, event).await
     }
 }
