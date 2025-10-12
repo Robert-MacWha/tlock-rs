@@ -1,7 +1,12 @@
 use std::io::{Read, Write};
+use tracing::{info, trace, warn};
+use web_time::{Instant, SystemTime};
 
-use tracing::{info, trace};
-
+/// A WASI context that can be attached to a wasmi instance. Attaches
+/// a subset of WASI syscalls to the instance, allowing it to
+/// get args, env vars, read/write to stdin/stdout/stderr, get time, and
+/// get random bytes.
+/// https://github.com/WebAssembly/WASI/blob/main/legacy/preview1/docs.md
 pub struct WasiCtx {
     args: Vec<String>,
     env: Vec<String>,
@@ -430,7 +435,6 @@ fn fd_close(mut caller: wasmi::Caller<'_, WasiCtx>, fd: i32) -> i32 {
     Errno::Success as i32
 }
 
-// TODO: Implement for wasm32-unknown-unknown target
 fn clock_time_get(
     mut caller: wasmi::Caller<'_, WasiCtx>,
     clock_id: i32,
@@ -446,18 +450,16 @@ fn clock_time_get(
 
     let now = match clock_id {
         // Realtime: nanoseconds since UNIX epoch
-        0 => {
-            match std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH) {
+        0 | 1 => {
+            match SystemTime::now().duration_since(std::time::UNIX_EPOCH) {
                 Ok(dur) => dur.as_nanos() as u64,
                 Err(_) => return Errno::Inval as i32, // time before epoch shouldn't happen
             }
         }
-        // Monotonic: nanoseconds since arbitrary fixed point
-        1 => {
-            let dur = std::time::Instant::now().elapsed();
-            dur.as_nanos() as u64
+        _ => {
+            warn!("unsupported clock_id {}", clock_id);
+            return Errno::Inval as i32; // unsupported clock
         }
-        _ => return Errno::Inval as i32, // unsupported clock
     };
 
     if memory
