@@ -451,7 +451,7 @@ fn clock_time_get(
     let now = match clock_id {
         // Realtime: nanoseconds since UNIX epoch
         0 | 1 => {
-            match SystemTime::now().duration_since(std::time::UNIX_EPOCH) {
+            match SystemTime::now().duration_since(SystemTime::UNIX_EPOCH) {
                 Ok(dur) => dur.as_nanos() as u64,
                 Err(_) => return Errno::Inval as i32, // time before epoch shouldn't happen
             }
@@ -480,7 +480,7 @@ fn random_get(mut caller: wasmi::Caller<'_, WasiCtx>, buf_ptr: i32, buf_len: i32
         .expect("guest must have memory");
 
     let mut buf = vec![0u8; buf_len as usize];
-    if let Err(e) = getrandom::fill(&mut buf) {
+    if let Err(e) = getrandom::getrandom(&mut buf) {
         eprintln!("random_get failed: {:?}", e);
         return Errno::Io as i32;
     }
