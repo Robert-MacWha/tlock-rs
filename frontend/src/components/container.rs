@@ -2,7 +2,7 @@ use dioxus::prelude::*;
 
 #[derive(PartialEq, Clone, Props)]
 struct ContainerProps {
-    children: Element,
+    pub children: Element,
 }
 
 #[component]

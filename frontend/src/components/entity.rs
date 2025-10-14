@@ -13,5 +13,6 @@ pub fn Entity(props: EntityProps) -> Element {
     match props.id {
         EntityId::Vault(id) => rsx! { Vault { id: id } },
         EntityId::Page(id) => rsx! { Page {id: id} },
+        EntityId::EthProvider(_id) => rsx! { "Eth Provider" },
     }
 }

@@ -24,13 +24,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .iter()
         .for_each(|e| info!("Looked up registered entity: {}", e));
 
-    match host.balance_of(VaultId::new("bla".into())).await {
+    match host.vault_get_assets(VaultId::new("bla".into())).await {
         Ok(bal) => info!("Unexpected balance for unknown vault: {:?}", bal),
         Err(e) => info!("Expected error for unknown vault: {}", e),
     }
 
     match host
-        .balance_of(VaultId::new(
+        .vault_get_assets(VaultId::new(
             "1:0x0102030405060708090a0B0c0d0e0f1011121314".into(),
         ))
         .await

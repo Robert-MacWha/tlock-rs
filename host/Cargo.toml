@@ -5,7 +5,7 @@ edition = "2024"
 
 [dependencies]
 tlock-hdk = { path = "../tlock-hdk" }
-alloy-primitives = "1.3.1"
+alloy = "1.0.38"
 simple_logger = "5.0.0"
 thiserror = "2.0.12"
 serde = { version = "1.0.219", features = ["derive"] }

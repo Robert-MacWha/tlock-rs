@@ -40,14 +40,14 @@ const JSON_RPC_VERSION: &str = "2.0";
 
 impl JsonRpcTransport {
     pub fn new(
-        reader: Box<dyn BufRead + Send + Sync>,
-        writer: Box<dyn Write + Send + Sync>,
+        reader: impl BufRead + Send + Sync + 'static,
+        writer: impl Write + Send + Sync + 'static,
     ) -> Self {
         Self {
             id: AtomicU64::new(0),
             pending: Mutex::new(HashMap::new()),
-            reader: Mutex::new(reader),
-            writer: Mutex::new(writer),
+            reader: Mutex::new(Box::new(reader)),
+            writer: Mutex::new(Box::new(writer)),
             handler: None,
         }
     }

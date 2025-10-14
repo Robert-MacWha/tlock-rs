@@ -32,6 +32,13 @@ pub fn Vault(props: VaultProps) -> Element {
                 async move {
                     info!("Ping plugin {plugin_id}");
 
+                    // Test artificial work
+                    ping_resp.set("Doing fake work...".into());
+                    for _ in 0..20 {
+                        let resp = reqwest::get("https://httpbin.org/get").await;
+                        info!("Ping sub-request result: {resp:?}");
+                    }
+
                     let response = match state.host.ping_plugin(&plugin_id).await {
                         Ok(resp) => format!("Ping response: {resp}"),
                         Err(err) => format!("Ping error: {err}"),
@@ -47,14 +54,14 @@ pub fn Vault(props: VaultProps) -> Element {
         let vault_id = props.id.clone();
 
         move |_| {
-            balance_of_resp.set("...".into());
             spawn({
+                balance_of_resp.set("...".into());
                 let state = state.clone();
                 let vault_id = vault_id.clone();
                 async move {
                     info!("BalanceOf for vault {vault_id}");
 
-                    let response = match state.host.balance_of(vault_id).await {
+                    let response = match state.host.vault_get_assets(vault_id).await {
                         Ok(balances) => {
                             let mut resp = String::new();
                             for (asset, amount) in balances {
@@ -65,6 +72,21 @@ pub fn Vault(props: VaultProps) -> Element {
                         Err(err) => format!("BalanceOf error: {err}"),
                     };
                     balance_of_resp.set(response);
+                }
+            });
+        }
+    };
+
+    let handle_transfer = {
+        let state = state.clone();
+        let vault_id = props.id.clone();
+
+        move |_| {
+            spawn({
+                let _state = state.clone();
+                let vault_id = vault_id.clone();
+                async move {
+                    info!("Transfer from vault {vault_id}");
                 }
             });
         }
@@ -90,6 +112,12 @@ pub fn Vault(props: VaultProps) -> Element {
                             "Get Balance"
                         }
                         "{balance_of_resp}"
+                    }
+                    li {
+                        button {
+                            onclick: handle_transfer,
+                            "Transfer"
+                        }
                     }
                 }
             }

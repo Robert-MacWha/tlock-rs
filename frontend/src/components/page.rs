@@ -1,8 +1,8 @@
 use dioxus::prelude::*;
 use dioxus_logger::tracing::info;
-use tlock_hdk::tlock_api::{component::Component, entities::PageId};
+use tlock_hdk::tlock_api::{entities::PageId, page::PageEvent};
 
-use crate::contexts::host::HostContext;
+use crate::{components::component::RenderComponent, contexts::host::HostContext};
 
 #[derive(Clone, PartialEq, Props)]
 pub struct PageProps {
@@ -20,26 +20,64 @@ pub fn Page(props: PageProps) -> Element {
         None => return rsx! { div { "Page component - ID: {props.id}, Plugin: Unknown" } },
     };
 
-    let mut component = use_signal(|| Component::empty());
-
     // Initial load, fetch the page via `OnPageLoad`
-    spawn({
+    let _ = use_resource({
         let state = state.clone();
         let plugin_id = entity_plugin.id().clone();
+        move || {
+            let mut state = state.clone();
+            let plugin_id = plugin_id.clone();
 
-        async move {
-            match state.host.on_page_load(&plugin_id, interface_id).await {
-                Ok(()) => {
-                    info!("OnPageLoad success");
+            async move {
+                match state.host.page_on_load(&plugin_id, interface_id).await {
+                    Ok(()) => info!("OnPageLoad success"),
+                    Err(err) => info!("OnPageLoad error: {err}"),
                 }
-                Err(err) => {
-                    info!("OnPageLoad error: {err}");
-                }
+                state.reload_state();
             }
         }
     });
 
-    todo!()
+    let on_component_event = use_callback({
+        let state = state.clone();
+        let plugin_id = entity_plugin.id().clone();
+        move |event: PageEvent| {
+            let mut state = state.clone();
+            let plugin_id = plugin_id.clone();
+
+            spawn(async move {
+                match state
+                    .host
+                    .page_on_update(&plugin_id, interface_id, event)
+                    .await
+                {
+                    Ok(()) => info!("OnPageUpdate success"),
+                    Err(err) => info!("OnPageUpdate error: {err}"),
+                }
+                state.reload_state();
+            });
+        }
+    });
+
+    rsx!(
+        div {
+            p {
+                "Page Component"
+                ul {
+                    li { "ID: {props.id}" }
+                    li { "Plugin: {entity_plugin.name()} ({entity_plugin.id()})" }
+                    li { "Interface ID: {interface_id}" }
+                    li { "Component: ", {
+                        let interface = state.interfaces.read().get(&interface_id).cloned();
+                        match interface {
+                            Some(component) => rsx! { RenderComponent { component: component, on_event: on_component_event } },
+                            None => rsx! { "No component set for this interface." }
+                        }}
+                    }
+                }
+            }
+        }
+    )
 
     // let mut ping_resp = use_signal(|| "".to_string());
     // let mut balance_of_resp = use_signal(|| "".to_string());

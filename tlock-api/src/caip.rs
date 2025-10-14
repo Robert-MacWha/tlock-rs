@@ -1,4 +1,4 @@
-use alloy_primitives::{Address, ChainId};
+use alloy::primitives::{Address, ChainId};
 use serde::{Deserialize, Serialize};
 
 // TODO: Consider making these stricter or enums to prevent invalid IDs.

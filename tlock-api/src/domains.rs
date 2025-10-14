@@ -11,6 +11,8 @@ pub enum Domain {
     Vault,
     /// Pages can render themselves in a web UI as a whole page.
     Page,
+    /// EthProviders can provide Ethereum-style RPC access.
+    EthProvider,
 }
 
 impl Display for Domain {
@@ -18,6 +20,7 @@ impl Display for Domain {
         match self {
             Domain::Vault => write!(f, "vault"),
             Domain::Page => write!(f, "page"),
+            Domain::EthProvider => write!(f, "ethprovider"),
         }
     }
 }

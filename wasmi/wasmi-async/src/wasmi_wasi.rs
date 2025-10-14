@@ -1,6 +1,6 @@
 use std::io::{Read, Write};
 use tracing::{info, trace, warn};
-use web_time::{Instant, SystemTime};
+use web_time::SystemTime;
 
 /// A WASI context that can be attached to a wasmi instance. Attaches
 /// a subset of WASI syscalls to the instance, allowing it to

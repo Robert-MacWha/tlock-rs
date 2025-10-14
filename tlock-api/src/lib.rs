@@ -5,12 +5,9 @@ use serde::{Serialize, de::DeserializeOwned};
 use wasmi_pdk::{api::ApiError, rpc_message::RpcErrorCode, transport::Transport};
 
 pub mod caip;
-pub mod entities;
-pub use alloy_dyn_abi;
-pub use alloy_primitives;
-pub use alloy_rpc_types;
 pub mod component;
 pub mod domains;
+pub mod entities;
 
 // TODO: Consider adding a `mod sealed::Sealed {}` to prevent external impl, forcing
 // plugins to only use provided methods.
@@ -61,46 +58,51 @@ pub mod global {
 /// The host namespace contains methods for interacting with the host and
 /// performing privileged operations.
 pub mod host {
+    use alloy::transports::http::reqwest::Response;
+
     use crate::{RpcMethod, component::Component, entities::EntityId};
 
     /// Request the host registers a new entity with the given ID and this
     /// plugin as its owner.
     pub struct RegisterEntity;
-
     impl RpcMethod for RegisterEntity {
+        const NAME: &'static str = "host_register_entity";
         type Params = EntityId;
         type Output = ();
-
-        const NAME: &'static str = "host_register_entity";
     }
+
+    /// Network request
+    // pub struct Request;
+    // impl RpcMethod for Request {
+    //     const NAME: &'static str = "host_request";
+    //     type Params = Request;
+    //     type Output = Response;
+    // }
 
     /// Get the plugin's persistent state from the host.
     ///
     /// Returns `None` if no state has been stored.
     pub struct GetState;
     impl RpcMethod for GetState {
+        const NAME: &'static str = "host_get_state";
         type Params = ();
         type Output = Option<Vec<u8>>;
-
-        const NAME: &'static str = "host_get_state";
     }
 
     /// Sets the plugin's persistent state to the host.
     pub struct SetState;
     impl RpcMethod for SetState {
+        const NAME: &'static str = "host_set_state";
         type Params = Vec<u8>;
         type Output = ();
-
-        const NAME: &'static str = "host_set_state";
     }
 
     /// Sets an interface for a given interface ID.
     pub struct SetInterface;
     impl RpcMethod for SetInterface {
+        const NAME: &'static str = "host_set_interface";
         type Params = (u32, Component); // (interface_id, component)
         type Output = ();
-
-        const NAME: &'static str = "host_set_interface";
     }
 }
 
@@ -111,17 +113,43 @@ pub mod plugin {
     /// is registered.
     pub struct Init;
     impl super::RpcMethod for Init {
+        const NAME: &'static str = "plugin_init";
         type Params = ();
         type Output = ();
+    }
+}
 
-        const NAME: &'static str = "plugin_init";
+pub mod eth {
+    use alloy::rpc::types::{EthCallResponse, TransactionRequest, state::StateOverride};
+
+    use crate::RpcMethod;
+
+    pub struct BlockNumber;
+    impl RpcMethod for BlockNumber {
+        const NAME: &'static str = "eth_blockNumber";
+        type Params = ();
+        type Output = u64;
+    }
+
+    pub struct Call;
+    impl RpcMethod for Call {
+        const NAME: &'static str = "eth_call";
+        type Params = (TransactionRequest, u64, Option<StateOverride>); // (tx, block_number, state_override)
+        type Output = EthCallResponse;
+    }
+
+    pub struct GetBalance;
+    impl RpcMethod for GetBalance {
+        const NAME: &'static str = "eth_getBalance";
+        type Params = (alloy::primitives::Address, u64); // (address, block_number)
+        type Output = alloy::primitives::U256;
     }
 }
 
 /// The vault namespace contains methods for interacting with vaults, transferring
 /// funds between different accounts.
 pub mod vault {
-    use alloy_primitives::U256;
+    use alloy::primitives::U256;
 
     use crate::{
         RpcMethod,
@@ -130,51 +158,55 @@ pub mod vault {
     };
 
     /// Get the balance for all assets in a given account.
-    pub struct BalanceOf;
-    impl RpcMethod for BalanceOf {
+    pub struct GetAssets;
+    impl RpcMethod for GetAssets {
         type Params = VaultId;
         type Output = Vec<(AssetId, U256)>;
 
-        const NAME: &'static str = "vault_balance_of";
+        const NAME: &'static str = "vault_get_assets";
     }
 
-    /// Transfer an amount of some asset from this vault to another account.
-    pub struct Transfer;
-    impl RpcMethod for Transfer {
+    /// Withdraw an amount of some asset from this vault to another account.
+    pub struct Withdraw;
+    impl RpcMethod for Withdraw {
         type Params = (VaultId, AccountId, AssetId, U256); // (from, to, asset, amount)
         type Output = Result<(), String>;
 
-        const NAME: &'static str = "vault_transfer";
+        const NAME: &'static str = "vault_withdraw";
     }
 
-    /// Gets the receipt address for a particular account and asset. Accounts can
+    /// Gets the deposit address for a particular account and asset. Accounts can
     /// also use this to block deposits from unsupported assets or asset classes.
-    ///  
+    ///
     /// Because vault implementations are black boxes, any plugin sending an asset
     /// to a vault MUST first call this method to ensure the asset is supported and
     /// the destination address is correct. Destination addresses may change over time,
     /// as might the supported assets.
     /// TODO: Consider making this automatic via the host? Not sure how.
-    pub struct GetReceiptAddress;
-    impl RpcMethod for GetReceiptAddress {
+    pub struct GetDepositAddress;
+    impl RpcMethod for GetDepositAddress {
         type Params = (VaultId, AssetId); // (to, asset)
         type Output = Result<AccountId, String>;
 
-        const NAME: &'static str = "vault_get_receipt_address";
+        const NAME: &'static str = "vault_get_deposit_address";
     }
 
-    /// Receive an amount in an account. It is called by the host after a transfer
-    /// has been confirmed.
-    pub struct OnReceive;
-    impl RpcMethod for OnReceive {
-        type Params = (VaultId, AssetId); // (to, amount)
+    /// Callback for when an amount is deposited in an account.
+    /// TODO: Also strongly consider calling this automatically. Perhaps keep track
+    /// of all the times `GetDepositAddress` is called during the execution of a
+    /// plugin, and once complete call `OnDeposit` for each `GetDepositAddress` call.
+    pub struct OnDeposit;
+    impl RpcMethod for OnDeposit {
+        type Params = (VaultId, AssetId); // (to, asset)
         type Output = ();
 
-        const NAME: &'static str = "vault_receive";
+        const NAME: &'static str = "vault_on_deposit";
     }
 }
 
 pub mod page {
+    use std::collections::HashMap;
+
     use serde::{Deserialize, Serialize};
 
     use crate::RpcMethod;
@@ -182,8 +214,8 @@ pub mod page {
     /// Called by the host when a registered page is loaded in the frontend. The
     /// plugin should setup any necessary interfaces with `host::SetInterface` here,
     /// dependant on the plugin's internal state.
-    pub struct OnPageLoad;
-    impl RpcMethod for OnPageLoad {
+    pub struct OnLoad;
+    impl RpcMethod for OnLoad {
         type Params = u32; // (interface_id) // TODO Can I infer this interface id from the host? Perhaps, look into it.
         type Output = ();
 
@@ -192,12 +224,13 @@ pub mod page {
 
     #[derive(Serialize, Deserialize, Debug)]
     pub enum PageEvent {
-        ButtonClicked(u32), // (button_id)
+        ButtonClicked(String),                               // (button_id)
+        FormSubmitted(String, HashMap<String, Vec<String>>), // (form_id, form_values)
     }
 
     /// Called by the host when a registered page is updated in the frontend.
-    pub struct OnPageUpdate;
-    impl RpcMethod for OnPageUpdate {
+    pub struct OnUpdate;
+    impl RpcMethod for OnUpdate {
         type Params = (u32, PageEvent); // (interface_id, event)
         type Output = ();
 

@@ -4,7 +4,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use alloy_primitives::U256;
+use alloy::primitives::U256;
 use tlock_hdk::{
     dispatcher::{Dispatcher, RpcHandler},
     tlock_api::{
@@ -12,9 +12,9 @@ use tlock_hdk::{
         caip::{AccountId, AssetId},
         component::Component,
         domains::Domain,
-        entities::{EntityId, PageId, VaultId},
-        global, host, page, plugin,
-        vault::{self, BalanceOf},
+        entities::{EntityId, VaultId},
+        eth, global, host, page, plugin,
+        vault::{self},
     },
     wasmi_hdk::plugin::{Plugin, PluginError, PluginId},
     wasmi_pdk::{async_trait::async_trait, rpc_message::RpcErrorCode},
@@ -26,7 +26,9 @@ pub struct Host {
     entities: Mutex<HashMap<EntityId, PluginId>>,
     domains: Mutex<HashMap<Domain, Vec<EntityId>>>,
 
+    // TODO: Restrict these to a max size / otherwise prevent plugins from abusing storage
     state: Mutex<HashMap<PluginId, Vec<u8>>>,
+    interfaces: Mutex<HashMap<u32, Component>>, // interface_id -> Component
 }
 
 impl Host {
@@ -36,6 +38,7 @@ impl Host {
             entities: Mutex::new(HashMap::new()),
             domains: Mutex::new(HashMap::new()),
             state: Mutex::new(HashMap::new()),
+            interfaces: Mutex::new(HashMap::new()),
         }
     }
 
@@ -66,12 +69,15 @@ impl Host {
         dispatcher.register::<host::GetState>();
         dispatcher.register::<host::SetState>();
         dispatcher.register::<host::SetInterface>();
-        dispatcher.register::<vault::BalanceOf>();
-        dispatcher.register::<vault::Transfer>();
-        dispatcher.register::<vault::GetReceiptAddress>();
-        dispatcher.register::<vault::OnReceive>();
-        dispatcher.register::<page::OnPageLoad>();
-        dispatcher.register::<page::OnPageUpdate>();
+        dispatcher.register::<vault::GetAssets>();
+        dispatcher.register::<vault::Withdraw>();
+        dispatcher.register::<vault::GetDepositAddress>();
+        dispatcher.register::<vault::OnDeposit>();
+        dispatcher.register::<page::OnLoad>();
+        dispatcher.register::<page::OnUpdate>();
+        dispatcher.register::<eth::BlockNumber>();
+        dispatcher.register::<eth::Call>();
+        dispatcher.register::<eth::GetBalance>();
 
         let dispatcher = Arc::new(dispatcher);
         dispatcher
@@ -141,6 +147,16 @@ impl Host {
         self.get_plugin(&plugin_id)
     }
 
+    pub fn get_interfaces(&self) -> HashMap<u32, Component> {
+        let interfaces = self.interfaces.lock().unwrap();
+        interfaces.clone()
+    }
+
+    pub fn get_interface(&self, interface_id: u32) -> Option<Component> {
+        let interfaces = self.interfaces.lock().unwrap();
+        interfaces.get(&interface_id).cloned()
+    }
+
     ///? Helper to get the plugin or return an RpcErrorCode if not found
     fn get_entity_plugin_error(&self, entity_id: &EntityId) -> Result<Arc<Plugin>, RpcErrorCode> {
         let plugin = self.get_entity_plugin(entity_id).ok_or_else(|| {
@@ -165,6 +181,8 @@ impl Host {
         Ok(resp)
     }
 }
+
+// TODO: I should use a macro to reduce boilerplate, and also add permission checks + proper logging.
 
 impl Host {
     pub fn ping(&self) -> Result<String, RpcErrorCode> {
@@ -225,24 +243,29 @@ impl Host {
             "Plugin {} requested set interface {}: {:?}",
             plugin_id, interface_id, component
         );
+
+        self.interfaces
+            .lock()
+            .unwrap()
+            .insert(interface_id, component);
         Ok(())
     }
 
-    pub async fn balance_of(
+    pub async fn vault_get_assets(
         &self,
         vault_id: VaultId,
     ) -> Result<Vec<(AssetId, U256)>, RpcErrorCode> {
         let entity_id = vault_id.as_entity_id();
         let plugin = self.get_entity_plugin_error(&entity_id)?;
 
-        let balance = BalanceOf.call(plugin, vault_id).await.map_err(|e| {
+        let balance = vault::GetAssets.call(plugin, vault_id).await.map_err(|e| {
             warn!("Error calling BalanceOf: {:?}", e);
             e.as_rpc_code()
         })?;
         Ok(balance)
     }
 
-    pub async fn transfer(
+    pub async fn vault_withdraw(
         &self,
         vault_id: VaultId,
         to: AccountId,
@@ -252,7 +275,7 @@ impl Host {
         let entity_id = vault_id.as_entity_id();
         let plugin = self.get_entity_plugin_error(&entity_id)?;
 
-        let result = vault::Transfer
+        let result = vault::Withdraw
             .call(plugin, (vault_id, to, asset, amount))
             .await
             .map_err(|e| {
@@ -262,7 +285,7 @@ impl Host {
         Ok(result)
     }
 
-    pub async fn get_receipt_address(
+    pub async fn vault_get_deposit_address(
         &self,
         vault_id: VaultId,
         asset: AssetId,
@@ -270,7 +293,7 @@ impl Host {
         let entity_id = vault_id.as_entity_id();
         let plugin = self.get_entity_plugin_error(&entity_id)?;
 
-        let result = vault::GetReceiptAddress
+        let result = vault::GetDepositAddress
             .call(plugin, (vault_id, asset))
             .await
             .map_err(|e| {
@@ -280,11 +303,15 @@ impl Host {
         Ok(result)
     }
 
-    pub async fn on_receive(&self, vault_id: VaultId, asset: AssetId) -> Result<(), RpcErrorCode> {
+    pub async fn vault_on_deposit(
+        &self,
+        vault_id: VaultId,
+        asset: AssetId,
+    ) -> Result<(), RpcErrorCode> {
         let entity_id = vault_id.as_entity_id();
         let plugin = self.get_entity_plugin_error(&entity_id)?;
 
-        vault::OnReceive
+        vault::OnDeposit
             .call(plugin, (vault_id, asset))
             .await
             .map_err(|e| {
@@ -294,7 +321,7 @@ impl Host {
         Ok(())
     }
 
-    pub async fn on_page_load(
+    pub async fn page_on_load(
         &self,
         plugin_id: &PluginId,
         interface_id: u32,
@@ -306,17 +333,14 @@ impl Host {
             return Err(RpcErrorCode::InvalidParams);
         };
 
-        page::OnPageLoad
-            .call(plugin, interface_id)
-            .await
-            .map_err(|e| {
-                warn!("Error calling OnPageLoad on plugin {}: {:?}", plugin_id, e);
-                e.as_rpc_code()
-            })?;
+        page::OnLoad.call(plugin, interface_id).await.map_err(|e| {
+            warn!("Error calling OnPageLoad on plugin {}: {:?}", plugin_id, e);
+            e.as_rpc_code()
+        })?;
         Ok(())
     }
 
-    pub async fn on_page_update(
+    pub async fn page_on_update(
         &self,
         plugin_id: &PluginId,
         interface_id: u32,
@@ -329,7 +353,7 @@ impl Host {
             return Err(RpcErrorCode::InvalidParams);
         };
 
-        page::OnPageUpdate
+        page::OnUpdate
             .call(plugin, (interface_id, event))
             .await
             .map_err(|e| {
@@ -341,7 +365,65 @@ impl Host {
             })?;
         Ok(())
     }
+
+    pub async fn eth_provider_block_number(
+        &self,
+        plugin_id: &PluginId,
+    ) -> Result<u64, RpcErrorCode> {
+        let plugin = if let Some(plugin) = self.get_plugin(plugin_id) {
+            plugin
+        } else {
+            warn!("Plugin {} not found", plugin_id);
+            return Err(RpcErrorCode::InvalidParams);
+        };
+
+        let block_number = eth::BlockNumber.call(plugin, ()).await.map_err(|e| {
+            warn!("Error calling BlockNumber on plugin {}: {:?}", plugin_id, e);
+            e.as_rpc_code()
+        })?;
+        Ok(block_number)
+    }
+
+    pub async fn eth_provider_call(
+        &self,
+        plugin_id: &PluginId,
+        params: <eth::Call as RpcMethod>::Params,
+    ) -> Result<<eth::Call as RpcMethod>::Output, RpcErrorCode> {
+        let plugin = if let Some(plugin) = self.get_plugin(plugin_id) {
+            plugin
+        } else {
+            warn!("Plugin {} not found", plugin_id);
+            return Err(RpcErrorCode::InvalidParams);
+        };
+
+        let resp = eth::Call.call(plugin, params).await.map_err(|e| {
+            warn!("Error calling Call on plugin {}: {:?}", plugin_id, e);
+            e.as_rpc_code()
+        })?;
+        Ok(resp)
+    }
+
+    pub async fn eth_provider_get_balance(
+        &self,
+        plugin_id: &PluginId,
+        params: <eth::GetBalance as RpcMethod>::Params,
+    ) -> Result<<eth::GetBalance as RpcMethod>::Output, RpcErrorCode> {
+        let plugin = if let Some(plugin) = self.get_plugin(plugin_id) {
+            plugin
+        } else {
+            warn!("Plugin {} not found", plugin_id);
+            return Err(RpcErrorCode::InvalidParams);
+        };
+
+        let resp = eth::GetBalance.call(plugin, params).await.map_err(|e| {
+            warn!("Error calling GetBalance on plugin {}: {:?}", plugin_id, e);
+            e.as_rpc_code()
+        })?;
+        Ok(resp)
+    }
 }
+
+// TODO: I can totally use a macro for all this boilerplate
 
 #[async_trait]
 impl RpcHandler<global::Ping> for Host {
@@ -396,19 +478,19 @@ impl RpcHandler<host::SetInterface> for Host {
 }
 
 #[async_trait]
-impl RpcHandler<vault::BalanceOf> for Host {
+impl RpcHandler<vault::GetAssets> for Host {
     async fn invoke(
         &self,
         plugin_id: PluginId,
         vault_id: VaultId,
     ) -> Result<Vec<(AssetId, U256)>, RpcErrorCode> {
         info!("Plugin {} requested balance of {:?}", plugin_id, vault_id);
-        self.balance_of(vault_id).await
+        self.vault_get_assets(vault_id).await
     }
 }
 
 #[async_trait]
-impl RpcHandler<vault::Transfer> for Host {
+impl RpcHandler<vault::Withdraw> for Host {
     async fn invoke(
         &self,
         plugin_id: PluginId,
@@ -420,12 +502,12 @@ impl RpcHandler<vault::Transfer> for Host {
             plugin_id, amount, asset, vault, to
         );
 
-        self.transfer(vault, to, asset, amount).await
+        self.vault_withdraw(vault, to, asset, amount).await
     }
 }
 
 #[async_trait]
-impl RpcHandler<vault::GetReceiptAddress> for Host {
+impl RpcHandler<vault::GetDepositAddress> for Host {
     async fn invoke(
         &self,
         plugin_id: PluginId,
@@ -437,12 +519,12 @@ impl RpcHandler<vault::GetReceiptAddress> for Host {
             plugin_id, asset, vault_id
         );
 
-        self.get_receipt_address(vault_id, asset).await
+        self.vault_get_deposit_address(vault_id, asset).await
     }
 }
 
 #[async_trait]
-impl RpcHandler<vault::OnReceive> for Host {
+impl RpcHandler<vault::OnDeposit> for Host {
     async fn invoke(
         &self,
         plugin_id: PluginId,
@@ -454,23 +536,23 @@ impl RpcHandler<vault::OnReceive> for Host {
             plugin_id, asset, vault_id
         );
 
-        self.on_receive(vault_id, asset).await
+        self.vault_on_deposit(vault_id, asset).await
     }
 }
 
 #[async_trait]
-impl RpcHandler<page::OnPageLoad> for Host {
+impl RpcHandler<page::OnLoad> for Host {
     async fn invoke(&self, plugin_id: PluginId, interface_id: u32) -> Result<(), RpcErrorCode> {
         info!(
             "Plugin {} requested OnPageLoad for interface {}",
             plugin_id, interface_id
         );
-        self.on_page_load(&plugin_id, interface_id).await
+        self.page_on_load(&plugin_id, interface_id).await
     }
 }
 
 #[async_trait]
-impl RpcHandler<page::OnPageUpdate> for Host {
+impl RpcHandler<page::OnUpdate> for Host {
     async fn invoke(
         &self,
         plugin_id: PluginId,
@@ -480,6 +562,44 @@ impl RpcHandler<page::OnPageUpdate> for Host {
             "Plugin {} sent OnPageUpdate for interface {}: {:?}",
             plugin_id, interface_id, event
         );
-        self.on_page_update(&plugin_id, interface_id, event).await
+        self.page_on_update(&plugin_id, interface_id, event).await
+    }
+}
+
+#[async_trait]
+impl RpcHandler<eth::BlockNumber> for Host {
+    async fn invoke(&self, plugin_id: PluginId, _params: ()) -> Result<u64, RpcErrorCode> {
+        info!("Plugin {} requested BlockNumber", plugin_id);
+        self.eth_provider_block_number(&plugin_id).await
+    }
+}
+
+#[async_trait]
+impl RpcHandler<eth::Call> for Host {
+    async fn invoke(
+        &self,
+        plugin_id: PluginId,
+        params: <eth::Call as RpcMethod>::Params,
+    ) -> Result<<eth::Call as RpcMethod>::Output, RpcErrorCode> {
+        info!(
+            "Plugin {} requested Call with params {:?}",
+            plugin_id, params
+        );
+        self.eth_provider_call(&plugin_id, params).await
+    }
+}
+
+#[async_trait]
+impl RpcHandler<eth::GetBalance> for Host {
+    async fn invoke(
+        &self,
+        plugin_id: PluginId,
+        params: <eth::GetBalance as RpcMethod>::Params,
+    ) -> Result<<eth::GetBalance as RpcMethod>::Output, RpcErrorCode> {
+        info!(
+            "Plugin {} requested GetBalance with params {:?}",
+            plugin_id, params
+        );
+        self.eth_provider_get_balance(&plugin_id, params).await
     }
 }

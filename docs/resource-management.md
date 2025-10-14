@@ -4,15 +4,15 @@ Tlock is a plugin-first architecture.  I aim to implement everything I can withi
 
 Key resources:
 - Domains
-  - Domains are the typed contracts used to interact with plugins.  A single domain represent a single "kind" of object. Domains can include eip155 chain providers, eip155 eoa keyrings, asset types, transaction scanners, notifiers, and more.  Domains are intentionally generic and defer decisions to their implementation when possible.
+  - Domains are the typed interfaces used to interact with plugins. A single domain represents a single kind of object. Domains might represent Vaults, Data Providers, User Interfaces, Popups, etc.
 - Plugins
-  - Plugins are functional implementations of a domain's contract. Plugins may implement multiple domains, in which case the entity instances will also implement all the domains.
+  - Plugins are implementations of a domain's interface. Plugins may implement multiple domains, and may register entities to expoe this behavior.
 - Entities
-  - Entities represent a single logical object known by the host.
+  - Entities are instances of objects that implement domains. Each entity belongs to a single domain and is implemented by a plugin.
 
-Importantly, there will generally be a 1:many relationship between plugins and entities.  A single plugin may initialize and manage many entities, all with shared state.
+Importantly, there will generally be a 1:many relationship between plugins and entities. A single plugin may initialize and manage many entities, all with shared state.
 
-> For example: The Eip155Keyring domain can manage multiple eip155 addresses, something we want since those multiple addresse may be derived from shared state (IE a single seed phrase). In this case there are multiple Eip155Address **entities** corresponding to a single eip155Keyring **plugin**.
+> For example: The Vault domain can manage multiple vault addresses, something we want since those multiple addresse may be derived from shared state (IE a single seed phrase). In this case there are multiple vault **entities** pointing to a single plugin for their functionality.
 
 ## Routing
 
@@ -22,7 +22,7 @@ One of the host's key jobs is the routing of messages to the respective plugin. 
 
 Requests are specific messages that should be sent to a single, unique entity.  Often the caller of the request will expect a definitive response, and will wait on that response before proceeding.  The host knows which plugin to route requests to via scoping rules exposed by the plugins. A plugin creating or modifying an entity must attach scoping rules which are dependant on the entity's type. Generally these scoping rules are based on caip asset IDs. 
 
-> For example an Eip155Address entity may have the scoping rule `eip155:1:0x8f72fcf695523A6FC7DD97EafDd7A083c386b7b6`, `eip155:56:0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48`, or `eip155:_:0x799d0db297dc1b5d114f3562c1ec30c9f7fdae39`. Requests will be forwarded to entities when the request's scope matches the entity's scope, and preferentially be forwarded to more specifically scoped entities.
+> For example a vault entity may have the scoping rule `eip155:1:0x8f72fcf695523A6FC7DD97EafDd7A083c386b7b6`, `eip155:56:0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48`, or `eip155:_:0x799d0db297dc1b5d114f3562c1ec30c9f7fdae39`. Requests will be forwarded to entities when the request's scope matches the entity's scope, and preferentially be forwarded to more specifically scoped entities.
 
 Different domains will have different scoping rules. So a `eth_personal` request may follow the caip-10 ID for scoping, while `eth_block_number` will follow caip-10. In cases where routing can't be inferred automatically (for example with `keyring_createAccount` or `tlock_ping`), the plugin ID will be used to select a specific plugin. 
 
