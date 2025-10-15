@@ -5,6 +5,7 @@ use tlock_pdk::{
     async_trait::async_trait,
     dispatcher::{Dispatcher, RpcHandler},
     futures::executor::block_on,
+    state::{get_state, set_state},
     tlock_api::{
         RpcMethod,
         caip::{AccountId, AssetId},
@@ -34,34 +35,6 @@ impl MyVaultPlugin {
         Self {
             transport: transport,
         }
-    }
-
-    async fn get_state(&self) -> Result<PluginState, RpcErrorCode> {
-        let state_bytes = host::GetState
-            .call(self.transport.clone(), ())
-            .await?
-            .ok_or_else(|| {
-                error!("State is empty");
-                RpcErrorCode::InternalError
-            })?;
-
-        let state: PluginState = serde_json::from_slice(&state_bytes).map_err(|e| {
-            error!("Failed to deserialize state: {}", e);
-            RpcErrorCode::InternalError
-        })?;
-
-        Ok(state)
-    }
-
-    async fn set_state(&self, state: &PluginState) -> Result<(), RpcErrorCode> {
-        let state_bytes = serde_json::to_vec(state).map_err(|e| {
-            error!("Failed to serialize state: {}", e);
-            RpcErrorCode::InternalError
-        })?;
-
-        host::SetState
-            .call(self.transport.clone(), state_bytes)
-            .await
     }
 }
 
@@ -94,10 +67,7 @@ impl RpcHandler<vault::GetAssets> for MyVaultPlugin {
         info!("Received BalanceOf request for vault: {}", vault_id);
 
         //? Retrieve the plugin state to get the vault account ID
-        let Ok(state) = self.get_state().await else {
-            error!("Failed to get plugin state");
-            return Err(RpcErrorCode::InternalError);
-        };
+        let state: PluginState = get_state(self.transport.clone()).await?;
 
         let vaults = state.vaults;
         let private_key = vaults.get(&vault_id).ok_or_else(|| {
@@ -180,9 +150,9 @@ impl RpcHandler<page::OnUpdate> for MyVaultPlugin {
                     .await?;
 
                 // Save the vault ID and private key in the plugin state
-                let mut state = self.get_state().await.unwrap_or_default();
+                let mut state: PluginState = get_state(self.transport.clone()).await?;
                 state.vaults.insert(vault_id, private_key_hex.clone());
-                self.set_state(&state).await?;
+                set_state(self.transport.clone(), &state).await?;
 
                 let component = container(vec![
                     heading("Vault Component"),
@@ -228,10 +198,10 @@ impl RpcHandler<page::OnUpdate> for MyVaultPlugin {
                     .await?;
 
                 // Save the vault ID and private key in the plugin state
-                let state = self.get_state().await.unwrap_or_default();
-                let mut state = state;
+                let mut state: PluginState =
+                    get_state(self.transport.clone()).await.unwrap_or_default();
                 state.vaults.insert(vault_id, private_key.clone());
-                self.set_state(&state).await?;
+                set_state(self.transport.clone(), &state).await?;
 
                 let component = container(vec![
                     heading("Vault Component"),
