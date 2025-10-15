@@ -58,7 +58,8 @@ pub mod global {
 /// The host namespace contains methods for interacting with the host and
 /// performing privileged operations.
 pub mod host {
-    use alloy::transports::http::reqwest::Response;
+    use alloy::transports::http::reqwest::Error;
+    use serde::{Deserialize, Serialize};
 
     use crate::{RpcMethod, component::Component, entities::EntityId};
 
@@ -71,13 +72,22 @@ pub mod host {
         type Output = ();
     }
 
-    /// Network request
-    // pub struct Request;
-    // impl RpcMethod for Request {
-    //     const NAME: &'static str = "host_request";
-    //     type Params = Request;
-    //     type Output = Response;
-    // }
+    /// Make a network request
+    pub struct Fetch;
+
+    #[derive(Serialize, Deserialize, Clone, Debug)]
+    pub struct Request {
+        pub url: String,
+        pub method: String,
+        pub headers: Vec<(String, String)>,
+        pub body: Option<Vec<u8>>,
+    }
+
+    impl RpcMethod for Fetch {
+        const NAME: &'static str = "host_fetch";
+        type Params = Request;
+        type Output = Result<Vec<u8>, String>;
+    }
 
     /// Get the plugin's persistent state from the host.
     ///

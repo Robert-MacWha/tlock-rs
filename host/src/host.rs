@@ -4,7 +4,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use alloy::primitives::U256;
+use alloy::{primitives::U256, rpc::types::request, transports::http::reqwest};
 use tlock_hdk::{
     dispatcher::{Dispatcher, RpcHandler},
     tlock_api::{
@@ -66,6 +66,7 @@ impl Host {
         let mut dispatcher = Dispatcher::new(Arc::downgrade(&self));
         dispatcher.register::<global::Ping>();
         dispatcher.register::<host::RegisterEntity>();
+        dispatcher.register::<host::Fetch>();
         dispatcher.register::<host::GetState>();
         dispatcher.register::<host::SetState>();
         dispatcher.register::<host::SetInterface>();
@@ -215,6 +216,50 @@ impl Host {
             .or_default()
             .push(entity_id.clone());
         Ok(())
+    }
+
+    pub async fn fetch(&self, plugin_id: &PluginId, req: host::Request) -> Result<Vec<u8>, String> {
+        info!("Plugin {} requested fetch: {:?}", plugin_id, req);
+
+        let client = reqwest::Client::new();
+
+        let mut headers = reqwest::header::HeaderMap::new();
+        for (key, value) in req.headers.iter() {
+            if let (Ok(name), Ok(val)) = (
+                reqwest::header::HeaderName::from_bytes(key.as_bytes()),
+                reqwest::header::HeaderValue::from_str(value),
+            ) {
+                headers.insert(name, val);
+            }
+        }
+
+        match req.method.as_str() {
+            "get" => {
+                let resp = client
+                    .get(req.url)
+                    .headers(headers)
+                    .send()
+                    .await
+                    .map_err(|e| e.to_string())?;
+                let bytes = resp.bytes().await.map_err(|e| e.to_string())?;
+                return Ok(bytes.to_vec());
+            }
+            "post" => {
+                let resp = client
+                    .post(req.url)
+                    .headers(headers)
+                    .body(req.body.unwrap_or_default())
+                    .send()
+                    .await
+                    .map_err(|e| e.to_string())?;
+                let bytes = resp.bytes().await.map_err(|e| e.to_string())?;
+                return Ok(bytes.to_vec());
+            }
+            _ => {
+                warn!("Unsupported HTTP method: {}", req.method);
+                return Err("Unsupported HTTP method".to_string());
+            }
+        }
     }
 
     pub async fn get_state(&self, plugin_id: &PluginId) -> Result<Option<Vec<u8>>, RpcErrorCode> {
@@ -441,6 +486,18 @@ impl RpcHandler<host::RegisterEntity> for Host {
             plugin_id, entity_id
         );
         self.register_entity(&plugin_id, entity_id)
+    }
+}
+
+#[async_trait]
+impl RpcHandler<host::Fetch> for Host {
+    async fn invoke(
+        &self,
+        plugin_id: PluginId,
+        req: host::Request,
+    ) -> Result<Result<Vec<u8>, String>, RpcErrorCode> {
+        info!("Plugin {} requested fetch: {:?}", plugin_id, req);
+        Ok(self.fetch(&plugin_id, req).await)
     }
 }
 
