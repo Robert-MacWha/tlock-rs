@@ -4,7 +4,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use alloy::{primitives::U256, rpc::types::request, transports::http::reqwest};
+use alloy::{primitives::U256, transports::http::reqwest};
 use tlock_hdk::{
     dispatcher::{Dispatcher, RpcHandler},
     tlock_api::{

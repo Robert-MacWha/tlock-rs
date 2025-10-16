@@ -58,7 +58,7 @@ pub mod global {
 /// The host namespace contains methods for interacting with the host and
 /// performing privileged operations.
 pub mod host {
-    use alloy::transports::http::reqwest::Error;
+    
     use serde::{Deserialize, Serialize};
 
     use crate::{RpcMethod, component::Component, entities::EntityId};
