@@ -80,6 +80,14 @@ pub fn add_to_linker(linker: &mut wasmi::Linker<WasiCtx>) -> Result<(), wasmi::E
     linker.func_wrap("wasi_snapshot_preview1", "proc_exit", proc_exit)?;
     // TODO: Implement actual yielding once I figure out how
     linker.func_wrap("wasi_snapshot_preview1", "sched_yield", || -> i32 { 0 })?;
+    // TODO: Consider implementing the socket_* methods
+    // This would let any networking be done inside the guest, which is cool.  But it also means
+    // I need to introduce permissions in the WasICTX and that plugins will be able to send arbitrary
+    // requests to arbitrary hosts over tcp/udp, which might be a security concern.  Same reason browsers
+    // block raw sockets.
+    //
+    // I want plugins to be able to open raw sockets, but maybe it's best to do this via a host call so I can have
+    // extremely tight permissions.
 
     Ok(())
 }

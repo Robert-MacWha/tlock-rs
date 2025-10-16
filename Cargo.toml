@@ -7,6 +7,7 @@ members = [
     "tlock-api",
     "plugins/plugin-template",
     "plugins/example-vault",
+    "plugins/eth-provider",
     "wasmi/runtime",
     "wasmi/wasmi-async",
     "wasmi/wasmi-pdk",

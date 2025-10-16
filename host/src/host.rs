@@ -227,7 +227,7 @@ impl Host {
         for (key, value) in req.headers.iter() {
             if let (Ok(name), Ok(val)) = (
                 reqwest::header::HeaderName::from_bytes(key.as_bytes()),
-                reqwest::header::HeaderValue::from_str(value),
+                reqwest::header::HeaderValue::from_bytes(value),
             ) {
                 headers.insert(name, val);
             }

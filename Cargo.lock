@@ -2554,6 +2554,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "eth-provider"
+version = "0.1.0"
+dependencies = [
+ "alloy",
+ "alloy-json-rpc",
+ "serde",
+ "serde_json",
+ "tlock-pdk",
+ "tower-service",
+]
+
+[[package]]
 name = "euclid"
 version = "0.22.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6770,6 +6782,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "futures",
+ "serde",
  "serde_json",
  "tlock-api",
  "wasmi-pdk",

@@ -79,7 +79,7 @@ pub mod host {
     pub struct Request {
         pub url: String,
         pub method: String,
-        pub headers: Vec<(String, String)>,
+        pub headers: Vec<(String, Vec<u8>)>,
         pub body: Option<Vec<u8>>,
     }
 
