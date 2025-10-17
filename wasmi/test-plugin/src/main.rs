@@ -23,7 +23,8 @@ impl MyPlugin {
     }
 }
 
-#[async_trait]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl RequestHandler<RpcErrorCode> for MyPlugin {
     async fn handle(&self, method: &str, params: Value) -> Result<Value, RpcErrorCode> {
         info!("Received method: {}, params: {:?}", method, params);

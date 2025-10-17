@@ -3,8 +3,6 @@ name = "frontend"
 version = "0.1.0"
 edition = "2024"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
 host = { path = "../host" }
 tlock-hdk = { path = "../tlock-hdk" }
@@ -13,6 +11,8 @@ dioxus-logger = "0.6.2"
 tracing-log = "0.2.0"
 futures = "0.3.31"
 reqwest = "0.12.23"
+console_error_panic_hook = "0.1.7"
+serde_json = "1.0.143"
 
 [features]
 default = ["web"]

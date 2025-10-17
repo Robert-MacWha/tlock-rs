@@ -1,5 +1,5 @@
 use std::io::{Read, Write};
-use tracing::{info, trace, warn};
+use tracing::{debug, info, trace, warn};
 use web_time::SystemTime;
 
 /// A WASI context that can be attached to a wasmi instance. Attaches

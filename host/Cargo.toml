@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 tlock-hdk = { path = "../tlock-hdk" }
+wasmi-async = { path = "../wasmi/wasmi-async" }
 alloy = "1.0.38"
 simple_logger = "5.0.0"
 thiserror = "2.0.12"
@@ -13,3 +14,4 @@ serde_json = "1.0.143"
 tokio = { version = "1.47.1", features = ["rt", "macros"] }
 tracing = "0.1.41"
 tracing-subscriber = "0.3.20"
+

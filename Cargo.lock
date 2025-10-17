@@ -2753,11 +2753,13 @@ dependencies = [
 name = "frontend"
 version = "0.1.0"
 dependencies = [
+ "console_error_panic_hook",
  "dioxus",
  "dioxus-logger",
  "futures",
  "host",
  "reqwest",
+ "serde_json",
  "tlock-hdk",
  "tracing-log",
 ]
@@ -3389,6 +3391,7 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "wasmi-async",
 ]
 
 [[package]]

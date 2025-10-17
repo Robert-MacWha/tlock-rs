@@ -38,7 +38,8 @@ impl MyVaultPlugin {
     }
 }
 
-#[async_trait]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl RpcHandler<plugin::Init> for MyVaultPlugin {
     async fn invoke(&self, _params: ()) -> Result<(), RpcErrorCode> {
         info!("Calling Init on Vault Plugin");
@@ -53,7 +54,8 @@ impl RpcHandler<plugin::Init> for MyVaultPlugin {
     }
 }
 
-#[async_trait]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl RpcHandler<global::Ping> for MyVaultPlugin {
     async fn invoke(&self, _params: ()) -> Result<String, RpcErrorCode> {
         global::Ping.call(self.transport.clone(), ()).await?;
@@ -61,7 +63,8 @@ impl RpcHandler<global::Ping> for MyVaultPlugin {
     }
 }
 
-#[async_trait]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl RpcHandler<vault::GetAssets> for MyVaultPlugin {
     async fn invoke(&self, vault_id: VaultId) -> Result<Vec<(AssetId, U256)>, RpcErrorCode> {
         info!("Received BalanceOf request for vault: {}", vault_id);
@@ -101,7 +104,8 @@ fn fib(n: u32) -> u64 {
     }
 }
 
-#[async_trait]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl RpcHandler<page::OnLoad> for MyVaultPlugin {
     async fn invoke(&self, page_id: u32) -> Result<(), RpcErrorCode> {
         info!("OnPageLoad called for page ID: {}", page_id);
@@ -127,7 +131,8 @@ impl RpcHandler<page::OnLoad> for MyVaultPlugin {
     }
 }
 
-#[async_trait]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl RpcHandler<page::OnUpdate> for MyVaultPlugin {
     async fn invoke(&self, (page_id, event): (u32, page::PageEvent)) -> Result<(), RpcErrorCode> {
         info!("Page updated in Vault Plugin: {:?}", event);

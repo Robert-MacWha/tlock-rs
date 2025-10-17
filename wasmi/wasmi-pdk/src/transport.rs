@@ -18,7 +18,8 @@ use crate::{
     rpc_message::{RpcError, RpcErrorCode, RpcErrorResponse, RpcMessage, RpcRequest, RpcResponse},
 };
 
-#[async_trait]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 pub trait Transport<E: ApiError> {
     async fn call(&self, method: &str, params: Value) -> Result<RpcResponse, E>;
 }
@@ -67,7 +68,8 @@ impl JsonRpcTransport {
     }
 }
 
-#[async_trait]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl Transport<RpcErrorCode> for JsonRpcTransport {
     /// Sends a json-rpc request and waits for the response. `Call` does not
     /// pump the reader, so you must call `process_next_line` in another task

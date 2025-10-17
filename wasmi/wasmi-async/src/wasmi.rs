@@ -2,7 +2,7 @@ use std::sync::{Arc, atomic::AtomicBool};
 
 use runtime::yield_now;
 use thiserror::Error;
-use tracing::{error, trace};
+use tracing::{error, info, trace};
 use wasmi::{Func, Store};
 
 #[derive(Error, Debug)]
@@ -28,7 +28,7 @@ pub enum RunError {
 /// async yielding into the `run_wasm` function so it works better in single-thread
 /// environments (like within wasm when building to target the web).  If this later
 /// becomes a performance issue we can test it properly.
-const MAX_FUEL: u64 = 10_000;
+const MAX_FUEL: u64 = 100_000;
 
 pub fn spawn_wasm<T: Send + Sync + 'static>(
     store: Store<T>,

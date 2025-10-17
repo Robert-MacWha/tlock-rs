@@ -5,15 +5,66 @@ use dioxus::{
 use frontend::{components::entity::Entity, contexts::host::HostContext};
 use host::host::Host;
 use std::sync::Arc;
+use tlock_hdk::{tlock_api, wasmi_hdk::plugin::PluginId};
 fn main() {
+    console_error_panic_hook::set_once();
     dioxus::launch(app);
 }
 
 #[component]
 fn app() -> Element {
     let host = Arc::new(Host::new());
-    let host_context = HostContext::new(host);
+    let host_context = HostContext::new(host.clone());
     use_context_provider(|| host_context);
+
+    let block_number = use_resource({
+        let host = host.clone();
+        move || {
+            let host = host.clone();
+            async move {
+                // let client = reqwest::Client::new();
+                // let req = client
+                //     .post("https://eth.llamarpc.com")
+                //     .json(&serde_json::json!({
+                //         "jsonrpc": "2.0",
+                //         "method": "eth_blockNumber",
+                //         "params": [],
+                //         "id": 1,
+                //     }));
+
+                // info!("Sending block number request: {:?}", req);
+                // let resp = req.send().await.unwrap();
+                // info!("Received block number response: {:?}", resp);
+                // let resp_json: serde_json::Value = resp.json().await.unwrap();
+                // info!("Fetched block number response: {:?}", resp_json);
+
+                let resp = host
+                    .fetch(
+                        &"test plugin".into(),
+                        tlock_api::host::Request {
+                            url: "https://eth.llamarpc.com".to_string(),
+                            method: "POST".to_string(),
+                            headers: vec![(
+                                "Content-Type".to_string(),
+                                "application/json".as_bytes().into(),
+                            )],
+                            body: Some(
+                                serde_json::to_vec(&serde_json::json!({
+                                    "jsonrpc": "2.0",
+                                    "method": "eth_blockNumber",
+                                    "params": [],
+                                    "id": 1,
+                                }))
+                                .unwrap(),
+                            ),
+                        },
+                    )
+                    .await;
+
+                info!("Fetched block number response: {:?}", resp);
+            }
+        }
+    });
 
     rsx! {
         document::Stylesheet { href: asset!("/assets/bootstrap.css") }

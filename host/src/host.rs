@@ -17,7 +17,7 @@ use tlock_hdk::{
         vault::{self},
     },
     wasmi_hdk::plugin::{Plugin, PluginError, PluginId},
-    wasmi_pdk::{async_trait::async_trait, rpc_message::RpcErrorCode},
+    wasmi_pdk::{async_trait::async_trait, futures, rpc_message::RpcErrorCode},
 };
 use tracing::{info, warn};
 
@@ -221,8 +221,6 @@ impl Host {
     pub async fn fetch(&self, plugin_id: &PluginId, req: host::Request) -> Result<Vec<u8>, String> {
         info!("Plugin {} requested fetch: {:?}", plugin_id, req);
 
-        let client = reqwest::Client::new();
-
         let mut headers = reqwest::header::HeaderMap::new();
         for (key, value) in req.headers.iter() {
             if let (Ok(name), Ok(val)) = (
@@ -233,33 +231,42 @@ impl Host {
             }
         }
 
-        match req.method.as_str() {
-            "get" => {
-                let resp = client
-                    .get(req.url)
-                    .headers(headers)
-                    .send()
-                    .await
-                    .map_err(|e| e.to_string())?;
-                let bytes = resp.bytes().await.map_err(|e| e.to_string())?;
-                return Ok(bytes.to_vec());
-            }
+        let client = reqwest::Client::new();
+        let request = match req.method.to_lowercase().as_str() {
+            "get" => client.get(req.url).headers(headers),
             "post" => {
-                let resp = client
-                    .post(req.url)
-                    .headers(headers)
-                    .body(req.body.unwrap_or_default())
-                    .send()
-                    .await
-                    .map_err(|e| e.to_string())?;
-                let bytes = resp.bytes().await.map_err(|e| e.to_string())?;
-                return Ok(bytes.to_vec());
+                let body = req.body.clone().unwrap_or_default();
+                client.post(req.url).headers(headers).body(body)
             }
             _ => {
                 warn!("Unsupported HTTP method: {}", req.method);
                 return Err("Unsupported HTTP method".to_string());
             }
-        }
+        };
+
+        info!("Sending request: {:?}", request);
+        let resp = request.send();
+        futures::pin_mut!(resp);
+        let resp = std::future::poll_fn(|cx| {
+            info!("Polling request.send()");
+            resp.as_mut().poll(cx)
+        })
+        .await
+        .map_err(|e| e.to_string())?;
+        info!("Received response: {:?}", resp);
+
+        let bytes = resp.bytes().await.map_err(|e| e.to_string())?;
+        info!("Response bytes: {:?}", bytes);
+
+        Ok(bytes.to_vec())
+
+        // info!("Sending request: {:?}", request);
+
+        // let resp = request.send().await.map_err(|e| e.to_string())?;
+        // info!("Received response: {:?}", resp);
+        // let bytes = resp.bytes().await.map_err(|e| e.to_string())?;
+        // info!("Response bytes: {:?}", bytes);
+        // Ok(bytes.to_vec())
     }
 
     pub async fn get_state(&self, plugin_id: &PluginId) -> Result<Option<Vec<u8>>, RpcErrorCode> {
@@ -470,7 +477,8 @@ impl Host {
 
 // TODO: I can totally use a macro for all this boilerplate
 
-#[async_trait]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl RpcHandler<global::Ping> for Host {
     async fn invoke(&self, plugin_id: PluginId, _params: ()) -> Result<String, RpcErrorCode> {
         info!("Plugin {} sent ping", plugin_id);
@@ -478,7 +486,8 @@ impl RpcHandler<global::Ping> for Host {
     }
 }
 
-#[async_trait]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl RpcHandler<host::RegisterEntity> for Host {
     async fn invoke(&self, plugin_id: PluginId, entity_id: EntityId) -> Result<(), RpcErrorCode> {
         info!(
@@ -489,7 +498,8 @@ impl RpcHandler<host::RegisterEntity> for Host {
     }
 }
 
-#[async_trait]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl RpcHandler<host::Fetch> for Host {
     async fn invoke(
         &self,
@@ -501,7 +511,8 @@ impl RpcHandler<host::Fetch> for Host {
     }
 }
 
-#[async_trait]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl RpcHandler<host::GetState> for Host {
     async fn invoke(
         &self,
@@ -513,7 +524,8 @@ impl RpcHandler<host::GetState> for Host {
     }
 }
 
-#[async_trait]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl RpcHandler<host::SetState> for Host {
     async fn invoke(&self, plugin_id: PluginId, state_data: Vec<u8>) -> Result<(), RpcErrorCode> {
         info!("Plugin {} requested to set its state", plugin_id);
@@ -521,7 +533,8 @@ impl RpcHandler<host::SetState> for Host {
     }
 }
 
-#[async_trait]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl RpcHandler<host::SetInterface> for Host {
     async fn invoke(
         &self,
@@ -534,7 +547,8 @@ impl RpcHandler<host::SetInterface> for Host {
     }
 }
 
-#[async_trait]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl RpcHandler<vault::GetAssets> for Host {
     async fn invoke(
         &self,
@@ -546,7 +560,8 @@ impl RpcHandler<vault::GetAssets> for Host {
     }
 }
 
-#[async_trait]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl RpcHandler<vault::Withdraw> for Host {
     async fn invoke(
         &self,
@@ -563,7 +578,8 @@ impl RpcHandler<vault::Withdraw> for Host {
     }
 }
 
-#[async_trait]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl RpcHandler<vault::GetDepositAddress> for Host {
     async fn invoke(
         &self,
@@ -580,7 +596,8 @@ impl RpcHandler<vault::GetDepositAddress> for Host {
     }
 }
 
-#[async_trait]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl RpcHandler<vault::OnDeposit> for Host {
     async fn invoke(
         &self,
@@ -597,7 +614,8 @@ impl RpcHandler<vault::OnDeposit> for Host {
     }
 }
 
-#[async_trait]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl RpcHandler<page::OnLoad> for Host {
     async fn invoke(&self, plugin_id: PluginId, interface_id: u32) -> Result<(), RpcErrorCode> {
         info!(
@@ -608,7 +626,8 @@ impl RpcHandler<page::OnLoad> for Host {
     }
 }
 
-#[async_trait]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl RpcHandler<page::OnUpdate> for Host {
     async fn invoke(
         &self,
@@ -623,7 +642,8 @@ impl RpcHandler<page::OnUpdate> for Host {
     }
 }
 
-#[async_trait]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl RpcHandler<eth::BlockNumber> for Host {
     async fn invoke(&self, plugin_id: PluginId, _params: ()) -> Result<u64, RpcErrorCode> {
         info!("Plugin {} requested BlockNumber", plugin_id);
@@ -631,7 +651,8 @@ impl RpcHandler<eth::BlockNumber> for Host {
     }
 }
 
-#[async_trait]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl RpcHandler<eth::Call> for Host {
     async fn invoke(
         &self,
@@ -646,7 +667,8 @@ impl RpcHandler<eth::Call> for Host {
     }
 }
 
-#[async_trait]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl RpcHandler<eth::GetBalance> for Host {
     async fn invoke(
         &self,

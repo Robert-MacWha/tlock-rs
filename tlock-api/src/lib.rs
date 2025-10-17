@@ -18,7 +18,8 @@ pub mod entities;
 // it should work fine for any RPC system.
 // TODO: Also consider forwards compatibility with associated types, maybe wrap
 // them as named structs to allow adding fields later without introducing breaking changes.
-#[async_trait]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 pub trait RpcMethod: Send + Sync {
     type Params: DeserializeOwned + Serialize + Send + Sync;
     type Output: DeserializeOwned + Serialize + Send + Sync;
@@ -58,7 +59,7 @@ pub mod global {
 /// The host namespace contains methods for interacting with the host and
 /// performing privileged operations.
 pub mod host {
-    
+
     use serde::{Deserialize, Serialize};
 
     use crate::{RpcMethod, component::Component, entities::EntityId};

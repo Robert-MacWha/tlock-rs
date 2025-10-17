@@ -3,7 +3,7 @@ use std::{io::stderr, sync::Arc, task::Poll};
 use alloy::{
     providers::{Provider, ProviderBuilder},
     rpc::client::RpcClient,
-    transports::{TransportError, TransportErrorKind, TransportFut, TransportResult},
+    transports::{TransportError, TransportErrorKind, TransportFut},
 };
 use alloy_json_rpc::{RequestPacket, ResponsePacket};
 use serde::{Deserialize, Serialize};
@@ -11,8 +11,13 @@ use tlock_pdk::{
     async_trait::async_trait,
     dispatcher::{Dispatcher, RpcHandler},
     futures::executor::block_on,
-    state::get_state,
-    tlock_api::{RpcMethod, eth, global, host},
+    state::{get_state, set_state},
+    tlock_api::{
+        RpcMethod,
+        component::{container, text},
+        entities::{EntityId, EthProviderId, PageId},
+        eth, global, host, page, plugin,
+    },
     wasmi_pdk::{
         rpc_message::RpcErrorCode,
         tracing::{error, info},
@@ -26,7 +31,7 @@ struct EthProvider {
     transport: Arc<JsonRpcTransport>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Default)]
 struct ProviderState {
     rpc_url: String,
 }
@@ -39,7 +44,8 @@ impl EthProvider {
     }
 }
 
-#[async_trait]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl RpcHandler<global::Ping> for EthProvider {
     async fn invoke(&self, _params: ()) -> Result<String, RpcErrorCode> {
         global::Ping.call(self.transport.clone(), ()).await?;
@@ -47,7 +53,50 @@ impl RpcHandler<global::Ping> for EthProvider {
     }
 }
 
-#[async_trait]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
+impl RpcHandler<plugin::Init> for EthProvider {
+    async fn invoke(&self, _params: ()) -> Result<(), RpcErrorCode> {
+        let page_id = PageId::new("eth_provider_page".to_string());
+        host::RegisterEntity
+            .call(self.transport.clone(), page_id.into())
+            .await?;
+
+        let provider_id = EthProviderId::new("eth_provider".to_string());
+        host::RegisterEntity
+            .call(self.transport.clone(), provider_id.into())
+            .await?;
+
+        let state = ProviderState {
+            rpc_url: "https://eth.llamarpc.com".to_string(),
+        };
+        set_state(self.transport.clone(), &state).await?;
+
+        return Ok(());
+    }
+}
+
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
+impl RpcHandler<page::OnLoad> for EthProvider {
+    async fn invoke(&self, interface_id: u32) -> Result<(), RpcErrorCode> {
+        let state: ProviderState = get_state(self.transport.clone()).await.unwrap_or_default();
+
+        let component = container(vec![
+            text("This is the Ethereum Provider Plugin").into(),
+            text(format!("RPC URL: {}", state.rpc_url)).into(),
+        ]);
+
+        host::SetInterface
+            .call(self.transport.clone(), (interface_id, component))
+            .await?;
+
+        return Ok(());
+    }
+}
+
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl RpcHandler<eth::BlockNumber> for EthProvider {
     async fn invoke(&self, _params: ()) -> Result<u64, RpcErrorCode> {
         let state: ProviderState = get_state(self.transport.clone()).await?;
@@ -77,6 +126,8 @@ fn main() {
 
     let mut dispatcher = Dispatcher::new(plugin);
     dispatcher.register::<global::Ping>();
+    dispatcher.register::<plugin::Init>();
+    dispatcher.register::<page::OnLoad>();
     dispatcher.register::<eth::BlockNumber>();
     // dispatcher.register::<eth::GetBalance>();
     // dispatcher.register::<eth::Call>();
@@ -97,31 +148,6 @@ impl HostTransportService {
     pub fn new(transport: Arc<JsonRpcTransport>, rpc_url: String) -> Self {
         Self { transport, rpc_url }
     }
-
-    async fn do_request(self, req: RequestPacket) -> TransportResult<ResponsePacket> {
-        let params = host::Request {
-            url: self.rpc_url,
-            method: "POST".to_string(),
-            headers: req
-                .headers()
-                .iter()
-                .map(|(k, v)| (k.to_string(), v.as_bytes().into()))
-                .collect(),
-            body: Some(serde_json::to_vec(&req).map_err(TransportErrorKind::custom)?),
-        };
-
-        let resp = host::Fetch
-            .call(self.transport, params)
-            .await
-            .map_err(TransportErrorKind::custom)?;
-
-        let Ok(body) = resp else {
-            return Err(TransportErrorKind::custom_str(&resp.err().unwrap()));
-        };
-
-        return serde_json::from_slice(&body)
-            .map_err(|err| TransportError::deser_err(err, String::from_utf8_lossy(&body)));
-    }
 }
 
 impl Service<RequestPacket> for HostTransportService {
@@ -130,8 +156,36 @@ impl Service<RequestPacket> for HostTransportService {
     type Future = TransportFut<'static>;
 
     fn call(&mut self, req: RequestPacket) -> Self::Future {
-        let this = self.clone();
-        Box::pin(this.do_request(req))
+        let transport = self.transport.clone();
+        let rpc_url = self.rpc_url.clone();
+        Box::pin(async move {
+            let mut params = host::Request {
+                url: rpc_url,
+                method: "POST".to_string(),
+                headers: req
+                    .headers()
+                    .iter()
+                    .map(|(k, v)| (k.to_string(), v.as_bytes().into()))
+                    .collect(),
+                body: Some(serde_json::to_vec(&req).map_err(TransportErrorKind::custom)?),
+            };
+            params.headers.push((
+                "Content-Type".to_string(),
+                "application/json".as_bytes().into(),
+            ));
+
+            let resp = host::Fetch
+                .call(transport, params)
+                .await
+                .map_err(TransportErrorKind::custom)?;
+
+            let Ok(body) = resp else {
+                return Err(TransportErrorKind::custom_str(&resp.err().unwrap()));
+            };
+
+            serde_json::from_slice(&body)
+                .map_err(|err| TransportError::deser_err(err, String::from_utf8_lossy(&body)))
+        })
     }
 
     fn poll_ready(

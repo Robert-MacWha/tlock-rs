@@ -1,7 +1,4 @@
-use std::{
-    collections::HashMap,
-    sync::Weak,
-};
+use std::{collections::HashMap, sync::Weak};
 
 use async_trait::async_trait;
 use serde_json::Value;
@@ -13,7 +10,8 @@ use wasmi_pdk::{rpc_message::RpcErrorCode, tracing::warn};
 /// specific method M.
 ///
 /// Methods must be registered with a Dispatcher instance.
-#[async_trait]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 pub trait RpcHandler<M: RpcMethod>: Send + Sync {
     async fn invoke(
         &self,
@@ -22,7 +20,8 @@ pub trait RpcHandler<M: RpcMethod>: Send + Sync {
     ) -> Result<M::Output, RpcErrorCode>;
 }
 
-#[async_trait]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 trait ErasedHandler<T>: Send + Sync {
     async fn dispatch(
         &self,
@@ -34,7 +33,8 @@ trait ErasedHandler<T>: Send + Sync {
 
 struct HandlerImpl<M: RpcMethod>(std::marker::PhantomData<M>);
 
-#[async_trait]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl<T, M> ErasedHandler<T> for HandlerImpl<M>
 where
     T: RpcHandler<M> + Send + Sync,
@@ -101,7 +101,8 @@ impl<T: Send + Sync> Dispatcher<T> {
     }
 }
 
-#[async_trait]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl<T: Send + Sync> HostHandler for Dispatcher<T> {
     async fn handle(
         &self,
