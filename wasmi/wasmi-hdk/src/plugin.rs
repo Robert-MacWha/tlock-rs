@@ -1,6 +1,7 @@
 use std::{fmt::Display, io::BufReader, sync::Arc};
 
 use futures::{AsyncBufReadExt, FutureExt};
+use serde_json::Value;
 use thiserror::Error;
 use tracing::info;
 use wasmi_pdk::{
