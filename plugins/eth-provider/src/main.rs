@@ -15,7 +15,7 @@ use tlock_pdk::{
     tlock_api::{
         RpcMethod,
         component::{container, text},
-        entities::{EntityId, EthProviderId, PageId},
+        entities::{EthProviderId, PageId},
         eth, global, host, page, plugin,
     },
     wasmi_pdk::{
