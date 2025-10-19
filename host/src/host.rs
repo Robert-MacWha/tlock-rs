@@ -17,7 +17,7 @@ use tlock_hdk::{
         vault::{self},
     },
     wasmi_hdk::plugin::{Plugin, PluginError, PluginId},
-    wasmi_pdk::{async_trait::async_trait, futures, rpc_message::RpcErrorCode},
+    wasmi_pdk::{async_trait::async_trait, rpc_message::RpcErrorCode},
 };
 use tracing::{info, warn};
 
@@ -232,41 +232,41 @@ impl Host {
         }
 
         let client = reqwest::Client::new();
+        let body = req.body.clone().unwrap_or_default();
         let request = match req.method.to_lowercase().as_str() {
-            "get" => client.get(req.url).headers(headers),
-            "post" => {
-                let body = req.body.clone().unwrap_or_default();
-                client.post(req.url).headers(headers).body(body)
-            }
+            "get" => client.get(req.url.clone()).headers(headers),
+            "post" => client
+                .post(req.url.clone())
+                .headers(headers)
+                .body(body.clone()),
             _ => {
                 warn!("Unsupported HTTP method: {}", req.method);
                 return Err("Unsupported HTTP method".to_string());
             }
         };
 
-        info!("Sending request: {:?}", request);
-        let resp = request.send();
-        futures::pin_mut!(resp);
-        let resp = std::future::poll_fn(|cx| {
-            info!("Polling request.send()");
-            resp.as_mut().poll(cx)
-        })
-        .await
-        .map_err(|e| e.to_string())?;
-        info!("Received response: {:?}", resp);
-
-        let bytes = resp.bytes().await.map_err(|e| e.to_string())?;
-        info!("Response bytes: {:?}", bytes);
-
-        Ok(bytes.to_vec())
-
         // info!("Sending request: {:?}", request);
-
-        // let resp = request.send().await.map_err(|e| e.to_string())?;
+        // let resp = request.send();
+        // futures::pin_mut!(resp);
+        // let resp = std::future::poll_fn(|cx| {
+        //     info!("Polling request.send()");
+        //     resp.as_mut().poll(cx)
+        // })
+        // .await
+        // .map_err(|e| e.to_string())?;
         // info!("Received response: {:?}", resp);
+
         // let bytes = resp.bytes().await.map_err(|e| e.to_string())?;
         // info!("Response bytes: {:?}", bytes);
+
         // Ok(bytes.to_vec())
+
+        info!("Sending request: {:?}", request);
+        let resp = request.send().await.map_err(|e| e.to_string())?;
+        info!("Received response: {:?}", resp);
+        let bytes = resp.bytes().await.map_err(|e| e.to_string())?;
+        info!("Response bytes: {:?}", bytes);
+        Ok(bytes.to_vec())
     }
 
     pub async fn get_state(&self, plugin_id: &PluginId) -> Result<Option<Vec<u8>>, RpcErrorCode> {

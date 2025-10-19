@@ -1,28 +1,7 @@
 #[cfg(target_arch = "wasm32")]
 pub async fn yield_now() {
-    use std::future::Future;
-    use std::pin::Pin;
-    use std::task::{Context, Poll};
-
-    struct Yield {
-        yielded: bool,
-    }
-
-    impl Future for Yield {
-        type Output = ();
-
-        fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<()> {
-            if self.yielded {
-                Poll::Ready(())
-            } else {
-                self.yielded = true;
-                cx.waker().wake_by_ref();
-                Poll::Pending
-            }
-        }
-    }
-
-    Yield { yielded: false }.await
+    use gloo_timers::future::TimeoutFuture;
+    TimeoutFuture::new(0).await;
 }
 
 #[cfg(not(target_arch = "wasm32"))]

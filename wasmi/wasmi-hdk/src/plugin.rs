@@ -1,6 +1,7 @@
 use std::{fmt::Display, io::BufReader, sync::Arc};
 
 use futures::{AsyncBufReadExt, FutureExt};
+use runtime::spawn_local;
 use serde_json::Value;
 use thiserror::Error;
 use tracing::info;
@@ -106,6 +107,7 @@ impl From<PluginError> for RpcErrorCode {
         }
     }
 }
+
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 #[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl Transport<PluginError> for Plugin {
@@ -138,6 +140,7 @@ impl Transport<PluginError> for Plugin {
         let instance_task = instance_task.fuse();
         futures::pin_mut!(rpc_task, instance_task, stderr_task);
         let (res, _, _) = futures::join!(rpc_task, instance_task, stderr_task);
+
         instance.kill();
         let res = res?;
         Ok(res)
