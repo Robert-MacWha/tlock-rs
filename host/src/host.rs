@@ -247,22 +247,6 @@ impl Host {
             }
         };
 
-        // info!("Sending request: {:?}", request);
-        // let resp = request.send();
-        // futures::pin_mut!(resp);
-        // let resp = std::future::poll_fn(|cx| {
-        //     info!("Polling request.send()");
-        //     resp.as_mut().poll(cx)
-        // })
-        // .await
-        // .map_err(|e| e.to_string())?;
-        // info!("Received response: {:?}", resp);
-
-        // let bytes = resp.bytes().await.map_err(|e| e.to_string())?;
-        // info!("Response bytes: {:?}", bytes);
-
-        // Ok(bytes.to_vec())
-
         info!("Sending request: {:?}", request);
         let resp = request.send().await.map_err(|e| e.to_string())?;
         info!("Received response: {:?}", resp);
@@ -289,15 +273,10 @@ impl Host {
 
     pub async fn set_interface(
         &self,
-        plugin_id: &PluginId,
+        _plugin_id: &PluginId,
         interface_id: u32,
         component: Component,
     ) -> Result<(), RpcErrorCode> {
-        info!(
-            "Plugin {} requested set interface {}: {:?}",
-            plugin_id, interface_id, component
-        );
-
         self.interfaces
             .lock()
             .unwrap()
