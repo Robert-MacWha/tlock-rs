@@ -40,6 +40,23 @@
       - Plugin sends funds back to the main account.
     - This way if permissions are granted, they're sandboxed.  Maybe worthwhile considering.  I guess that itself could be an option - if I made the router a plugin then it could do whatever account creation / routing shenanigans it wanted.
   - I also really like their UI.  It's a little confusing, I think it could be laid out better.  But it's also very transparent.
+- defisaver
+  - https://defisaver.com/features/recipe-creator
+  - https://help.defisaver.com/
+  - Their recipe creator & apps are also *very* close to what I want.  They're closed-source, and they only concern themselves with defi, but in that regard they do incredibly.
+    - All the dapps are simplified and use standard UI kits.  They don't offer theming as far as I can tell, but you 100% could.
+    - They offer some forms of basic automation + the recipe book & creator, which seems like it'd let you create many useful automation.
+    - Their portfolio considers positions, not just tokens.  Which is one of the features I was already excited about, so cool seeing it here in addition to rotki
+    - They have the simulation mode idea, where you can perform transactions & do actions without actually committing them, then see the results.
+  - Downsides
+    - Simulations create a new account instead of using your current one - that seems very odd.
+      - Like it'll allocate a new account with 100 eth on starting the simulation.
+        - Feature claims to exist, but seems broken?  I noticed that in a few other places - either their QA is lacking or they're not developing it anymore?
+          - Recipe creator takes *ages* to load (5s+) and can't use the "pull token" or "permit token" actions
+    - Because it's a website, it's reliant on the host, doesn't work as well on mobile, and can be a bit slow.
+    - It seems like it's entirely closed.  No custom protocols or tools, no arbitrary transactions in the recipe creator (which makes sense, you still have the wallet, but is limiting for automations), and it's closed-source (or at least the website is - the contracts can be found here: https://github.com/defisaver/defisaver-v3-contracts/tree/main/contracts/exchangeV3)
+      - This is the main issue. What they have is super cool, but unless it works exactly for me I can't modify or improve it. Increased security and quality standards, but also decreased viability.
+        - Although it is probably worthwhile taking a lesson from them / rotik and making a stripped-down version that's verified secure. 
 
 ## Why do this?
 
