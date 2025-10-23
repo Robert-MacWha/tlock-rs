@@ -131,7 +131,10 @@ pub mod plugin {
 }
 
 pub mod eth {
-    use alloy::rpc::types::{EthCallResponse, TransactionRequest, state::StateOverride};
+    use alloy::{
+        primitives::Bytes,
+        rpc::types::{TransactionRequest, state::StateOverride},
+    };
 
     use crate::RpcMethod;
 
@@ -146,7 +149,7 @@ pub mod eth {
     impl RpcMethod for Call {
         const NAME: &'static str = "eth_call";
         type Params = (TransactionRequest, u64, Option<StateOverride>); // (tx, block_number, state_override)
-        type Output = EthCallResponse;
+        type Output = Bytes;
     }
 
     pub struct GetBalance;

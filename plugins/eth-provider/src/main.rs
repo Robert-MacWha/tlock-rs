@@ -1,8 +1,12 @@
 use std::{io::stderr, sync::Arc, task::Poll};
 
 use alloy::{
-    providers::{Provider, ProviderBuilder},
-    rpc::client::RpcClient,
+    primitives::{Address, Bytes, U256},
+    providers::{Provider, ProviderBuilder, fillers::FillProvider},
+    rpc::{
+        client::RpcClient,
+        types::{TransactionRequest, state::StateOverride},
+    },
     transports::{TransportError, TransportErrorKind, TransportFut},
 };
 use alloy_json_rpc::{RequestPacket, ResponsePacket};
@@ -57,10 +61,13 @@ impl RpcHandler<global::Ping> for EthProvider {
 #[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl RpcHandler<plugin::Init> for EthProvider {
     async fn invoke(&self, _params: ()) -> Result<(), RpcErrorCode> {
+        info!("Initializing Ethereum Provider Plugin...");
         let page_id = PageId::new("eth_provider_page".to_string());
         host::RegisterEntity
             .call(self.transport.clone(), page_id.into())
             .await?;
+
+        info!("Registering Ethereum Provider...");
 
         let provider_id = EthProviderId::new("eth_provider".to_string());
         host::RegisterEntity
@@ -101,14 +108,53 @@ impl RpcHandler<eth::BlockNumber> for EthProvider {
     async fn invoke(&self, _params: ()) -> Result<u64, RpcErrorCode> {
         let state: ProviderState = get_state(self.transport.clone()).await?;
 
-        let transport = HostTransportService::new(self.transport.clone(), state.rpc_url.clone());
-        let client = RpcClient::new(transport, false);
-        let provider = ProviderBuilder::new().connect_client(client);
+        let provider = create_alloy_provider(self.transport.clone(), state.rpc_url);
         let block_number = provider.get_block_number().await.map_err(|e| {
             error!("Error fetching block number: {:?}", e);
             RpcErrorCode::InternalError
         })?;
         return Ok(block_number);
+    }
+}
+
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
+impl RpcHandler<eth::GetBalance> for EthProvider {
+    async fn invoke(&self, params: (Address, u64)) -> Result<U256, RpcErrorCode> {
+        let state: ProviderState = get_state(self.transport.clone()).await?;
+        let (address, number) = params;
+
+        let provider = create_alloy_provider(self.transport.clone(), state.rpc_url);
+        let balance = provider
+            .get_balance(address)
+            .number(number)
+            .await
+            .map_err(|e| {
+                error!("Error fetching balance: {:?}", e);
+                RpcErrorCode::InternalError
+            })?;
+        return Ok(balance);
+    }
+}
+
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
+impl RpcHandler<eth::Call> for EthProvider {
+    async fn invoke(
+        &self,
+        params: (TransactionRequest, u64, Option<StateOverride>),
+    ) -> Result<Bytes, RpcErrorCode> {
+        let state: ProviderState = get_state(self.transport.clone()).await?;
+
+        let (tx, block_number, state_override) = params;
+
+        let provider = create_alloy_provider(self.transport.clone(), state.rpc_url);
+        let result = provider.call(tx).await.map_err(|e| {
+            error!("Error processing call: {:?}", e);
+            RpcErrorCode::InternalError
+        })?;
+
+        return Ok(result);
     }
 }
 
@@ -129,13 +175,23 @@ fn main() {
     dispatcher.register::<plugin::Init>();
     dispatcher.register::<page::OnLoad>();
     dispatcher.register::<eth::BlockNumber>();
-    // dispatcher.register::<eth::GetBalance>();
-    // dispatcher.register::<eth::Call>();
+    dispatcher.register::<eth::GetBalance>();
+    dispatcher.register::<eth::Call>();
     let dispatcher = Arc::new(dispatcher);
 
     block_on(async move {
         let _ = transport.process_next_line(Some(dispatcher)).await;
     });
+}
+
+pub fn create_alloy_provider(
+    transport: Arc<JsonRpcTransport>,
+    url: String,
+) -> impl alloy::providers::Provider {
+    let host_transport = HostTransportService::new(transport, url);
+    let client = RpcClient::new(host_transport, false);
+    let provider = ProviderBuilder::new().connect_client(client);
+    provider
 }
 
 #[derive(Clone)]
