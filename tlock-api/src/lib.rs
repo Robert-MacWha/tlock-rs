@@ -51,6 +51,7 @@ macro_rules! rpc_method {
         pub struct $struct_name;
 
         impl $crate::RpcMethod for $struct_name {
+            // TODO: Make these types more flexible, ideally json, so they can be expanded & are backward/forward compatible.
             type Params = $params;
             type Output = $output;
 
