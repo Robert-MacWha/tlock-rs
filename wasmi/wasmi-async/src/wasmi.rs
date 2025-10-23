@@ -2,7 +2,7 @@ use std::sync::{Arc, atomic::AtomicBool};
 
 use runtime::yield_now;
 use thiserror::Error;
-use tracing::{error, trace};
+use tracing::{error, info, trace};
 use wasmi::{Func, Store};
 
 #[derive(Error, Debug)]

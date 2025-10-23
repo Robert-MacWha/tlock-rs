@@ -1,11 +1,12 @@
 use std::{io::stderr, sync::Arc, task::Poll};
 
 use alloy::{
+    eips::BlockId,
     primitives::{Address, Bytes, U256},
-    providers::{Provider, ProviderBuilder, fillers::FillProvider},
+    providers::{Provider, ProviderBuilder},
     rpc::{
         client::RpcClient,
-        types::{TransactionRequest, state::StateOverride},
+        types::{BlockOverrides, TransactionRequest, state::StateOverride},
     },
     transports::{TransportError, TransportErrorKind, TransportFut},
 };
@@ -120,14 +121,14 @@ impl RpcHandler<eth::BlockNumber> for EthProvider {
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 #[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl RpcHandler<eth::GetBalance> for EthProvider {
-    async fn invoke(&self, params: (Address, u64)) -> Result<U256, RpcErrorCode> {
+    async fn invoke(&self, params: (Address, BlockId)) -> Result<U256, RpcErrorCode> {
         let state: ProviderState = get_state(self.transport.clone()).await?;
-        let (address, number) = params;
+        let (address, block_id) = params;
 
         let provider = create_alloy_provider(self.transport.clone(), state.rpc_url);
         let balance = provider
             .get_balance(address)
-            .number(number)
+            .block_id(block_id)
             .await
             .map_err(|e| {
                 error!("Error fetching balance: {:?}", e);
@@ -142,24 +143,38 @@ impl RpcHandler<eth::GetBalance> for EthProvider {
 impl RpcHandler<eth::Call> for EthProvider {
     async fn invoke(
         &self,
-        params: (TransactionRequest, u64, Option<StateOverride>),
+        params: (
+            TransactionRequest,
+            Option<BlockOverrides>,
+            Option<StateOverride>,
+        ),
     ) -> Result<Bytes, RpcErrorCode> {
         let state: ProviderState = get_state(self.transport.clone()).await?;
 
-        let (tx, block_number, state_override) = params;
+        let (tx, block_overrides, state_overrides) = params;
 
         let provider = create_alloy_provider(self.transport.clone(), state.rpc_url);
-        let result = provider.call(tx).await.map_err(|e| {
-            error!("Error processing call: {:?}", e);
-            RpcErrorCode::InternalError
-        })?;
+        let resp = provider
+            .call(tx)
+            .with_block_overrides_opt(block_overrides)
+            .overrides_opt(state_overrides)
+            .await
+            .map_err(|e| {
+                error!("Error processing call: {:?}", e);
+                RpcErrorCode::InternalError
+            })?;
 
-        return Ok(result);
+        return Ok(resp);
     }
 }
 
 fn main() {
-    fmt().with_writer(stderr).init();
+    fmt()
+        .with_writer(stderr)
+        .without_time()
+        .with_ansi(false)
+        .compact()
+        .init();
     info!("Starting plugin...");
 
     let reader = std::io::BufReader::new(::std::io::stdin());

@@ -2,7 +2,7 @@ use dioxus::prelude::*;
 use dioxus_logger::tracing::info;
 use tlock_hdk::tlock_api::entities::EthProviderId;
 
-use crate::{components::log_fut::log_future, contexts::host::HostContext};
+use crate::contexts::host::HostContext;
 
 #[derive(Clone, PartialEq, Props)]
 pub struct EthProviderProps {
@@ -25,7 +25,7 @@ pub fn EthProvider(props: EthProviderProps) -> Element {
         let state = state.clone();
         let id = id.clone();
 
-        spawn(log_future("eth_provider_block_number", async move {
+        spawn(async move {
             info!("Fetch block number for EthProvider {id}");
             match state.host.eth_provider_block_number(&id).await {
                 Ok(block_number) => {
@@ -37,7 +37,7 @@ pub fn EthProvider(props: EthProviderProps) -> Element {
                     block_number_resp.set(0);
                 }
             }
-        }));
+        });
     };
 
     rsx! {

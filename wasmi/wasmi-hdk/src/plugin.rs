@@ -119,7 +119,7 @@ impl Transport<PluginError> for Plugin {
             let mut buf_reader = futures::io::BufReader::new(stderr_reader);
             let mut line = String::new();
             while buf_reader.read_line(&mut line).await.is_ok_and(|n| n > 0) {
-                info!(target: "plugin", "[{}] {}", name, line.trim_end());
+                info!(target: "plugin", "[plugin] [{}] {}", name, line.trim_end());
                 line.clear();
             }
         }

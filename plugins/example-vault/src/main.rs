@@ -232,7 +232,7 @@ impl RpcHandler<page::OnUpdate> for MyVaultPlugin {
 fn main() {
     fmt()
         .with_writer(stderr)
-        // .without_time()
+        .without_time()
         .with_ansi(false)
         .compact()
         .init();

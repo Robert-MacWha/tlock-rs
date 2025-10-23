@@ -50,14 +50,16 @@ impl Host {
     ) -> Result<PluginId, PluginError> {
         let dispatcher = self.get_dispatcher();
 
+        info!("Loading plugin '{}'...", name);
         let mut s = DefaultHasher::new();
         wasm_bytes.hash(&mut s);
         let id = s.finish().to_string().into();
         let plugin = Plugin::new(name, &id, wasm_bytes.to_vec(), dispatcher)
             .map_err(|e| PluginError::SpawnError(e.into()))?;
 
+        info!("Registering plugin '{}' with id {}", name, id);
         self.register_plugin(plugin).await?;
-        info!("Loaded plugin '{}' with id {}", name, id);
+        info!("Loaded plugin '{}'", name);
         Ok(id)
     }
 
@@ -481,7 +483,7 @@ impl Host {
 #[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl RpcHandler<global::Ping> for Host {
     async fn invoke(&self, plugin_id: PluginId, _params: ()) -> Result<String, RpcErrorCode> {
-        info!("Plugin {} sent ping", plugin_id);
+        info!("[host_func] Plugin {} sent ping", plugin_id);
         self.ping()
     }
 }
@@ -491,7 +493,7 @@ impl RpcHandler<global::Ping> for Host {
 impl RpcHandler<host::RegisterEntity> for Host {
     async fn invoke(&self, plugin_id: PluginId, entity_id: EntityId) -> Result<(), RpcErrorCode> {
         info!(
-            "Plugin {} requested registration of entity {:?}",
+            "[host_func] Plugin {} requested registration of entity {:?}",
             plugin_id, entity_id
         );
         self.register_entity(&plugin_id, entity_id)
@@ -506,7 +508,10 @@ impl RpcHandler<host::Fetch> for Host {
         plugin_id: PluginId,
         req: host::Request,
     ) -> Result<Result<Vec<u8>, String>, RpcErrorCode> {
-        info!("Plugin {} requested fetch: {:?}", plugin_id, req);
+        info!(
+            "[host_func] Plugin {} requested fetch: {:?}",
+            plugin_id, req
+        );
         Ok(self.fetch(&plugin_id, req).await)
     }
 }
@@ -519,7 +524,7 @@ impl RpcHandler<host::GetState> for Host {
         plugin_id: PluginId,
         _params: (),
     ) -> Result<Option<Vec<u8>>, RpcErrorCode> {
-        info!("Plugin {} requested its state", plugin_id);
+        info!("[host_func] Plugin {} requested its state", plugin_id);
         self.get_state(&plugin_id).await
     }
 }
@@ -528,7 +533,10 @@ impl RpcHandler<host::GetState> for Host {
 #[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl RpcHandler<host::SetState> for Host {
     async fn invoke(&self, plugin_id: PluginId, state_data: Vec<u8>) -> Result<(), RpcErrorCode> {
-        info!("Plugin {} requested to set its state", plugin_id);
+        info!(
+            "[host_func] Plugin {} requested to set its state",
+            plugin_id
+        );
         self.set_state(&plugin_id, state_data).await
     }
 }
@@ -541,6 +549,10 @@ impl RpcHandler<host::SetInterface> for Host {
         plugin_id: PluginId,
         params: (u32, Component),
     ) -> Result<(), RpcErrorCode> {
+        info!(
+            "[host_func] Plugin {} requested to set interface {:?}",
+            plugin_id, params
+        );
         let (interface_id, component) = params;
         self.set_interface(&plugin_id, interface_id, component)
             .await
@@ -555,7 +567,10 @@ impl RpcHandler<vault::GetAssets> for Host {
         plugin_id: PluginId,
         vault_id: VaultId,
     ) -> Result<Vec<(AssetId, U256)>, RpcErrorCode> {
-        info!("Plugin {} requested balance of {:?}", plugin_id, vault_id);
+        info!(
+            "[host_func] Plugin {} requested balance of {:?}",
+            plugin_id, vault_id
+        );
         self.vault_get_assets(vault_id).await
     }
 }
@@ -570,7 +585,7 @@ impl RpcHandler<vault::Withdraw> for Host {
     ) -> Result<Result<(), String>, RpcErrorCode> {
         let (vault, to, asset, amount) = params;
         info!(
-            "Plugin {} requested transfer of {} {:?} from vault {:?} to {:?}",
+            "[host_func] Plugin {} requested transfer of {} {:?} from vault {:?} to {:?}",
             plugin_id, amount, asset, vault, to
         );
 
@@ -588,7 +603,7 @@ impl RpcHandler<vault::GetDepositAddress> for Host {
     ) -> Result<Result<AccountId, String>, RpcErrorCode> {
         let (vault_id, asset) = params;
         info!(
-            "Plugin {} requested receipt address for asset {:?} in vault {:?}",
+            "[host_func] Plugin {} requested receipt address for asset {:?} in vault {:?}",
             plugin_id, asset, vault_id
         );
 
@@ -606,7 +621,7 @@ impl RpcHandler<vault::OnDeposit> for Host {
     ) -> Result<(), RpcErrorCode> {
         let (vault_id, asset) = params;
         info!(
-            "Plugin {} notified of receipt of asset {:?} in vault {:?}",
+            "[host_func] Plugin {} notified of receipt of asset {:?} in vault {:?}",
             plugin_id, asset, vault_id
         );
 
@@ -619,7 +634,7 @@ impl RpcHandler<vault::OnDeposit> for Host {
 impl RpcHandler<page::OnLoad> for Host {
     async fn invoke(&self, plugin_id: PluginId, interface_id: u32) -> Result<(), RpcErrorCode> {
         info!(
-            "Plugin {} requested OnPageLoad for interface {}",
+            "[host_func] Plugin {} requested OnPageLoad for interface {}",
             plugin_id, interface_id
         );
         self.page_on_load(&plugin_id, interface_id).await
@@ -635,7 +650,7 @@ impl RpcHandler<page::OnUpdate> for Host {
         (interface_id, event): (u32, page::PageEvent),
     ) -> Result<(), RpcErrorCode> {
         info!(
-            "Plugin {} sent OnPageUpdate for interface {}: {:?}",
+            "[host_func] Plugin {} sent OnPageUpdate for interface {}: {:?}",
             plugin_id, interface_id, event
         );
         self.page_on_update(&plugin_id, interface_id, event).await
@@ -646,7 +661,7 @@ impl RpcHandler<page::OnUpdate> for Host {
 #[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl RpcHandler<eth::BlockNumber> for Host {
     async fn invoke(&self, plugin_id: PluginId, _params: ()) -> Result<u64, RpcErrorCode> {
-        info!("Plugin {} requested BlockNumber", plugin_id);
+        info!("[host_func] Plugin {} requested BlockNumber", plugin_id);
         self.eth_provider_block_number(&plugin_id).await
     }
 }
@@ -660,7 +675,7 @@ impl RpcHandler<eth::Call> for Host {
         params: <eth::Call as RpcMethod>::Params,
     ) -> Result<<eth::Call as RpcMethod>::Output, RpcErrorCode> {
         info!(
-            "Plugin {} requested Call with params {:?}",
+            "[host_func] Plugin {} requested Call with params {:?}",
             plugin_id, params
         );
         self.eth_provider_call(&plugin_id, params).await
@@ -676,7 +691,7 @@ impl RpcHandler<eth::GetBalance> for Host {
         params: <eth::GetBalance as RpcMethod>::Params,
     ) -> Result<<eth::GetBalance as RpcMethod>::Output, RpcErrorCode> {
         info!(
-            "Plugin {} requested GetBalance with params {:?}",
+            "[host_func] Plugin {} requested GetBalance with params {:?}",
             plugin_id, params
         );
         self.eth_provider_get_balance(&plugin_id, params).await

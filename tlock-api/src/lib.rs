@@ -132,8 +132,9 @@ pub mod plugin {
 
 pub mod eth {
     use alloy::{
+        eips::BlockId,
         primitives::Bytes,
-        rpc::types::{TransactionRequest, state::StateOverride},
+        rpc::types::{BlockOverrides, TransactionRequest, state::StateOverride},
     };
 
     use crate::RpcMethod;
@@ -145,18 +146,22 @@ pub mod eth {
         type Output = u64;
     }
 
-    pub struct Call;
-    impl RpcMethod for Call {
-        const NAME: &'static str = "eth_call";
-        type Params = (TransactionRequest, u64, Option<StateOverride>); // (tx, block_number, state_override)
-        type Output = Bytes;
-    }
-
     pub struct GetBalance;
     impl RpcMethod for GetBalance {
         const NAME: &'static str = "eth_getBalance";
-        type Params = (alloy::primitives::Address, u64); // (address, block_number)
+        type Params = (alloy::primitives::Address, BlockId);
         type Output = alloy::primitives::U256;
+    }
+
+    pub struct Call;
+    impl RpcMethod for Call {
+        const NAME: &'static str = "eth_call";
+        type Params = (
+            TransactionRequest,
+            Option<BlockOverrides>,
+            Option<StateOverride>,
+        );
+        type Output = Bytes;
     }
 }
 
