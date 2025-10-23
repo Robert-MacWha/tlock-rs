@@ -71,9 +71,8 @@ pub mod global {
 /// The host namespace contains methods for interacting with the host and
 /// performing privileged operations.
 pub mod host {
-    use serde::{Deserialize, Serialize};
-
     use crate::{component::Component, entities::EntityId};
+    use serde::{Deserialize, Serialize};
 
     #[derive(Serialize, Deserialize, Clone, Debug)]
     pub struct Request {
@@ -115,14 +114,11 @@ pub mod host {
 /// The plugin namespace contains methods implemented by plugins, generally
 /// used by the host for lifecycle management.
 pub mod plugin {
-    /// Initialize the plugin, called by the host the first time a new plugin
-    /// is registered.
-    pub struct Init;
-    impl super::RpcMethod for Init {
-        const NAME: &'static str = "plugin_init";
-        type Params = ();
-        type Output = ();
-    }
+    rpc_method!(
+        /// Initialize the plugin, called by the host the first time a new plugin
+        /// is registered.
+        plugin_init, Init, (), ()
+    );
 }
 
 pub mod eth {
@@ -132,109 +128,66 @@ pub mod eth {
         rpc::types::{BlockOverrides, TransactionRequest, state::StateOverride},
     };
 
-    use crate::RpcMethod;
+    rpc_method!(
+        /// Get the current block number.
+        eth_block_number, BlockNumber, (), u64
+    );
 
-    pub struct BlockNumber;
-    impl RpcMethod for BlockNumber {
-        const NAME: &'static str = "eth_blockNumber";
-        type Params = ();
-        type Output = u64;
-    }
+    rpc_method!(
+        /// Gets the balance of an address at a given block.
+        eth_get_balance, GetBalance, (alloy::primitives::Address, BlockId), alloy::primitives::U256
+    );
 
-    pub struct GetBalance;
-    impl RpcMethod for GetBalance {
-        const NAME: &'static str = "eth_getBalance";
-        type Params = (alloy::primitives::Address, BlockId);
-        type Output = alloy::primitives::U256;
-    }
-
-    pub struct Call;
-    impl RpcMethod for Call {
-        const NAME: &'static str = "eth_call";
-        type Params = (
-            TransactionRequest,
-            Option<BlockOverrides>,
-            Option<StateOverride>,
-        );
-        type Output = Bytes;
-    }
+    rpc_method!(
+        /// Executes a new message call immediately without creating a transaction on the block chain.
+        eth_call, Call, (TransactionRequest, Option<BlockOverrides>, Option<StateOverride>), Bytes
+    );
 }
 
 /// The vault namespace contains methods for interacting with vaults, transferring
 /// funds between different accounts.
 pub mod vault {
-    use alloy::primitives::U256;
-
     use crate::{
-        RpcMethod,
         caip::{AccountId, AssetId},
         entities::VaultId,
     };
+    use alloy::primitives::U256;
 
-    /// Get the balance for all assets in a given account.
-    pub struct GetAssets;
-    impl RpcMethod for GetAssets {
-        type Params = VaultId;
-        type Output = Vec<(AssetId, U256)>;
+    rpc_method!(
+        /// Get the balance for all assets in a given account.
+        vault_get_assets, GetAssets, VaultId, Vec<(AssetId, U256)>
+    );
 
-        const NAME: &'static str = "vault_get_assets";
-    }
+    rpc_method!(
+        /// Withdraw an amount of some asset from this vault to another account.
+        vault_withdraw, Withdraw, (VaultId, AccountId, AssetId, U256), Result<(), String>
+    );
 
-    /// Withdraw an amount of some asset from this vault to another account.
-    pub struct Withdraw;
-    impl RpcMethod for Withdraw {
-        type Params = (VaultId, AccountId, AssetId, U256); // (from, to, asset, amount)
-        type Output = Result<(), String>;
+    rpc_method!(
+        /// Gets the deposit address for a particular account and asset. Accounts can
+        /// also use this to block deposits from unsupported assets or asset classes.
+        ///
+        /// Because vault implementations are black boxes, any plugin sending an asset
+        /// to a vault MUST first call this method to ensure the asset is supported and
+        /// the destination address is correct. Destination addresses may change over time,
+        /// as might the supported assets.
+        ///
+        /// TODO: Consider making this automatic via the host? Not sure how.
+        vault_get_deposit_address, GetDepositAddress, (VaultId, AssetId), Result<AccountId, String>
+    );
 
-        const NAME: &'static str = "vault_withdraw";
-    }
-
-    /// Gets the deposit address for a particular account and asset. Accounts can
-    /// also use this to block deposits from unsupported assets or asset classes.
-    ///
-    /// Because vault implementations are black boxes, any plugin sending an asset
-    /// to a vault MUST first call this method to ensure the asset is supported and
-    /// the destination address is correct. Destination addresses may change over time,
-    /// as might the supported assets.
-    /// TODO: Consider making this automatic via the host? Not sure how.
-    pub struct GetDepositAddress;
-    impl RpcMethod for GetDepositAddress {
-        type Params = (VaultId, AssetId); // (to, asset)
-        type Output = Result<AccountId, String>;
-
-        const NAME: &'static str = "vault_get_deposit_address";
-    }
-
-    /// Callback for when an amount is deposited in an account.
-    /// TODO: Also strongly consider calling this automatically. Perhaps keep track
-    /// of all the times `GetDepositAddress` is called during the execution of a
-    /// plugin, and once complete call `OnDeposit` for each `GetDepositAddress` call.
-    pub struct OnDeposit;
-    impl RpcMethod for OnDeposit {
-        type Params = (VaultId, AssetId); // (to, asset)
-        type Output = ();
-
-        const NAME: &'static str = "vault_on_deposit";
-    }
+    rpc_method!(
+        /// Callback for when an amount is deposited in an account.
+        /// TODO: Also strongly consider calling this automatically. Perhaps keep track
+        /// of all the times `GetDepositAddress` is called during the execution of a
+        /// plugin, and once complete call `OnDeposit` for each `GetDepositAddress` call.
+        vault_on_deposit, OnDeposit, (VaultId, AssetId), ()
+    );
 }
 
 pub mod page {
-    use std::collections::HashMap;
-
     use serde::{Deserialize, Serialize};
-
-    use crate::RpcMethod;
-
-    /// Called by the host when a registered page is loaded in the frontend. The
-    /// plugin should setup any necessary interfaces with `host::SetInterface` here,
-    /// dependant on the plugin's internal state.
-    pub struct OnLoad;
-    impl RpcMethod for OnLoad {
-        type Params = u32; // (interface_id) // TODO Can I infer this interface id from the host? Perhaps, look into it.
-        type Output = ();
-
-        const NAME: &'static str = "page_on_load";
-    }
+    use std::collections::HashMap;
 
     #[derive(Serialize, Deserialize, Debug)]
     pub enum PageEvent {
@@ -242,12 +195,15 @@ pub mod page {
         FormSubmitted(String, HashMap<String, Vec<String>>), // (form_id, form_values)
     }
 
-    /// Called by the host when a registered page is updated in the frontend.
-    pub struct OnUpdate;
-    impl RpcMethod for OnUpdate {
-        type Params = (u32, PageEvent); // (interface_id, event)
-        type Output = ();
+    rpc_method!(
+        /// Called by the host when a registered page is loaded in the frontend. The
+        /// plugin should setup any necessary interfaces with `host::SetInterface` here,
+        /// dependant on the plugin's internal state.
+        page_on_load, OnLoad, u32, ()
+    );
 
-        const NAME: &'static str = "page_on_update";
-    }
+    rpc_method!(
+        /// Called by the host when a registered page is updated in the frontend.
+        page_on_update, OnUpdate, (u32, PageEvent), ()
+    );
 }
