@@ -1,14 +1,11 @@
 use std::{io::stderr, sync::Arc};
 
 use tlock_pdk::{
-    async_trait::async_trait,
-    dispatcher::{Dispatcher, RpcHandler},
+    dispatcher::Dispatcher,
     futures::executor::block_on,
+    impl_rpc_handler,
     tlock_api::{RpcMethod, global},
-    wasmi_pdk::{
-        rpc_message::RpcErrorCode, tracing::info, tracing_subscriber::fmt,
-        transport::JsonRpcTransport,
-    },
+    wasmi_pdk::{tracing::info, tracing_subscriber::fmt, transport::JsonRpcTransport},
 };
 
 struct MyPlugin {
@@ -23,14 +20,10 @@ impl MyPlugin {
     }
 }
 
-#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
-#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
-impl RpcHandler<global::Ping> for MyPlugin {
-    async fn invoke(&self, _params: ()) -> Result<String, RpcErrorCode> {
-        global::Ping.call(self.transport.clone(), ()).await?;
-        Ok("pong".to_string())
-    }
-}
+impl_rpc_handler!(MyPlugin, global::Ping, |self, _params| {
+    global::Ping.call(self.transport.clone(), ()).await?;
+    Ok("pong".to_string())
+});
 
 fn main() {
     fmt().with_writer(stderr).init();

@@ -1,21 +1,16 @@
 use std::{io::stderr, sync::Arc, task::Poll};
 
 use alloy::{
-    eips::BlockId,
-    primitives::{Address, Bytes, U256},
     providers::{Provider, ProviderBuilder},
-    rpc::{
-        client::RpcClient,
-        types::{BlockOverrides, TransactionRequest, state::StateOverride},
-    },
+    rpc::client::RpcClient,
     transports::{TransportError, TransportErrorKind, TransportFut},
 };
 use alloy_json_rpc::{RequestPacket, ResponsePacket};
 use serde::{Deserialize, Serialize};
 use tlock_pdk::{
-    async_trait::async_trait,
-    dispatcher::{Dispatcher, RpcHandler},
+    dispatcher::Dispatcher,
     futures::executor::block_on,
+    impl_rpc_handler,
     state::{get_state, set_state},
     tlock_api::{
         RpcMethod,
@@ -49,124 +44,93 @@ impl EthProvider {
     }
 }
 
-#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
-#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
-impl RpcHandler<global::Ping> for EthProvider {
-    async fn invoke(&self, _params: ()) -> Result<String, RpcErrorCode> {
-        global::Ping.call(self.transport.clone(), ()).await?;
-        Ok("pong".to_string())
-    }
-}
+impl_rpc_handler!(EthProvider, global::Ping, |self, _params| {
+    global::Ping.call(self.transport.clone(), ()).await?;
+    Ok("pong".to_string())
+});
 
-#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
-#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
-impl RpcHandler<plugin::Init> for EthProvider {
-    async fn invoke(&self, _params: ()) -> Result<(), RpcErrorCode> {
-        info!("Initializing Ethereum Provider Plugin...");
-        let page_id = PageId::new("eth_provider_page".to_string());
-        host::RegisterEntity
-            .call(self.transport.clone(), page_id.into())
-            .await?;
+impl_rpc_handler!(EthProvider, plugin::Init, |self, _params| {
+    info!("Initializing Ethereum Provider Plugin...");
+    let interface_id = PageId::new("eth_provider_page".to_string());
+    host::RegisterEntity
+        .call(self.transport.clone(), interface_id.into())
+        .await?;
 
-        info!("Registering Ethereum Provider...");
+    info!("Registering Ethereum Provider...");
 
-        let provider_id = EthProviderId::new("eth_provider".to_string());
-        host::RegisterEntity
-            .call(self.transport.clone(), provider_id.into())
-            .await?;
+    let provider_id = EthProviderId::new("eth_provider".to_string());
+    host::RegisterEntity
+        .call(self.transport.clone(), provider_id.into())
+        .await?;
 
-        let state = ProviderState {
-            rpc_url: "https://eth.llamarpc.com".to_string(),
-        };
-        set_state(self.transport.clone(), &state).await?;
+    let state = ProviderState {
+        rpc_url: "https://eth.llamarpc.com".to_string(),
+    };
+    set_state(self.transport.clone(), &state).await?;
 
-        return Ok(());
-    }
-}
+    Ok(())
+});
 
-#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
-#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
-impl RpcHandler<page::OnLoad> for EthProvider {
-    async fn invoke(&self, interface_id: u32) -> Result<(), RpcErrorCode> {
-        let state: ProviderState = get_state(self.transport.clone()).await.unwrap_or_default();
+impl_rpc_handler!(EthProvider, page::OnLoad, |self, interface_id| {
+    let state: ProviderState = get_state(self.transport.clone()).await.unwrap_or_default();
 
-        let component = container(vec![
-            text("This is the Ethereum Provider Plugin").into(),
-            text(format!("RPC URL: {}", state.rpc_url)).into(),
-        ]);
+    let component = container(vec![
+        text("This is the Ethereum Provider Plugin").into(),
+        text(format!("RPC URL: {}", state.rpc_url)).into(),
+    ]);
 
-        host::SetInterface
-            .call(self.transport.clone(), (interface_id, component))
-            .await?;
+    host::SetInterface
+        .call(self.transport.clone(), (interface_id, component))
+        .await?;
 
-        return Ok(());
-    }
-}
+    return Ok(());
+});
 
-#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
-#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
-impl RpcHandler<eth::BlockNumber> for EthProvider {
-    async fn invoke(&self, _params: ()) -> Result<u64, RpcErrorCode> {
-        let state: ProviderState = get_state(self.transport.clone()).await?;
+impl_rpc_handler!(EthProvider, eth::BlockNumber, |self, _params| {
+    let state: ProviderState = get_state(self.transport.clone()).await?;
 
-        let provider = create_alloy_provider(self.transport.clone(), state.rpc_url);
-        let block_number = provider.get_block_number().await.map_err(|e| {
-            error!("Error fetching block number: {:?}", e);
+    let provider = create_alloy_provider(self.transport.clone(), state.rpc_url);
+    let block_number = provider.get_block_number().await.map_err(|e| {
+        error!("Error fetching block number: {:?}", e);
+        RpcErrorCode::InternalError
+    })?;
+    return Ok(block_number);
+});
+
+impl_rpc_handler!(EthProvider, eth::GetBalance, |self, params| {
+    let state: ProviderState = get_state(self.transport.clone()).await?;
+    let (address, block_id) = params;
+
+    let provider = create_alloy_provider(self.transport.clone(), state.rpc_url);
+    let balance = provider
+        .get_balance(address)
+        .block_id(block_id)
+        .await
+        .map_err(|e| {
+            error!("Error fetching balance: {:?}", e);
             RpcErrorCode::InternalError
         })?;
-        return Ok(block_number);
-    }
-}
+    return Ok(balance);
+});
 
-#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
-#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
-impl RpcHandler<eth::GetBalance> for EthProvider {
-    async fn invoke(&self, params: (Address, BlockId)) -> Result<U256, RpcErrorCode> {
-        let state: ProviderState = get_state(self.transport.clone()).await?;
-        let (address, block_id) = params;
+impl_rpc_handler!(EthProvider, eth::Call, |self, params| {
+    let state: ProviderState = get_state(self.transport.clone()).await?;
 
-        let provider = create_alloy_provider(self.transport.clone(), state.rpc_url);
-        let balance = provider
-            .get_balance(address)
-            .block_id(block_id)
-            .await
-            .map_err(|e| {
-                error!("Error fetching balance: {:?}", e);
-                RpcErrorCode::InternalError
-            })?;
-        return Ok(balance);
-    }
-}
+    let (tx, block_overrides, state_overrides) = params;
 
-#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
-#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
-impl RpcHandler<eth::Call> for EthProvider {
-    async fn invoke(
-        &self,
-        params: (
-            TransactionRequest,
-            Option<BlockOverrides>,
-            Option<StateOverride>,
-        ),
-    ) -> Result<Bytes, RpcErrorCode> {
-        let state: ProviderState = get_state(self.transport.clone()).await?;
+    let provider = create_alloy_provider(self.transport.clone(), state.rpc_url);
+    let resp = provider
+        .call(tx)
+        .with_block_overrides_opt(block_overrides)
+        .overrides_opt(state_overrides)
+        .await
+        .map_err(|e| {
+            error!("Error processing call: {:?}", e);
+            RpcErrorCode::InternalError
+        })?;
 
-        let (tx, block_overrides, state_overrides) = params;
-
-        let provider = create_alloy_provider(self.transport.clone(), state.rpc_url);
-        let resp = provider
-            .call(tx)
-            .with_block_overrides_opt(block_overrides)
-            .overrides_opt(state_overrides)
-            .await
-            .map_err(|e| {
-                error!("Error processing call: {:?}", e);
-                RpcErrorCode::InternalError
-            })?;
-
-        return Ok(resp);
-    }
-}
+    return Ok(resp);
+});
 
 fn main() {
     fmt()

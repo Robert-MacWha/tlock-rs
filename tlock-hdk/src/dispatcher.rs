@@ -6,18 +6,29 @@ use tlock_api::RpcMethod;
 use wasmi_hdk::{host_handler::HostHandler, plugin::PluginId};
 use wasmi_pdk::{rpc_message::RpcErrorCode, tracing::warn};
 
+#[cfg(target_arch = "wasm32")]
+pub trait RpcHandler<M: RpcMethod>: Send + Sync {
+    fn invoke(
+        &self,
+        plugin_id: PluginId,
+        params: M::Params,
+    ) -> impl std::future::Future<Output = Result<M::Output, RpcErrorCode>> + '_;
+}
+
 /// RpcHandler trait can be implemented by a struct to handle RPC calls for a
 /// specific method M.
 ///
 /// Methods must be registered with a Dispatcher instance.
-#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
-#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
+///
+/// A separate send-bound version is used for non-wasm32 targets to allow for true
+/// concurrency in multi-threaded environments.
+#[cfg(not(target_arch = "wasm32"))]
 pub trait RpcHandler<M: RpcMethod>: Send + Sync {
-    async fn invoke(
+    fn invoke(
         &self,
         plugin_id: PluginId,
         params: M::Params,
-    ) -> Result<M::Output, RpcErrorCode>;
+    ) -> impl std::future::Future<Output = Result<M::Output, RpcErrorCode>> + Send + '_;
 }
 
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]

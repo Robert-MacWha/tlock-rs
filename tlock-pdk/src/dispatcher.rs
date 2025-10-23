@@ -9,14 +9,27 @@ use wasmi_pdk::{
     tracing::{debug, warn},
 };
 
+#[cfg(target_arch = "wasm32")]
+pub trait RpcHandler<M: RpcMethod> {
+    fn invoke(
+        &self,
+        params: M::Params,
+    ) -> impl Future<Output = Result<M::Output, RpcErrorCode>> + '_;
+}
+
 /// RpcHandler trait can be implemented by a struct to handle RPC calls for a
 /// specific method M.
 ///
 /// Methods must be registered with a Dispatcher instance.
-#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
-#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
-pub trait RpcHandler<M: RpcMethod>: Send + Sync {
-    async fn invoke(&self, params: M::Params) -> Result<M::Output, RpcErrorCode>;
+///
+/// A separate send-bound version is used for non-wasm32 targets to allow for true
+/// concurrency in multi-threaded environments.
+#[cfg(not(target_arch = "wasm32"))]
+pub trait RpcHandler<M: RpcMethod> {
+    fn invoke(
+        &self,
+        params: M::Params,
+    ) -> impl Future<Output = Result<M::Output, RpcErrorCode>> + Send + '_;
 }
 
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
