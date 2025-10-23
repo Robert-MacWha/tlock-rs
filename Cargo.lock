@@ -2729,13 +2729,12 @@ dependencies = [
 name = "frontend"
 version = "0.1.0"
 dependencies = [
- "console_error_panic_hook",
  "dioxus",
  "dioxus-logger",
  "futures",
+ "getrandom 0.2.16",
  "gloo-timers",
  "host",
- "pin-project",
  "reqwest",
  "serde_json",
  "tlock-hdk",
@@ -3425,16 +3424,6 @@ dependencies = [
  "http",
  "http-body",
  "pin-project-lite",
-]
-
-[[package]]
-name = "http-serde"
-version = "2.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0f056c8559e3757392c8d091e796416e4649d8e49e88b8d76df6c002f05027fd"
-dependencies = [
- "http",
- "serde",
 ]
 
 [[package]]
@@ -6718,12 +6707,9 @@ version = "0.1.0"
 dependencies = [
  "alloy",
  "async-trait",
- "http-serde",
  "rpc-namespace",
  "serde",
  "serde_json",
- "strum",
- "strum_macros",
  "wasmi-pdk",
 ]
 

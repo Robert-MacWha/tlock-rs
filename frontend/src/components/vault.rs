@@ -86,7 +86,7 @@ pub fn Vault(props: VaultProps) -> Element {
                 let _state = state.clone();
                 let vault_id = vault_id.clone();
                 async move {
-                    info!("Transfer from vault {vault_id}");
+                    info!("TODO: Transfer from vault {vault_id}");
                 }
             });
         }

@@ -24,6 +24,18 @@ where
     Ok(state)
 }
 
+pub async fn get_state_or_default<T, R, E>(transport: Arc<T>) -> R
+where
+    T: Transport<E> + Send + Sync + 'static,
+    R: DeserializeOwned + Default,
+    E: ApiError + From<RpcErrorCode>,
+{
+    match get_state::<T, R, E>(transport).await {
+        Ok(state) => state,
+        Err(_) => R::default(),
+    }
+}
+
 pub async fn set_state<T, S, E>(transport: Arc<T>, state: &S) -> Result<(), E>
 where
     T: Transport<E> + Send + Sync + 'static,

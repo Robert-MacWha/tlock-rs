@@ -11,7 +11,11 @@ pub struct PageProps {
 
 #[component]
 pub fn Page(props: PageProps) -> Element {
-    let interface_id = 32; // TODO: Should this be a random uuid?
+    let interface_id = use_hook(|| {
+        let dest = &mut [0u8; 4];
+        let _ = getrandom::getrandom(dest);
+        return u32::from_le_bytes(*dest);
+    });
 
     let state = use_context::<HostContext>();
     let entity_plugin = state.host.get_entity_plugin(&props.id.as_entity_id());

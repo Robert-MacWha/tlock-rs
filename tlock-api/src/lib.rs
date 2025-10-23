@@ -41,40 +41,39 @@ pub trait RpcMethod: Send + Sync {
     }
 }
 
+macro_rules! rpc_method {
+    (
+        $(#[$meta:meta])*
+        $name:ident, $struct_name:ident, $params:ty, $output:ty
+    ) => {
+        $(#[$meta])*
+        #[allow(unused_doc_comments)]
+        pub struct $struct_name;
+
+        impl $crate::RpcMethod for $struct_name {
+            type Params = $params;
+            type Output = $output;
+
+            const NAME: &'static str = stringify!($name);
+        }
+    };
+}
+
 /// The global namespace contains methods that are not specific to any particular
 /// domain.
 pub mod global {
-    use super::RpcMethod;
-
-    /// Simple health check
-    pub struct Ping;
-    impl RpcMethod for Ping {
-        type Params = ();
-        type Output = String;
-
-        const NAME: &'static str = "tlock_ping";
-    }
+    rpc_method!(
+        /// Simple health check
+        tlock_ping, Ping, (), String
+    );
 }
 
 /// The host namespace contains methods for interacting with the host and
 /// performing privileged operations.
 pub mod host {
-
     use serde::{Deserialize, Serialize};
 
-    use crate::{RpcMethod, component::Component, entities::EntityId};
-
-    /// Request the host registers a new entity with the given ID and this
-    /// plugin as its owner.
-    pub struct RegisterEntity;
-    impl RpcMethod for RegisterEntity {
-        const NAME: &'static str = "host_register_entity";
-        type Params = EntityId;
-        type Output = ();
-    }
-
-    /// Make a network request
-    pub struct Fetch;
+    use crate::{component::Component, entities::EntityId};
 
     #[derive(Serialize, Deserialize, Clone, Debug)]
     pub struct Request {
@@ -84,37 +83,33 @@ pub mod host {
         pub body: Option<Vec<u8>>,
     }
 
-    impl RpcMethod for Fetch {
-        const NAME: &'static str = "host_fetch";
-        type Params = Request;
-        type Output = Result<Vec<u8>, String>;
-    }
+    rpc_method!(
+        /// Request the host registers a new entity with the given ID and this
+        /// plugin as its owner.
+        host_register_entity, RegisterEntity, EntityId, ()
+    );
 
-    /// Get the plugin's persistent state from the host.
-    ///
-    /// Returns `None` if no state has been stored.
-    pub struct GetState;
-    impl RpcMethod for GetState {
-        const NAME: &'static str = "host_get_state";
-        type Params = ();
-        type Output = Option<Vec<u8>>;
-    }
+    rpc_method!(
+        /// Make a network request
+        host_fetch, Fetch, Request, Result<Vec<u8>, String>
+    );
 
-    /// Sets the plugin's persistent state to the host.
-    pub struct SetState;
-    impl RpcMethod for SetState {
-        const NAME: &'static str = "host_set_state";
-        type Params = Vec<u8>;
-        type Output = ();
-    }
+    rpc_method!(
+        /// Gets the plugin's persistent state from the host.
+        ///
+        /// Returns `None` if no state has been stored.
+        host_get_state, GetState, (), Option<Vec<u8>>
+    );
 
-    /// Sets an interface for a given interface ID.
-    pub struct SetInterface;
-    impl RpcMethod for SetInterface {
-        const NAME: &'static str = "host_set_interface";
-        type Params = (u32, Component); // (interface_id, component)
-        type Output = ();
-    }
+    rpc_method!(
+        /// Sets the plugin's persistent state to the host.
+        host_set_state, SetState, Vec<u8>, ()
+    );
+
+    rpc_method!(
+        /// Sets an interface for a given interface ID.
+        host_set_interface, SetInterface, (u32, Component), ()
+    );
 }
 
 /// The plugin namespace contains methods implemented by plugins, generally
