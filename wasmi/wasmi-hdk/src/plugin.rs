@@ -1,8 +1,6 @@
 use std::{fmt::Display, io::BufReader, sync::Arc};
 
-use futures::{
-    AsyncBufReadExt, FutureExt,
-};
+use futures::{AsyncBufReadExt, FutureExt};
 use serde_json::Value;
 use thiserror::Error;
 use tracing::info;
@@ -109,7 +107,8 @@ impl From<PluginError> for RpcErrorCode {
     }
 }
 
-#[async_trait]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl Transport<PluginError> for Plugin {
     async fn call(&self, method: &str, params: Value) -> Result<RpcResponse, PluginError> {
         let (instance, stdin_writer, stdout_reader, stderr_reader, instance_task) =
@@ -140,6 +139,7 @@ impl Transport<PluginError> for Plugin {
         let instance_task = instance_task.fuse();
         futures::pin_mut!(rpc_task, instance_task, stderr_task);
         let (res, _, _) = futures::join!(rpc_task, instance_task, stderr_task);
+
         instance.kill();
         let res = res?;
         Ok(res)
@@ -151,7 +151,8 @@ struct PluginCallback {
     uuid: PluginId,
 }
 
-#[async_trait]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl RequestHandler<RpcErrorCode> for PluginCallback {
     async fn handle(&self, method: &str, params: Value) -> Result<Value, RpcErrorCode> {
         self.handler.handle(self.uuid.clone(), method, params).await

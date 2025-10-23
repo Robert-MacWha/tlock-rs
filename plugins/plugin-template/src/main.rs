@@ -23,7 +23,8 @@ impl MyPlugin {
     }
 }
 
-#[async_trait]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl RpcHandler<global::Ping> for MyPlugin {
     async fn invoke(&self, _params: ()) -> Result<String, RpcErrorCode> {
         global::Ping.call(self.transport.clone(), ()).await?;

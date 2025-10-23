@@ -1,7 +1,12 @@
 use std::io::{Read, Write};
+use tracing::{info, trace, warn};
+use web_time::SystemTime;
 
-use tracing::{info, trace};
-
+/// A WASI context that can be attached to a wasmi instance. Attaches
+/// a subset of WASI syscalls to the instance, allowing it to
+/// get args, env vars, read/write to stdin/stdout/stderr, get time, and
+/// get random bytes.
+/// https://github.com/WebAssembly/WASI/blob/main/legacy/preview1/docs.md
 pub struct WasiCtx {
     args: Vec<String>,
     env: Vec<String>,
@@ -75,6 +80,14 @@ pub fn add_to_linker(linker: &mut wasmi::Linker<WasiCtx>) -> Result<(), wasmi::E
     linker.func_wrap("wasi_snapshot_preview1", "proc_exit", proc_exit)?;
     // TODO: Implement actual yielding once I figure out how
     linker.func_wrap("wasi_snapshot_preview1", "sched_yield", || -> i32 { 0 })?;
+    // TODO: Consider implementing the socket_* methods
+    // This would let any networking be done inside the guest, which is cool.  But it also means
+    // I need to introduce permissions in the WasICTX and that plugins will be able to send arbitrary
+    // requests to arbitrary hosts over tcp/udp, which might be a security concern.  Same reason browsers
+    // block raw sockets.
+    //
+    // I want plugins to be able to open raw sockets, but maybe it's best to do this via a host call so I can have
+    // extremely tight permissions.
 
     Ok(())
 }
@@ -430,7 +443,6 @@ fn fd_close(mut caller: wasmi::Caller<'_, WasiCtx>, fd: i32) -> i32 {
     Errno::Success as i32
 }
 
-// TODO: Implement for wasm32-unknown-unknown target
 fn clock_time_get(
     mut caller: wasmi::Caller<'_, WasiCtx>,
     clock_id: i32,
@@ -446,18 +458,16 @@ fn clock_time_get(
 
     let now = match clock_id {
         // Realtime: nanoseconds since UNIX epoch
-        0 => {
-            match std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH) {
+        0 | 1 => {
+            match SystemTime::now().duration_since(SystemTime::UNIX_EPOCH) {
                 Ok(dur) => dur.as_nanos() as u64,
                 Err(_) => return Errno::Inval as i32, // time before epoch shouldn't happen
             }
         }
-        // Monotonic: nanoseconds since arbitrary fixed point
-        1 => {
-            let dur = std::time::Instant::now().elapsed();
-            dur.as_nanos() as u64
+        _ => {
+            warn!("unsupported clock_id {}", clock_id);
+            return Errno::Inval as i32; // unsupported clock
         }
-        _ => return Errno::Inval as i32, // unsupported clock
     };
 
     if memory
@@ -478,7 +488,7 @@ fn random_get(mut caller: wasmi::Caller<'_, WasiCtx>, buf_ptr: i32, buf_len: i32
         .expect("guest must have memory");
 
     let mut buf = vec![0u8; buf_len as usize];
-    if let Err(e) = getrandom::fill(&mut buf) {
+    if let Err(e) = getrandom::getrandom(&mut buf) {
         eprintln!("random_get failed: {:?}", e);
         return Errno::Io as i32;
     }

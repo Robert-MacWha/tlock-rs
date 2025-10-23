@@ -13,19 +13,22 @@ use wasmi_pdk::{
 /// specific method M.
 ///
 /// Methods must be registered with a Dispatcher instance.
-#[async_trait]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 pub trait RpcHandler<M: RpcMethod>: Send + Sync {
     async fn invoke(&self, params: M::Params) -> Result<M::Output, RpcErrorCode>;
 }
 
-#[async_trait]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 trait ErasedHandler<T>: Send + Sync {
     async fn dispatch(&self, target: &T, params: Value) -> Result<Value, RpcErrorCode>;
 }
 
 struct HandlerImpl<M: RpcMethod>(std::marker::PhantomData<M>);
 
-#[async_trait]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl<T, M> ErasedHandler<T> for HandlerImpl<M>
 where
     T: RpcHandler<M> + Send + Sync,
@@ -84,7 +87,8 @@ impl<T: Send + Sync> Dispatcher<T> {
     }
 }
 
-#[async_trait]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl<T: Send + Sync> RequestHandler<RpcErrorCode> for Dispatcher<T> {
     async fn handle(&self, method: &str, params: Value) -> Result<Value, RpcErrorCode> {
         self.dispatch(method, params).await

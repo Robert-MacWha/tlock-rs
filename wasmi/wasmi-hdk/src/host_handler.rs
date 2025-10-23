@@ -6,7 +6,8 @@ use crate::plugin::PluginId;
 /// HostHandler is a wrapper around the `wasmi-pdk::RequestHandler` trait that adds
 /// the plugin ID as the first arg in the `handle` method. It should be used
 /// by hosts that manage multiple plugins to differentiate request sources.
-#[async_trait]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 pub trait HostHandler: Send + Sync {
     /// Handle an incoming request from a plugin.
     async fn handle(

@@ -1,3 +1,10 @@
+// TODO: Implement basic evm json-rpc plugin so the vault can access eth_balance and calls
+  // TODO: Implement request func on the host
+// TODO: Pass a reference of the ethProvider plugin to the vault plugin cleanly (ideally semi-automatically, perhaps using caip-10 style resource identifiers) 
+// TODO: Make the vault plugin able to query the chain for information
+// TODO: Make the vault plugin report actual on-chain state
+// TODO: Transfer funds into the vault, then back out
+
 # Tlock-rs
 
 Tlock is designed as a modular-focused wallet framework.  It is designed to, as much as possible, get out of the way while providing a framework that allows plugins to securely and effectively perform tasks.  Its priorities are:

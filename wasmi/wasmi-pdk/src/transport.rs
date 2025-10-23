@@ -18,7 +18,8 @@ use crate::{
     rpc_message::{RpcError, RpcErrorCode, RpcErrorResponse, RpcMessage, RpcRequest, RpcResponse},
 };
 
-#[async_trait]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 pub trait Transport<E: ApiError> {
     async fn call(&self, method: &str, params: Value) -> Result<RpcResponse, E>;
 }
@@ -40,14 +41,14 @@ const JSON_RPC_VERSION: &str = "2.0";
 
 impl JsonRpcTransport {
     pub fn new(
-        reader: Box<dyn BufRead + Send + Sync>,
-        writer: Box<dyn Write + Send + Sync>,
+        reader: impl BufRead + Send + Sync + 'static,
+        writer: impl Write + Send + Sync + 'static,
     ) -> Self {
         Self {
             id: AtomicU64::new(0),
             pending: Mutex::new(HashMap::new()),
-            reader: Mutex::new(reader),
-            writer: Mutex::new(writer),
+            reader: Mutex::new(Box::new(reader)),
+            writer: Mutex::new(Box::new(writer)),
             handler: None,
         }
     }
@@ -67,7 +68,8 @@ impl JsonRpcTransport {
     }
 }
 
-#[async_trait]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl Transport<RpcErrorCode> for JsonRpcTransport {
     /// Sends a json-rpc request and waits for the response. `Call` does not
     /// pump the reader, so you must call `process_next_line` in another task

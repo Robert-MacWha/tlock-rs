@@ -1,7 +1,7 @@
 use dioxus::prelude::*;
 use tlock_hdk::tlock_api::entities::EntityId;
 
-use crate::components::vault::Vault;
+use crate::components::{eth_provider::EthProvider, page::Page, vault::Vault};
 
 #[derive(Clone, PartialEq, Props)]
 pub struct EntityProps {
@@ -12,6 +12,7 @@ pub struct EntityProps {
 pub fn Entity(props: EntityProps) -> Element {
     match props.id {
         EntityId::Vault(id) => rsx! { Vault { id: id } },
-        _ => rsx! { div { "Unknown entity type" } },
+        EntityId::Page(id) => rsx! { Page {id: id} },
+        EntityId::EthProvider(id) => rsx! { EthProvider{id: id} },
     }
 }

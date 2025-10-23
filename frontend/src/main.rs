@@ -6,14 +6,22 @@ use frontend::{components::entity::Entity, contexts::host::HostContext};
 use host::host::Host;
 use std::sync::Arc;
 fn main() {
+    console_error_panic_hook::set_once();
     dioxus::launch(app);
 }
 
 #[component]
 fn app() -> Element {
     let host = Arc::new(Host::new());
-    let host_context = HostContext::new(host);
+    let host_context = HostContext::new(host.clone());
     use_context_provider(|| host_context);
+
+    spawn(async {
+        loop {
+            gloo_timers::future::TimeoutFuture::new(1000).await;
+            info!("heartbeat");
+        }
+    });
 
     rsx! {
         document::Stylesheet { href: asset!("/assets/bootstrap.css") }
@@ -34,30 +42,21 @@ fn control_panel() -> Element {
     let on_wasm_file = move |evt: Event<FormData>| {
         let mut state = state.clone();
         spawn(async move {
-            let file_engine = match evt.files() {
-                Some(f) => f,
-                None => {
-                    error!("No file engine");
-                    return;
-                }
+            let Some(file_engine) = evt.files() else {
+                error!("No file engine available");
+                return;
             };
 
             let files = file_engine.files();
-            let file_name = match files.get(0) {
-                Some(f) => f,
-                None => {
-                    error!("No file selected");
-                    return;
-                }
+            let Some(file_name) = files.get(0) else {
+                error!("No file selected");
+                return;
             };
 
             info!("Selected file: {}", file_name);
-            let file = match file_engine.read_file(file_name).await {
-                Some(f) => f,
-                None => {
-                    error!("Failed to read file");
-                    return;
-                }
+            let Some(file) = file_engine.read_file(file_name).await else {
+                error!("Failed to read file: {}", file_name);
+                return;
             };
 
             match state.load_plugin(&file, file_name).await {

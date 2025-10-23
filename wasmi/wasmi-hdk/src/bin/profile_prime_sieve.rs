@@ -8,7 +8,8 @@ use wasmi_pdk::{async_trait::async_trait, rpc_message::RpcErrorCode, transport::
 
 struct MyHostHandler {}
 
-#[async_trait]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl HostHandler for MyHostHandler {
     async fn handle(
         &self,
