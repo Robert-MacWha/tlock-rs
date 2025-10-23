@@ -1,7 +1,12 @@
-#[cfg(target_arch = "wasm32")]
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
 pub async fn yield_now() {
     use gloo_timers::future::TimeoutFuture;
     TimeoutFuture::new(0).await;
+}
+
+#[cfg(all(target_arch = "wasm32", target_os = "wasi"))]
+pub async fn yield_now() {
+    // noop
 }
 
 #[cfg(not(target_arch = "wasm32"))]
