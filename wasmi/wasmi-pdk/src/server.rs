@@ -32,7 +32,7 @@ pub struct ServerBuilder<S> {
 
 /// Server is a RPC server that can handle requests by dispatching them to registered
 /// handler functions. It stores a shared state `S` that is passed into each handler.
-pub struct Server<S: Send + Sync + 'static> {
+pub struct Server<S> {
     state: Arc<S>,
     handlers: HashMap<String, HandlerFn<S>>,
 }
