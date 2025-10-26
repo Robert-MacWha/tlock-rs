@@ -1,12 +1,11 @@
 use serde_json::Value;
 use std::{fs, path::PathBuf, sync::Arc, time::Duration};
-use tokio::time::{sleep, timeout};
+use tokio::time::timeout;
 use tracing::info;
 use tracing_test::traced_test;
-use wasmi_hdk::host_handler::HostHandler;
 use wasmi_hdk::plugin::{Plugin, PluginId};
+use wasmi_pdk::server::{Server, ServerBuilder};
 use wasmi_pdk::transport::Transport;
-use wasmi_pdk::{async_trait::async_trait, rpc_message::RpcErrorCode};
 
 fn load_plugin_wasm() -> Vec<u8> {
     let wasm_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -16,28 +15,19 @@ fn load_plugin_wasm() -> Vec<u8> {
     fs::read(wasm_path).expect("Failed to read plugin WASM file")
 }
 
-struct MyHostHandler {}
+fn get_host_server() -> Server<(Option<PluginId>, ())> {
+    let server = ServerBuilder::default()
+        .with_method("ping", |_, _params: ()| async move {
+            info!("Received ping request, sending pong response");
+            Ok("pong".to_string())
+        })
+        .with_method("echo", |_, params: Value| async move {
+            info!("Received echo request, returning response");
+            Ok(params)
+        })
+        .finish();
 
-#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
-#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
-impl HostHandler for MyHostHandler {
-    async fn handle(
-        &self,
-        _id: PluginId,
-        method: &str,
-        params: Value,
-    ) -> Result<Value, RpcErrorCode> {
-        info!("Host received method: {}, params: {:?}", method, params);
-
-        match method {
-            "ping" => {
-                sleep(Duration::from_millis(100)).await;
-                Ok(serde_json::json!("pong"))
-            }
-            "echo" => Ok(params),
-            _ => Err(RpcErrorCode::MethodNotFound),
-        }
-    }
+    return server;
 }
 
 #[tokio::test]
@@ -46,7 +36,7 @@ async fn test_plugin() {
     info!("Starting test_plugin...");
 
     let wasm_bytes = load_plugin_wasm();
-    let handler = Arc::new(MyHostHandler {});
+    let handler = Arc::new(get_host_server());
 
     let result = timeout(Duration::from_secs(1), async {
         let id = "0001".into();
@@ -64,7 +54,7 @@ async fn test_prime_sieve() {
     info!("Starting prime sieve test...");
 
     let wasm_bytes = load_plugin_wasm();
-    let handler = Arc::new(MyHostHandler {});
+    let handler = Arc::new(get_host_server());
 
     let result = timeout(Duration::from_secs(2), async {
         let id = "0001".into();
@@ -92,7 +82,7 @@ async fn test_many_echo() {
     info!("Starting many echo test...");
 
     let wasm_bytes = load_plugin_wasm();
-    let handler = Arc::new(MyHostHandler {});
+    let handler = Arc::new(get_host_server());
 
     let result = timeout(Duration::from_secs(5), async {
         let id = "0001".into();

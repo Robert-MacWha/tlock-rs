@@ -1,19 +1,16 @@
 use serde_json::Value;
-use wasmi_pdk::{async_trait::async_trait, rpc_message::RpcErrorCode};
+use wasmi_pdk::{rpc_message::RpcErrorCode, server::BoxFuture};
 
 use crate::plugin::PluginId;
 
 /// HostHandler is a wrapper around the `wasmi-pdk::RequestHandler` trait that adds
 /// the plugin ID as the first arg in the `handle` method. It should be used
 /// by hosts that manage multiple plugins to differentiate request sources.
-#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
-#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 pub trait HostHandler: Send + Sync {
-    /// Handle an incoming request from a plugin.
-    async fn handle(
-        &self,
+    fn handle<'a>(
+        &'a self,
         plugin: PluginId,
-        method: &str,
+        method: &'a str,
         params: Value,
-    ) -> Result<Value, RpcErrorCode>;
+    ) -> BoxFuture<'a, Result<Value, RpcErrorCode>>;
 }

@@ -12,22 +12,16 @@ pub struct EthProviderProps {
 #[component]
 pub fn EthProvider(props: EthProviderProps) -> Element {
     let state = use_context::<HostContext>();
-    let entity_plugin = state.host.get_entity_plugin(&props.id.as_entity_id());
-    let entity_plugin = match entity_plugin {
-        Some(plugin) => plugin,
-        None => return rsx! { div { "EthProvider component - ID: {props.id}, Plugin: Unknown" } },
-    };
-    let id = entity_plugin.id();
-
+    let eth_provider_id = props.id.clone();
     let mut block_number_resp = use_signal(|| 0u64);
 
     let handle_block_number = move |_| {
         let state = state.clone();
-        let id = id.clone();
+        let id: EthProviderId = eth_provider_id.clone();
 
         spawn(async move {
             info!("Fetch block number for EthProvider {id}");
-            match state.host.eth_provider_block_number(&id).await {
+            match state.host.eth_provider_block_number(id).await {
                 Ok(block_number) => {
                     info!("Block number: {block_number}");
                     block_number_resp.set(block_number);
@@ -46,7 +40,6 @@ pub fn EthProvider(props: EthProviderProps) -> Element {
                 "EthProvider Component"
                 ul {
                     li { "ID: {props.id}" }
-                    li { "Plugin: {entity_plugin.name()} ({entity_plugin.id()})" }
                     li {
                         button {
                             onclick: handle_block_number,

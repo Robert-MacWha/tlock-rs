@@ -46,15 +46,18 @@ macro_rules! rpc_method {
         $(#[$meta:meta])*
         $name:ident, $struct_name:ident, $params:ty, $output:ty
     ) => {
-        $(#[$meta])*
-        #[allow(unused_doc_comments)]
+        //? Consider removing PhantomData and just using an empty struct?
+        //? This way the types show up when you hover over the struct name /
+        //? in documentation more clearly though, which is very nice.
+        // $(#[$meta])*
+        // pub struct $struct_name<P = $params, O = $output>(
+        //     core::marker::PhantomData<(P, O)>
+        // );
         pub struct $struct_name;
 
         impl $crate::RpcMethod for $struct_name {
-            // TODO: Make these types more flexible, ideally json, so they can be expanded & are backward/forward compatible.
             type Params = $params;
             type Output = $output;
-
             const NAME: &'static str = stringify!($name);
         }
     };
@@ -129,19 +132,21 @@ pub mod eth {
         rpc::types::{BlockOverrides, TransactionRequest, state::StateOverride},
     };
 
+    use crate::entities::EthProviderId;
+
     rpc_method!(
         /// Get the current block number.
-        eth_block_number, BlockNumber, (), u64
+        eth_block_number, BlockNumber, EthProviderId, u64
     );
 
     rpc_method!(
         /// Gets the balance of an address at a given block.
-        eth_get_balance, GetBalance, (alloy::primitives::Address, BlockId), alloy::primitives::U256
+        eth_get_balance, GetBalance, (EthProviderId, alloy::primitives::Address, BlockId), alloy::primitives::U256
     );
 
     rpc_method!(
         /// Executes a new message call immediately without creating a transaction on the block chain.
-        eth_call, Call, (TransactionRequest, Option<BlockOverrides>, Option<StateOverride>), Bytes
+        eth_call, Call, (EthProviderId, TransactionRequest, Option<BlockOverrides>, Option<StateOverride>), Bytes
     );
 }
 
@@ -190,6 +195,8 @@ pub mod page {
     use serde::{Deserialize, Serialize};
     use std::collections::HashMap;
 
+    use crate::entities::PageId;
+
     #[derive(Serialize, Deserialize, Debug)]
     pub enum PageEvent {
         ButtonClicked(String),                               // (button_id)
@@ -200,11 +207,11 @@ pub mod page {
         /// Called by the host when a registered page is loaded in the frontend. The
         /// plugin should setup any necessary interfaces with `host::SetInterface` here,
         /// dependant on the plugin's internal state.
-        page_on_load, OnLoad, u32, ()
+        page_on_load, OnLoad, (PageId, u32), ()
     );
 
     rpc_method!(
         /// Called by the host when a registered page is updated in the frontend.
-        page_on_update, OnUpdate, (u32, PageEvent), ()
+        page_on_update, OnUpdate, (PageId, u32, PageEvent), ()
     );
 }

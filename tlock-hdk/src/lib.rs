@@ -1,44 +1,64 @@
 pub use tlock_api;
+pub use tlock_pdk;
+pub use tracing;
 pub use wasmi_hdk;
 pub use wasmi_pdk;
-pub mod dispatcher;
 
 #[macro_export]
-macro_rules! impl_rpc_handler {
-    (
-        $provider:ty, $method:ty,
-        |$self:ident, $plugin_id:ident, $params_name:ident| $body:expr
-    ) => {
-        #[cfg(target_arch = "wasm32")]
-        impl $crate::dispatcher::RpcHandler<$method> for $provider {
-            fn invoke(
-                &$self,
-                $plugin_id: $crate::wasmi_hdk::plugin::PluginId,
-                $params_name: <$method as $crate::tlock_api::RpcMethod>::Params,
-            ) -> impl core::future::Future<
-                Output = Result<
-                    <$method as $crate::tlock_api::RpcMethod>::Output,
-                    $crate::wasmi_pdk::rpc_message::RpcErrorCode,
-                >,
-            > + '_ {
-                async move { $body }
-            }
-        }
+macro_rules! __impl_host_rpc_base {
+    ($host_ty:ty, $method:ty, $host_fn:ident, $call_expr:expr) => {
+        pub async fn $host_fn(
+            host: ::std::sync::Arc<(
+                Option<$crate::wasmi_hdk::plugin::PluginId>,
+                ::std::sync::Weak<$host_ty>,
+            )>,
+            params: <$method as $crate::tlock_api::RpcMethod>::Params,
+        ) -> Result<
+            <$method as $crate::tlock_api::RpcMethod>::Output,
+            $crate::wasmi_pdk::rpc_message::RpcErrorCode,
+        > {
+            use $crate::tracing::{info, warn};
 
-        #[cfg(not(target_arch = "wasm32"))]
-        impl $crate::dispatcher::RpcHandler<$method> for $provider {
-            fn invoke(
-                &$self,
-                $plugin_id: $crate::wasmi_hdk::plugin::PluginId,
-                $params_name: <$method as $crate::tlock_api::RpcMethod>::Params,
-            ) -> impl core::future::Future<
-                Output = Result<
-                    <$method as $crate::tlock_api::RpcMethod>::Output,
-                    $crate::wasmi_pdk::rpc_message::RpcErrorCode,
-                >,
-            > + Send + '_ {
-                async move { $body }
-            }
+            let plugin_id = host.0.as_ref().unwrap();
+            let host = host.1.upgrade().ok_or_else(|| {
+                warn!("Host has been dropped");
+                $crate::wasmi_pdk::rpc_message::RpcErrorCode::InternalError
+            })?;
+
+            info!("[host_func] Plugin {} sent {}", plugin_id, <$method>::NAME);
+            $call_expr(host, plugin_id.clone(), params).await
         }
+    };
+}
+
+#[macro_export]
+macro_rules! impl_host_rpc {
+    ($host_ty:ty, $method:ty, $host_fn:ident) => {
+        $crate::__impl_host_rpc_base!(
+            $host_ty,
+            $method,
+            $host_fn,
+            |host: ::std::sync::Arc<$host_ty>,
+             plugin_id: $crate::wasmi_hdk::plugin::PluginId,
+             params: <$method as $crate::tlock_api::RpcMethod>::Params| async move {
+                host.$host_fn(&plugin_id, params).await
+            }
+        );
+    };
+}
+
+#[macro_export]
+macro_rules! impl_host_rpc_no_id {
+    ($host_ty:ty, $method:ty, $host_fn:ident) => {
+        $crate::__impl_host_rpc_base!(
+            $host_ty,
+            $method,
+            $host_fn,
+            |host: ::std::sync::Arc<$host_ty>,
+             _plugin_id: $crate::wasmi_hdk::plugin::PluginId,
+             params: <$method as $crate::tlock_api::RpcMethod>::Params| async move {
+                host.$host_fn(params).await
+            }
+        );
     };
 }

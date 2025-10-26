@@ -2,9 +2,8 @@ use alloy::{hex, primitives::U256, signers::local::PrivateKeySigner};
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, io::stderr, str::FromStr, sync::Arc};
 use tlock_pdk::{
-    dispatcher::Dispatcher,
     futures::executor::block_on,
-    impl_rpc_handler,
+    server::ServerBuilder,
     state::{get_state, get_state_or_default, set_state},
     tlock_api::{
         RpcMethod,
@@ -21,46 +20,37 @@ use tlock_pdk::{
     },
 };
 
-struct MyVaultPlugin {
-    transport: Arc<JsonRpcTransport>,
-}
-
 #[derive(Serialize, Deserialize, Default)]
 struct PluginState {
     vaults: HashMap<VaultId, String>, // Maps VaultId to private_key
 }
 
-impl MyVaultPlugin {
-    pub fn new(transport: Arc<JsonRpcTransport>) -> Self {
-        Self {
-            transport: transport,
-        }
-    }
-}
-
-impl_rpc_handler!(MyVaultPlugin, plugin::Init, |self, _params| {
+async fn init(transport: Arc<JsonRpcTransport>, _params: ()) -> Result<(), RpcErrorCode> {
     info!("Calling Init on Vault Plugin");
 
     // ? Register the vault's page
     let page_id = PageId::new("vault_page".to_string());
     host::RegisterEntity
-        .call(self.transport.clone(), EntityId::from(page_id))
+        .call(transport.clone(), EntityId::from(page_id))
         .await?;
 
     Ok(())
-});
+}
 
-impl_rpc_handler!(MyVaultPlugin, global::Ping, |self, _params| {
-    global::Ping.call(self.transport.clone(), ()).await?;
+async fn ping(transport: Arc<JsonRpcTransport>, _params: ()) -> Result<String, RpcErrorCode> {
+    global::Ping.call(transport.clone(), ()).await?;
     Ok("pong from vault".to_string())
-});
+}
 
-impl_rpc_handler!(MyVaultPlugin, vault::GetAssets, |self, params| {
+async fn get_assets(
+    transport: Arc<JsonRpcTransport>,
+    params: VaultId,
+) -> Result<Vec<(AssetId, U256)>, RpcErrorCode> {
     let vault_id = params;
     info!("Received BalanceOf request for vault: {}", vault_id);
 
     //? Retrieve the plugin state to get the vault account ID
-    let state: PluginState = get_state(self.transport.clone()).await?;
+    let state: PluginState = get_state(transport.clone()).await?;
 
     let vaults = state.vaults;
     let private_key = vaults.get(&vault_id).ok_or_else(|| {
@@ -78,9 +68,13 @@ impl_rpc_handler!(MyVaultPlugin, vault::GetAssets, |self, params| {
     );
 
     Ok(vec![(dummy_asset_id, U256::from(1000u64))])
-});
+}
 
-impl_rpc_handler!(MyVaultPlugin, page::OnLoad, |self, interface_id| {
+async fn on_load(
+    transport: Arc<JsonRpcTransport>,
+    params: (PageId, u32),
+) -> Result<(), RpcErrorCode> {
+    let (_page_id, interface_id) = params;
     info!("OnPageLoad called for interface ID: {}", interface_id);
 
     let component = container(vec![
@@ -97,14 +91,17 @@ impl_rpc_handler!(MyVaultPlugin, page::OnLoad, |self, interface_id| {
     ]);
 
     host::SetInterface
-        .call(self.transport.clone(), (interface_id, component))
+        .call(transport.clone(), (interface_id, component))
         .await?;
 
     Ok(())
-});
+}
 
-impl_rpc_handler!(MyVaultPlugin, page::OnUpdate, |self, params| {
-    let (page_id, event) = params;
+async fn on_update(
+    transport: Arc<JsonRpcTransport>,
+    params: (PageId, u32, page::PageEvent),
+) -> Result<(), RpcErrorCode> {
+    let (_page_id, interface_id, event) = params;
     info!("Page updated in Vault Plugin: {:?}", event);
 
     match event {
@@ -121,13 +118,13 @@ impl_rpc_handler!(MyVaultPlugin, page::OnUpdate, |self, params| {
             let entity_id = vault_id.as_entity_id();
 
             host::RegisterEntity
-                .call(self.transport.clone(), entity_id)
+                .call(transport.clone(), entity_id)
                 .await?;
 
             // Save the vault ID and private key in the plugin state
-            let mut state: PluginState = get_state_or_default(self.transport.clone()).await;
+            let mut state: PluginState = get_state_or_default(transport.clone()).await;
             state.vaults.insert(vault_id, private_key_hex.clone());
-            set_state(self.transport.clone(), &state).await?;
+            set_state(transport.clone(), &state).await?;
 
             let component = container(vec![
                 heading("Vault Component"),
@@ -137,7 +134,7 @@ impl_rpc_handler!(MyVaultPlugin, page::OnUpdate, |self, params| {
             ]);
 
             host::SetInterface
-                .call(self.transport.clone(), (page_id, component))
+                .call(transport.clone(), (interface_id, component))
                 .await?;
 
             return Ok(());
@@ -169,13 +166,13 @@ impl_rpc_handler!(MyVaultPlugin, page::OnUpdate, |self, params| {
             let entity_id = vault_id.as_entity_id();
 
             host::RegisterEntity
-                .call(self.transport.clone(), entity_id)
+                .call(transport.clone(), entity_id)
                 .await?;
 
             // Save the vault ID and private key in the plugin state
-            let mut state: PluginState = get_state_or_default(self.transport.clone()).await;
+            let mut state: PluginState = get_state_or_default(transport.clone()).await;
             state.vaults.insert(vault_id, private_key.clone());
-            set_state(self.transport.clone(), &state).await?;
+            set_state(transport.clone(), &state).await?;
 
             let component = container(vec![
                 heading("Vault Component"),
@@ -185,7 +182,7 @@ impl_rpc_handler!(MyVaultPlugin, page::OnUpdate, |self, params| {
             ]);
 
             host::SetInterface
-                .call(self.transport.clone(), (page_id, component))
+                .call(transport.clone(), (interface_id, component))
                 .await?;
 
             return Ok(());
@@ -195,7 +192,7 @@ impl_rpc_handler!(MyVaultPlugin, page::OnUpdate, |self, params| {
         }
     }
     return Ok(());
-});
+}
 
 fn main() {
     fmt()
@@ -211,19 +208,16 @@ fn main() {
     let transport = JsonRpcTransport::new(reader, writer);
     let transport = Arc::new(transport);
 
-    let plugin = MyVaultPlugin::new(transport.clone());
+    let plugin = ServerBuilder::new(transport.clone())
+        .with_method(plugin::Init, init)
+        .with_method(global::Ping, ping)
+        .with_method(vault::GetAssets, get_assets)
+        .with_method(page::OnLoad, on_load)
+        .with_method(page::OnUpdate, on_update)
+        .finish();
     let plugin = Arc::new(plugin);
 
-    let mut dispatcher = Dispatcher::new(plugin);
-    dispatcher.register::<global::Ping>();
-    dispatcher.register::<plugin::Init>();
-    dispatcher.register::<vault::GetAssets>();
-    dispatcher.register::<page::OnLoad>();
-    dispatcher.register::<page::OnUpdate>();
-
-    let dispatcher = Arc::new(dispatcher);
-
     block_on(async move {
-        let _ = transport.process_next_line(Some(dispatcher)).await;
+        let _ = transport.process_next_line(Some(plugin)).await;
     });
 }

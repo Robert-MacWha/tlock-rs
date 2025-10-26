@@ -11,7 +11,7 @@ use futures::{
 };
 use runtime::yield_now;
 use serde_json::Value;
-use tracing::{trace, warn};
+use tracing::{info, trace, warn};
 
 use crate::{
     api::{ApiError, RequestHandler},
@@ -114,6 +114,8 @@ impl JsonRpcTransport {
             }
         };
 
+        trace!("JsonRpcTransport::process_next_line() - {:?}", message);
+
         self.process_message(message, handler).await
     }
 
@@ -165,10 +167,7 @@ impl JsonRpcTransport {
                 }
             }
             RpcMessage::RpcErrorResponse(err) => {
-                warn!(
-                    "Received error response from plugin: {:?}",
-                    err.error.message
-                );
+                warn!("Received error response: {:?}", err.error.message);
                 return Err(err.error.code);
             }
             RpcMessage::RpcRequest(RpcRequest {

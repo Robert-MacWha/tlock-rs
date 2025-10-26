@@ -8,6 +8,7 @@ use wasmi_pdk::{
     api::RequestHandler,
     async_trait::async_trait,
     rpc_message::{RpcErrorCode, RpcResponse},
+    server::BoxFuture,
     transport::{JsonRpcTransport, Transport},
 };
 
@@ -151,10 +152,12 @@ struct PluginCallback {
     uuid: PluginId,
 }
 
-#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
-#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl RequestHandler<RpcErrorCode> for PluginCallback {
-    async fn handle(&self, method: &str, params: Value) -> Result<Value, RpcErrorCode> {
-        self.handler.handle(self.uuid.clone(), method, params).await
+    fn handle<'a>(
+        &'a self,
+        method: &'a str,
+        params: Value,
+    ) -> BoxFuture<'a, Result<Value, RpcErrorCode>> {
+        Box::pin(async move { self.handler.handle(self.uuid.clone(), method, params).await })
     }
 }

@@ -18,22 +18,18 @@ pub fn Page(props: PageProps) -> Element {
     });
 
     let state = use_context::<HostContext>();
-    let entity_plugin = state.host.get_entity_plugin(&props.id.as_entity_id());
-    let entity_plugin = match entity_plugin {
-        Some(id) => id,
-        None => return rsx! { div { "Page component - ID: {props.id}, Plugin: Unknown" } },
-    };
+    let page_id = props.id.clone();
 
     // Initial load, fetch the page via `OnPageLoad`
     let _ = use_resource({
         let state = state.clone();
-        let plugin_id = entity_plugin.id().clone();
+        let page_id = page_id.clone();
         move || {
             let mut state = state.clone();
-            let plugin_id = plugin_id.clone();
+            let page_id = page_id.clone();
 
             async move {
-                match state.host.page_on_load(&plugin_id, interface_id).await {
+                match state.host.page_on_load((page_id, interface_id)).await {
                     Ok(()) => info!("OnPageLoad success"),
                     Err(err) => info!("OnPageLoad error: {err}"),
                 }
@@ -44,15 +40,15 @@ pub fn Page(props: PageProps) -> Element {
 
     let on_component_event = use_callback({
         let state = state.clone();
-        let plugin_id = entity_plugin.id().clone();
+        let page_id = page_id.clone();
         move |event: PageEvent| {
             let mut state = state.clone();
-            let plugin_id = plugin_id.clone();
+            let page_id = page_id.clone();
 
             spawn(async move {
                 match state
                     .host
-                    .page_on_update(&plugin_id, interface_id, event)
+                    .page_on_update((page_id, interface_id, event))
                     .await
                 {
                     Ok(()) => info!("OnPageUpdate success"),
@@ -69,7 +65,6 @@ pub fn Page(props: PageProps) -> Element {
                 "Page Component"
                 ul {
                     li { "ID: {props.id}" }
-                    li { "Plugin: {entity_plugin.name()} ({entity_plugin.id()})" }
                     li { "Interface ID: {interface_id}" }
                     li { "Component: ", {
                         let interface = state.interfaces.read().get(&interface_id).cloned();

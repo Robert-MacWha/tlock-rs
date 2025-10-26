@@ -1,16 +1,20 @@
 use std::{io::stderr, sync::Arc, task::Poll};
 
 use alloy::{
+    eips::BlockId,
+    primitives::{Address, Bytes, U256},
     providers::{Provider, ProviderBuilder},
-    rpc::client::RpcClient,
+    rpc::{
+        client::RpcClient,
+        types::{BlockOverrides, TransactionRequest, state::StateOverride},
+    },
     transports::{TransportError, TransportErrorKind, TransportFut},
 };
 use alloy_json_rpc::{RequestPacket, ResponsePacket};
 use serde::{Deserialize, Serialize};
 use tlock_pdk::{
-    dispatcher::Dispatcher,
     futures::executor::block_on,
-    impl_rpc_handler,
+    server::ServerBuilder,
     state::{get_state, set_state},
     tlock_api::{
         RpcMethod,
@@ -27,52 +31,44 @@ use tlock_pdk::{
 };
 use tower_service::Service;
 
-struct EthProvider {
-    transport: Arc<JsonRpcTransport>,
-}
-
 #[derive(Serialize, Deserialize, Default)]
 struct ProviderState {
     rpc_url: String,
 }
 
-impl EthProvider {
-    pub fn new(transport: Arc<JsonRpcTransport>) -> Self {
-        Self {
-            transport: transport,
-        }
-    }
+async fn ping(transport: Arc<JsonRpcTransport>, _params: ()) -> Result<String, RpcErrorCode> {
+    global::Ping.call(transport.clone(), ()).await?;
+    Ok("pong".to_string())
 }
 
-impl_rpc_handler!(EthProvider, global::Ping, |self, _params| {
-    global::Ping.call(self.transport.clone(), ()).await?;
-    Ok("pong".to_string())
-});
-
-impl_rpc_handler!(EthProvider, plugin::Init, |self, _params| {
+async fn init(transport: Arc<JsonRpcTransport>, _params: ()) -> Result<(), RpcErrorCode> {
     info!("Initializing Ethereum Provider Plugin...");
-    let interface_id = PageId::new("eth_provider_page".to_string());
+    let page_id = PageId::new("eth_provider_page".to_string());
     host::RegisterEntity
-        .call(self.transport.clone(), interface_id.into())
+        .call(transport.clone(), page_id.into())
         .await?;
 
     info!("Registering Ethereum Provider...");
 
     let provider_id = EthProviderId::new("eth_provider".to_string());
     host::RegisterEntity
-        .call(self.transport.clone(), provider_id.into())
+        .call(transport.clone(), provider_id.into())
         .await?;
 
     let state = ProviderState {
         rpc_url: "https://eth.llamarpc.com".to_string(),
     };
-    set_state(self.transport.clone(), &state).await?;
+    set_state(transport.clone(), &state).await?;
 
     Ok(())
-});
+}
 
-impl_rpc_handler!(EthProvider, page::OnLoad, |self, interface_id| {
-    let state: ProviderState = get_state(self.transport.clone()).await.unwrap_or_default();
+async fn on_load(
+    transport: Arc<JsonRpcTransport>,
+    params: (PageId, u32),
+) -> Result<(), RpcErrorCode> {
+    let (_page_id, interface_id) = params;
+    let state: ProviderState = get_state(transport.clone()).await.unwrap_or_default();
 
     let component = container(vec![
         text("This is the Ethereum Provider Plugin").into(),
@@ -80,28 +76,34 @@ impl_rpc_handler!(EthProvider, page::OnLoad, |self, interface_id| {
     ]);
 
     host::SetInterface
-        .call(self.transport.clone(), (interface_id, component))
+        .call(transport.clone(), (interface_id, component))
         .await?;
 
     return Ok(());
-});
+}
 
-impl_rpc_handler!(EthProvider, eth::BlockNumber, |self, _params| {
-    let state: ProviderState = get_state(self.transport.clone()).await?;
+async fn block_number(
+    transport: Arc<JsonRpcTransport>,
+    _params: EthProviderId,
+) -> Result<u64, RpcErrorCode> {
+    let state: ProviderState = get_state(transport.clone()).await?;
 
-    let provider = create_alloy_provider(self.transport.clone(), state.rpc_url);
+    let provider = create_alloy_provider(transport.clone(), state.rpc_url);
     let block_number = provider.get_block_number().await.map_err(|e| {
         error!("Error fetching block number: {:?}", e);
         RpcErrorCode::InternalError
     })?;
     return Ok(block_number);
-});
+}
 
-impl_rpc_handler!(EthProvider, eth::GetBalance, |self, params| {
-    let state: ProviderState = get_state(self.transport.clone()).await?;
-    let (address, block_id) = params;
+async fn get_balance(
+    transport: Arc<JsonRpcTransport>,
+    params: (EthProviderId, Address, BlockId),
+) -> Result<U256, RpcErrorCode> {
+    let state: ProviderState = get_state(transport.clone()).await?;
+    let (_provider_id, address, block_id) = params;
 
-    let provider = create_alloy_provider(self.transport.clone(), state.rpc_url);
+    let provider = create_alloy_provider(transport.clone(), state.rpc_url);
     let balance = provider
         .get_balance(address)
         .block_id(block_id)
@@ -111,14 +113,22 @@ impl_rpc_handler!(EthProvider, eth::GetBalance, |self, params| {
             RpcErrorCode::InternalError
         })?;
     return Ok(balance);
-});
+}
 
-impl_rpc_handler!(EthProvider, eth::Call, |self, params| {
-    let state: ProviderState = get_state(self.transport.clone()).await?;
+async fn call(
+    transport: Arc<JsonRpcTransport>,
+    params: (
+        EthProviderId,
+        TransactionRequest,
+        Option<BlockOverrides>,
+        Option<StateOverride>,
+    ),
+) -> Result<Bytes, RpcErrorCode> {
+    let state: ProviderState = get_state(transport.clone()).await?;
 
-    let (tx, block_overrides, state_overrides) = params;
+    let (_provider_id, tx, block_overrides, state_overrides) = params;
 
-    let provider = create_alloy_provider(self.transport.clone(), state.rpc_url);
+    let provider = create_alloy_provider(transport.clone(), state.rpc_url);
     let resp = provider
         .call(tx)
         .with_block_overrides_opt(block_overrides)
@@ -130,7 +140,7 @@ impl_rpc_handler!(EthProvider, eth::Call, |self, params| {
         })?;
 
     return Ok(resp);
-});
+}
 
 fn main() {
     fmt()
@@ -146,20 +156,18 @@ fn main() {
     let transport = JsonRpcTransport::new(Box::new(reader), Box::new(writer));
     let transport = Arc::new(transport);
 
-    let plugin = EthProvider::new(transport.clone());
+    let plugin = ServerBuilder::new(transport.clone())
+        .with_method(global::Ping, ping)
+        .with_method(plugin::Init, init)
+        .with_method(page::OnLoad, on_load)
+        .with_method(eth::BlockNumber, block_number)
+        .with_method(eth::GetBalance, get_balance)
+        .with_method(eth::Call, call)
+        .finish();
     let plugin = Arc::new(plugin);
 
-    let mut dispatcher = Dispatcher::new(plugin);
-    dispatcher.register::<global::Ping>();
-    dispatcher.register::<plugin::Init>();
-    dispatcher.register::<page::OnLoad>();
-    dispatcher.register::<eth::BlockNumber>();
-    dispatcher.register::<eth::GetBalance>();
-    dispatcher.register::<eth::Call>();
-    let dispatcher = Arc::new(dispatcher);
-
     block_on(async move {
-        let _ = transport.process_next_line(Some(dispatcher)).await;
+        let _ = transport.process_next_line(Some(plugin)).await;
     });
 }
 
