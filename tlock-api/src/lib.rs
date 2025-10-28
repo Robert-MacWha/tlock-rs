@@ -46,13 +46,10 @@ macro_rules! rpc_method {
         $(#[$meta:meta])*
         $name:ident, $struct_name:ident, $params:ty, $output:ty
     ) => {
-        //? Consider removing PhantomData and just using an empty struct?
-        //? This way the types show up when you hover over the struct name /
-        //? in documentation more clearly though, which is very nice.
-        // $(#[$meta])*
-        // pub struct $struct_name<P = $params, O = $output>(
-        //     core::marker::PhantomData<(P, O)>
-        // );
+        $(#[$meta])*
+        ///
+        #[doc = concat!("**Params:** `", stringify!($params), "`")]
+        #[doc = concat!("**Output:** `", stringify!($output), "`")]
         pub struct $struct_name;
 
         impl $crate::RpcMethod for $struct_name {
@@ -128,8 +125,11 @@ pub mod plugin {
 pub mod eth {
     use alloy::{
         eips::BlockId,
-        primitives::Bytes,
-        rpc::types::{BlockOverrides, TransactionRequest, state::StateOverride},
+        primitives::{Address, Bytes, TxHash},
+        rpc::types::{
+            Block, BlockOverrides, Filter, Log, Transaction, TransactionReceipt,
+            TransactionRequest, state::StateOverride,
+        },
     };
 
     use crate::entities::EthProviderId;
@@ -140,13 +140,56 @@ pub mod eth {
     );
 
     rpc_method!(
+        /// Executes a new message call immediately without creating a transaction on the block chain.
+        eth_call, Call, (EthProviderId, TransactionRequest, Option<BlockOverrides>, Option<StateOverride>), Bytes
+    );
+
+    rpc_method!(
+        /// Gets the current gas price.
+        eth_gas_price, GasPrice, EthProviderId, alloy::primitives::U256
+    );
+
+    rpc_method!(
         /// Gets the balance of an address at a given block.
         eth_get_balance, GetBalance, (EthProviderId, alloy::primitives::Address, BlockId), alloy::primitives::U256
     );
 
     rpc_method!(
-        /// Executes a new message call immediately without creating a transaction on the block chain.
-        eth_call, Call, (EthProviderId, TransactionRequest, Option<BlockOverrides>, Option<StateOverride>), Bytes
+        /// Gets a block by its hash or number.
+        eth_get_block, GetBlock, (EthProviderId, BlockId), Block
+    );
+
+    rpc_method!(
+        /// Gets a block receipt by its hash or number.
+        eth_get_block_receipts, GetBlockReceipts, (EthProviderId, BlockId), Vec<TransactionReceipt>
+    );
+
+    rpc_method!(
+        // Gets logs matching the given filter object.
+        eth_get_logs,
+        GetLogs,
+        (EthProviderId, Filter),
+        Vec<Log>
+    );
+
+    rpc_method!(
+        /// Gets the compiled bytecode of a smart contract.
+        eth_get_code, GetCode, (EthProviderId, Address, BlockId), Bytes
+    );
+
+    rpc_method!(
+        /// Gets a transaction by its hash
+        eth_get_transaction, GetTransaction, (EthProviderId, TxHash), Transaction
+    );
+
+    rpc_method!(
+        /// Gets a transaction receipt by its hash
+        eth_get_transaction_receipt, GetTransactionReceipt, (EthProviderId, TxHash), TransactionReceipt
+    );
+
+    rpc_method!(
+        /// Sends a raw transaction to the network.
+        eth_send_raw_transaction, SendRawTransaction, (EthProviderId, Bytes), TxHash
     );
 }
 
