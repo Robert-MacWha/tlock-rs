@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use serde_json::Value;
 use wasmi_pdk::{
-    rpc_message::RpcErrorCode,
+    rpc_message::RpcError,
     server::{BoxFuture, Server},
 };
 
@@ -14,7 +14,7 @@ impl<S: Clone + Send + Sync + 'static> HostHandler for Server<(Option<PluginId>,
         plugin: PluginId,
         method: &'a str,
         params: Value,
-    ) -> BoxFuture<'a, Result<Value, RpcErrorCode>> {
+    ) -> BoxFuture<'a, Result<Value, RpcError>> {
         Box::pin(async move {
             let s = self.state().1.clone();
             let s = Arc::new((Some(plugin), s));

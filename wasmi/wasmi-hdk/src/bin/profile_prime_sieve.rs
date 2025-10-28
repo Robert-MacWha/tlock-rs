@@ -4,7 +4,7 @@ use wasmi_hdk::{
     host_handler::HostHandler,
     plugin::{Plugin, PluginId},
 };
-use wasmi_pdk::{async_trait::async_trait, rpc_message::RpcErrorCode, transport::Transport};
+use wasmi_pdk::{async_trait::async_trait, rpc_message::RpcError, transport::Transport};
 
 struct MyHostHandler {}
 
@@ -16,10 +16,10 @@ impl HostHandler for MyHostHandler {
         _plugin: PluginId,
         method: &str,
         _params: Value,
-    ) -> Result<Value, RpcErrorCode> {
+    ) -> Result<Value, RpcError> {
         match method {
             "echo" => Ok(Value::String("echo".to_string())),
-            _ => Err(RpcErrorCode::MethodNotFound),
+            _ => Err(RpcError::MethodNotFound),
         }
     }
 }

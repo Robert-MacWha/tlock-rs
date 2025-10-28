@@ -1,5 +1,5 @@
 use serde_json::Value;
-use wasmi_pdk::{rpc_message::RpcErrorCode, server::BoxFuture};
+use wasmi_pdk::{rpc_message::RpcError, server::BoxFuture};
 
 use crate::plugin::PluginId;
 
@@ -12,5 +12,5 @@ pub trait HostHandler: Send + Sync {
         plugin: PluginId,
         method: &'a str,
         params: Value,
-    ) -> BoxFuture<'a, Result<Value, RpcErrorCode>>;
+    ) -> BoxFuture<'a, Result<Value, RpcError>>;
 }

@@ -11,11 +11,11 @@ use futures::{
 };
 use runtime::yield_now;
 use serde_json::Value;
-use tracing::{info, trace, warn};
+use tracing::{trace, warn};
 
 use crate::{
     api::{ApiError, RequestHandler},
-    rpc_message::{RpcError, RpcErrorCode, RpcErrorResponse, RpcMessage, RpcRequest, RpcResponse},
+    rpc_message::{RpcError, RpcErrorResponse, RpcMessage, RpcRequest, RpcResponse},
 };
 
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
@@ -34,7 +34,7 @@ pub struct JsonRpcTransport {
     pending: Mutex<HashMap<u64, Sender<RpcResponse>>>,
     reader: Mutex<Box<dyn BufRead + Send + Sync>>,
     writer: Mutex<Box<dyn Write + Send + Sync>>,
-    handler: Option<Arc<dyn RequestHandler<RpcErrorCode>>>,
+    handler: Option<Arc<dyn RequestHandler<RpcError>>>,
 }
 
 const JSON_RPC_VERSION: &str = "2.0";
@@ -56,7 +56,7 @@ impl JsonRpcTransport {
     pub fn with_handler(
         reader: Box<dyn BufRead + Send + Sync>,
         writer: Box<dyn Write + Send + Sync>,
-        handler: Arc<dyn RequestHandler<RpcErrorCode>>,
+        handler: Arc<dyn RequestHandler<RpcError>>,
     ) -> Self {
         Self {
             id: AtomicU64::new(0),
@@ -70,11 +70,11 @@ impl JsonRpcTransport {
 
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 #[cfg_attr(not(target_arch = "wasm32"), async_trait)]
-impl Transport<RpcErrorCode> for JsonRpcTransport {
+impl Transport<RpcError> for JsonRpcTransport {
     /// Sends a json-rpc request and waits for the response. `Call` does not
     /// pump the reader, so you must call `process_next_line` in another task
     /// to read responses / handle incoming requests.
-    async fn call(&self, method: &str, params: Value) -> Result<RpcResponse, RpcErrorCode> {
+    async fn call(&self, method: &str, params: Value) -> Result<RpcResponse, RpcError> {
         let (tx, mut rx) = oneshot::channel();
         let id = self.id.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         self.pending.lock().await.insert(id, tx);
@@ -89,7 +89,7 @@ impl Transport<RpcErrorCode> for JsonRpcTransport {
                 Ok(None) => {}
                 Err(_) => {
                     warn!("Caller dropped");
-                    return Err(RpcErrorCode::InternalError);
+                    return Err(RpcError::InternalError);
                 }
             }
 
@@ -103,14 +103,14 @@ impl JsonRpcTransport {
     /// pump the reader with a custom handler.
     pub async fn process_next_line(
         &self,
-        handler: Option<Arc<dyn RequestHandler<RpcErrorCode>>>,
-    ) -> Result<(), RpcErrorCode> {
+        handler: Option<Arc<dyn RequestHandler<RpcError>>>,
+    ) -> Result<(), RpcError> {
         let line: String = self.next_line().await?;
         let message = match serde_json::from_str::<RpcMessage>(line.trim()) {
             Ok(msg) => msg,
             Err(_) => {
                 warn!("Failed to parse line: {}", line.trim());
-                return Err(RpcErrorCode::ParseError);
+                return Err(RpcError::ParseError);
             }
         };
 
@@ -119,12 +119,7 @@ impl JsonRpcTransport {
         self.process_message(message, handler).await
     }
 
-    async fn write_request(
-        &self,
-        id: u64,
-        method: &str,
-        params: Value,
-    ) -> Result<(), RpcErrorCode> {
+    async fn write_request(&self, id: u64, method: &str, params: Value) -> Result<(), RpcError> {
         let msg = RpcMessage::RpcRequest(RpcRequest {
             jsonrpc: JSON_RPC_VERSION.to_string(),
             id,
@@ -135,10 +130,10 @@ impl JsonRpcTransport {
         Ok(())
     }
 
-    async fn write_message(&self, msg: &RpcMessage) -> Result<(), RpcErrorCode> {
+    async fn write_message(&self, msg: &RpcMessage) -> Result<(), RpcError> {
         let serialized = serde_json::to_string(msg).map_err(|_| {
             warn!("Failed to serialize message: {:?}", msg);
-            RpcErrorCode::InternalError
+            RpcError::InternalError
         })?;
         let msg = format!("{}\n", serialized);
 
@@ -146,11 +141,11 @@ impl JsonRpcTransport {
         let mut writer = self.writer.lock().await;
         writer.write_all(msg.as_bytes()).map_err(|_| {
             warn!("Failed to write message: {}", msg.trim());
-            RpcErrorCode::InternalError
+            RpcError::InternalError
         })?;
         writer.flush().map_err(|_| {
             warn!("Failed to flush message: {}", msg.trim());
-            RpcErrorCode::InternalError
+            RpcError::InternalError
         })?;
         Ok(())
     }
@@ -158,8 +153,8 @@ impl JsonRpcTransport {
     async fn process_message(
         &self,
         message: RpcMessage,
-        handler: Option<Arc<dyn RequestHandler<RpcErrorCode>>>,
-    ) -> Result<(), RpcErrorCode> {
+        handler: Option<Arc<dyn RequestHandler<RpcError>>>,
+    ) -> Result<(), RpcError> {
         match message.clone() {
             RpcMessage::RpcResponse(resp) => {
                 if let Some(tx) = self.pending.lock().await.remove(&resp.id) {
@@ -167,8 +162,8 @@ impl JsonRpcTransport {
                 }
             }
             RpcMessage::RpcErrorResponse(err) => {
-                warn!("Received error response: {:?}", err.error.message);
-                return Err(err.error.code);
+                warn!("Received error response: {:?}", err.error.message());
+                return Err(err.error);
             }
             RpcMessage::RpcRequest(RpcRequest {
                 jsonrpc: _,
@@ -176,7 +171,7 @@ impl JsonRpcTransport {
                 method,
                 params,
             }) => {
-                let handler = handler.ok_or(RpcErrorCode::ResourceUnavailable)?;
+                let handler = handler.ok_or(RpcError::MethodNotFound)?;
                 match handler.handle(&method, params).await {
                     Ok(result) => {
                         let response = RpcMessage::RpcResponse(RpcResponse {
@@ -186,14 +181,11 @@ impl JsonRpcTransport {
                         });
                         self.write_message(&response).await?;
                     }
-                    Err(err) => {
+                    Err(error) => {
                         let response = RpcMessage::RpcErrorResponse(RpcErrorResponse {
                             jsonrpc: JSON_RPC_VERSION.to_string(),
                             id,
-                            error: RpcError {
-                                code: err,
-                                message: err.to_string(),
-                            },
+                            error,
                         });
                         self.write_message(&response).await?;
                     }
@@ -204,7 +196,7 @@ impl JsonRpcTransport {
         Ok(())
     }
 
-    async fn next_line(&self) -> Result<String, RpcErrorCode> {
+    async fn next_line(&self) -> Result<String, RpcError> {
         let mut line = String::new();
 
         // Loop until we get a line, awaiting if we would block
@@ -217,7 +209,7 @@ impl JsonRpcTransport {
             match self.reader.lock().await.read_line(&mut line) {
                 Ok(0) => {
                     warn!("EOF reached while reading line");
-                    return Err(RpcErrorCode::InternalError);
+                    return Err(RpcError::InternalError);
                 }
                 Ok(_) => return Ok(line),
                 Err(e) => match e.kind() {
@@ -227,7 +219,7 @@ impl JsonRpcTransport {
                     }
                     _ => {
                         warn!("Failed to read line: {}", e);
-                        return Err(RpcErrorCode::InternalError);
+                        return Err(RpcError::InternalError);
                     }
                 },
             }

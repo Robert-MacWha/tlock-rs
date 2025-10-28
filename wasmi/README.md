@@ -29,11 +29,11 @@ struct MyHostHandler {}
 
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 #[cfg_attr(not(target_arch = "wasm32"), async_trait)]
-impl RequestHandler<RpcErrorCode> for MyHostHandler {
-    async fn handle(&self, method: &str, _params: Value) -> Result<Value, RpcErrorCode> {
+impl RequestHandler<RpcError> for MyHostHandler {
+    async fn handle(&self, method: &str, _params: Value) -> Result<Value, RpcError> {
         match method {
             "echo" => Ok(Value::String("echo".to_string())),
-            _ => Err(RpcErrorCode::MethodNotFound),
+            _ => Err(RpcError::MethodNotFound),
         }
     }
 }
@@ -52,15 +52,15 @@ impl PluginFactory for MyPlugin {
 
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 #[cfg_attr(not(target_arch = "wasm32"), async_trait)]
-impl RequestHandler<RpcErrorCode> for MyPlugin {
+impl RequestHandler<RpcError> for MyPlugin {
     async fn handle(
         &self,
         method: &str,
         _params: serde_json::Value,
-    ) -> Result<serde_json::Value, RpcErrorCode> {
+    ) -> Result<serde_json::Value, RpcError> {
         match method {
             "hello" => Ok(serde_json::json!({"message": "Hello from MyPlugin!"})),
-            _ => Err(RpcErrorCode::MethodNotFound),
+            _ => Err(RpcError::MethodNotFound),
         }
     }
 }

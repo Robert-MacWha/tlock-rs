@@ -7,7 +7,7 @@ use tracing::info;
 use wasmi_pdk::{
     api::RequestHandler,
     async_trait::async_trait,
-    rpc_message::{RpcErrorCode, RpcResponse},
+    rpc_message::{RpcError, RpcResponse},
     server::BoxFuture,
     transport::{JsonRpcTransport, Transport},
 };
@@ -59,7 +59,7 @@ pub enum PluginError {
     #[error("spawn error")]
     SpawnError(#[from] SpawnError),
     #[error("transport error")]
-    RpcError(#[from] RpcErrorCode),
+    RpcError(#[from] RpcError),
     #[error("plugin died")]
     PluginDied,
 }
@@ -91,19 +91,19 @@ impl Plugin {
 }
 
 impl PluginError {
-    pub fn as_rpc_code(&self) -> RpcErrorCode {
+    pub fn as_rpc_code(&self) -> RpcError {
         match self {
-            PluginError::RpcError(code) => *code,
-            _ => RpcErrorCode::InternalError,
+            PluginError::RpcError(code) => code.clone(),
+            _ => RpcError::InternalError,
         }
     }
 }
 
-impl From<PluginError> for RpcErrorCode {
+impl From<PluginError> for RpcError {
     fn from(err: PluginError) -> Self {
         match err {
             PluginError::RpcError(code) => code,
-            _ => RpcErrorCode::InternalError,
+            _ => RpcError::InternalError,
         }
     }
 }
@@ -152,12 +152,12 @@ struct PluginCallback {
     uuid: PluginId,
 }
 
-impl RequestHandler<RpcErrorCode> for PluginCallback {
+impl RequestHandler<RpcError> for PluginCallback {
     fn handle<'a>(
         &'a self,
         method: &'a str,
         params: Value,
-    ) -> BoxFuture<'a, Result<Value, RpcErrorCode>> {
+    ) -> BoxFuture<'a, Result<Value, RpcError>> {
         Box::pin(async move { self.handler.handle(self.uuid.clone(), method, params).await })
     }
 }

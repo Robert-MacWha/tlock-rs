@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use serde::{Serialize, de::DeserializeOwned};
-use wasmi_pdk::{api::ApiError, rpc_message::RpcErrorCode, transport::Transport};
+use wasmi_pdk::{api::ApiError, rpc_message::RpcError, transport::Transport};
 
 pub mod caip;
 pub mod component;
@@ -33,10 +33,10 @@ pub trait RpcMethod: Send + Sync {
         T: Transport<E> + Send + Sync + 'static,
     {
         let raw_params =
-            serde_json::to_value(params).map_err(|_| RpcErrorCode::InvalidParams.into())?;
+            serde_json::to_value(params).map_err(|_| RpcError::InvalidParams.into())?;
         let resp = transport.call(Self::NAME, raw_params).await?;
         let result =
-            serde_json::from_value(resp.result).map_err(|_| RpcErrorCode::InternalError.into())?;
+            serde_json::from_value(resp.result).map_err(|_| RpcError::InternalError.into())?;
         Ok(result)
     }
 }

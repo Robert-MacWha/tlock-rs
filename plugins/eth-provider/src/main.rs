@@ -23,7 +23,7 @@ use tlock_pdk::{
         eth, global, host, page, plugin,
     },
     wasmi_pdk::{
-        rpc_message::RpcErrorCode,
+        rpc_message::RpcError,
         tracing::{error, info},
         tracing_subscriber::fmt,
         transport::JsonRpcTransport,
@@ -36,12 +36,12 @@ struct ProviderState {
     rpc_url: String,
 }
 
-async fn ping(transport: Arc<JsonRpcTransport>, _params: ()) -> Result<String, RpcErrorCode> {
+async fn ping(transport: Arc<JsonRpcTransport>, _params: ()) -> Result<String, RpcError> {
     global::Ping.call(transport.clone(), ()).await?;
     Ok("pong".to_string())
 }
 
-async fn init(transport: Arc<JsonRpcTransport>, _params: ()) -> Result<(), RpcErrorCode> {
+async fn init(transport: Arc<JsonRpcTransport>, _params: ()) -> Result<(), RpcError> {
     info!("Initializing Ethereum Provider Plugin...");
     let page_id = PageId::new("eth_provider_page".to_string());
     host::RegisterEntity
@@ -66,7 +66,7 @@ async fn init(transport: Arc<JsonRpcTransport>, _params: ()) -> Result<(), RpcEr
 async fn on_load(
     transport: Arc<JsonRpcTransport>,
     params: (PageId, u32),
-) -> Result<(), RpcErrorCode> {
+) -> Result<(), RpcError> {
     let (_page_id, interface_id) = params;
     let state: ProviderState = get_state(transport.clone()).await.unwrap_or_default();
 
@@ -85,13 +85,13 @@ async fn on_load(
 async fn block_number(
     transport: Arc<JsonRpcTransport>,
     _params: EthProviderId,
-) -> Result<u64, RpcErrorCode> {
+) -> Result<u64, RpcError> {
     let state: ProviderState = get_state(transport.clone()).await?;
 
     let provider = create_alloy_provider(transport.clone(), state.rpc_url);
     let block_number = provider.get_block_number().await.map_err(|e| {
         error!("Error fetching block number: {:?}", e);
-        RpcErrorCode::InternalError
+        RpcError::InternalError
     })?;
     return Ok(block_number);
 }
@@ -99,7 +99,7 @@ async fn block_number(
 async fn get_balance(
     transport: Arc<JsonRpcTransport>,
     params: (EthProviderId, Address, BlockId),
-) -> Result<U256, RpcErrorCode> {
+) -> Result<U256, RpcError> {
     let state: ProviderState = get_state(transport.clone()).await?;
     let (_provider_id, address, block_id) = params;
 
@@ -110,7 +110,7 @@ async fn get_balance(
         .await
         .map_err(|e| {
             error!("Error fetching balance: {:?}", e);
-            RpcErrorCode::InternalError
+            RpcError::InternalError
         })?;
     return Ok(balance);
 }
@@ -123,7 +123,7 @@ async fn call(
         Option<BlockOverrides>,
         Option<StateOverride>,
     ),
-) -> Result<Bytes, RpcErrorCode> {
+) -> Result<Bytes, RpcError> {
     let state: ProviderState = get_state(transport.clone()).await?;
 
     let (_provider_id, tx, block_overrides, state_overrides) = params;
@@ -136,7 +136,7 @@ async fn call(
         .await
         .map_err(|e| {
             error!("Error processing call: {:?}", e);
-            RpcErrorCode::InternalError
+            RpcError::InternalError
         })?;
 
     return Ok(resp);

@@ -5,12 +5,12 @@ use tlock_pdk::{
     server::ServerBuilder,
     tlock_api::{RpcMethod, global},
     wasmi_pdk::{
-        rpc_message::RpcErrorCode, tracing::info, tracing_subscriber::fmt,
+        rpc_message::RpcError, tracing::info, tracing_subscriber::fmt,
         transport::JsonRpcTransport,
     },
 };
 
-async fn ping(transport: Arc<JsonRpcTransport>, _: ()) -> Result<String, RpcErrorCode> {
+async fn ping(transport: Arc<JsonRpcTransport>, _: ()) -> Result<String, RpcError> {
     global::Ping.call(transport, ()).await?;
     Ok("pong".to_string())
 }

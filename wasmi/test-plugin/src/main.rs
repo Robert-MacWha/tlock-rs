@@ -5,14 +5,14 @@ use std::{
 };
 use wasmi_pdk::{
     futures::executor::block_on,
-    rpc_message::RpcErrorCode,
+    rpc_message::RpcError,
     server::ServerBuilder,
     tracing::{error, info, level_filters::LevelFilter, trace},
     tracing_subscriber::fmt,
     transport::{JsonRpcTransport, Transport},
 };
 
-async fn prime_sieve(_transport: Arc<JsonRpcTransport>, limit: u64) -> Result<Value, RpcErrorCode> {
+async fn prime_sieve(_transport: Arc<JsonRpcTransport>, limit: u64) -> Result<Value, RpcError> {
     let limit = limit as usize;
     let primes = sieve_of_eratosthenes(limit);
     info!("Generated {} primes up to {}", primes.len(), limit);
@@ -22,18 +22,18 @@ async fn prime_sieve(_transport: Arc<JsonRpcTransport>, limit: u64) -> Result<Va
     }))
 }
 
-async fn many_echo(transport: Arc<JsonRpcTransport>, limit: u64) -> Result<(), RpcErrorCode> {
+async fn many_echo(transport: Arc<JsonRpcTransport>, limit: u64) -> Result<(), RpcError> {
     for i in 0..limit {
         let resp = transport.call("echo", Value::Number(i.into())).await?;
 
         if resp.id != i as u64 {
             error!("Incorrect response id: expected {}, got {}", i, resp.id);
-            return Err(RpcErrorCode::InternalError);
+            return Err(RpcError::InternalError);
         }
 
         if resp.result != Value::Number(i.into()) {
             error!("Incorrect response result: {:?}", resp.result);
-            return Err(RpcErrorCode::InternalError);
+            return Err(RpcError::InternalError);
         }
     }
 

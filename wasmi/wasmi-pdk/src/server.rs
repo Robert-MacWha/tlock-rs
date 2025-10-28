@@ -4,7 +4,7 @@ use serde::{Serialize, de::DeserializeOwned};
 use serde_json::Value;
 use tracing::warn;
 
-use crate::{api::RequestHandler, rpc_message::RpcErrorCode};
+use crate::{api::RequestHandler, rpc_message::RpcError};
 
 #[cfg(target_arch = "wasm32")]
 pub type BoxFuture<'a, T> = futures::future::LocalBoxFuture<'a, T>;
@@ -23,7 +23,7 @@ pub trait MaybeSend: Send {}
 impl<T: Send> MaybeSend for T {}
 
 type HandlerFn<S> =
-    Arc<dyn Send + Sync + Fn(Arc<S>, Value) -> BoxFuture<'static, Result<Value, RpcErrorCode>>>;
+    Arc<dyn Send + Sync + Fn(Arc<S>, Value) -> BoxFuture<'static, Result<Value, RpcError>>>;
 
 pub struct ServerBuilder<S> {
     state: Arc<S>,
@@ -55,23 +55,21 @@ impl<S: Send + Sync + 'static> ServerBuilder<S> {
     /// given name, and the handler function should accept the shared state and
     /// deserialized params.
     ///
-    /// Handlers should implement: `async fn handler(state: Arc<S>, params: P) -> Result<R, RpcErrorCode>`
+    /// Handlers should implement: `async fn handler(state: Arc<S>, params: P) -> Result<R, RpcError>`
     pub fn with_method<P, R, F, Fut>(mut self, name: &str, func: F) -> Self
     where
         P: DeserializeOwned + 'static,
         R: Serialize + 'static,
         F: Fn(Arc<S>, P) -> Fut + Send + Sync + 'static,
-        Fut: Future<Output = Result<R, RpcErrorCode>> + MaybeSend + 'static,
+        Fut: Future<Output = Result<R, RpcError>> + MaybeSend + 'static,
     {
         // Handler function that parses json params, calls the provided func,
         // and serializes the result back to json.
         let f = Arc::new(
-            move |state: Arc<S>,
-                  params: Value|
-                  -> BoxFuture<'static, Result<Value, RpcErrorCode>> {
+            move |state: Arc<S>, params: Value| -> BoxFuture<'static, Result<Value, RpcError>> {
                 let parsed = serde_json::from_value(params);
                 let Ok(p) = parsed else {
-                    return Box::pin(async move { Err(RpcErrorCode::InvalidParams) });
+                    return Box::pin(async move { Err(RpcError::InvalidParams) });
                 };
 
                 let fut = func(state, p);
@@ -99,7 +97,7 @@ impl<S: Send + Sync + 'static> Server<S> {
         ServerBuilder::new(state)
     }
 
-    pub async fn handle(&self, method: &str, params: Value) -> Result<Value, RpcErrorCode> {
+    pub async fn handle(&self, method: &str, params: Value) -> Result<Value, RpcError> {
         self.handle_with_state(self.state.clone(), method, params)
             .await
     }
@@ -109,10 +107,10 @@ impl<S: Send + Sync + 'static> Server<S> {
         state: Arc<S>,
         method: &str,
         params: Value,
-    ) -> Result<Value, RpcErrorCode> {
+    ) -> Result<Value, RpcError> {
         let Some(handler) = self.handlers.get(method) else {
             warn!("Method not found: {}", method);
-            return Err(RpcErrorCode::MethodNotFound);
+            return Err(RpcError::MethodNotFound);
         };
         handler(state, params).await
     }
@@ -122,12 +120,12 @@ impl<S: Send + Sync + 'static> Server<S> {
     }
 }
 
-impl<S: Send + Sync + 'static> RequestHandler<RpcErrorCode> for Server<S> {
+impl<S: Send + Sync + 'static> RequestHandler<RpcError> for Server<S> {
     fn handle<'a>(
         &'a self,
         method: &'a str,
         params: Value,
-    ) -> BoxFuture<'a, Result<Value, RpcErrorCode>> {
+    ) -> BoxFuture<'a, Result<Value, RpcError>> {
         Box::pin(async move { self.handle(method, params).await })
     }
 }

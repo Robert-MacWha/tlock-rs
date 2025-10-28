@@ -15,14 +15,14 @@ macro_rules! __impl_host_rpc_base {
             params: <$method as $crate::tlock_api::RpcMethod>::Params,
         ) -> Result<
             <$method as $crate::tlock_api::RpcMethod>::Output,
-            $crate::wasmi_pdk::rpc_message::RpcErrorCode,
+            $crate::wasmi_pdk::rpc_message::RpcError,
         > {
             use $crate::tracing::{info, warn};
 
             let plugin_id = host.0.as_ref().unwrap();
             let host = host.1.upgrade().ok_or_else(|| {
                 warn!("Host has been dropped");
-                $crate::wasmi_pdk::rpc_message::RpcErrorCode::InternalError
+                $crate::wasmi_pdk::rpc_message::RpcError::InternalError
             })?;
 
             info!("[host_func] Plugin {} sent {}", plugin_id, <$method>::NAME);

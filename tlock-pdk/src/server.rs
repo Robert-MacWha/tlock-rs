@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use tlock_api::RpcMethod;
-use wasmi_pdk::{rpc_message::RpcErrorCode, server::MaybeSend};
+use wasmi_pdk::{rpc_message::RpcError, server::MaybeSend};
 
 /// ServerBuilder is a lightweight wrapper around wasmi_pdk::server::ServerBuilder
 /// that provides an interface for registering typed RPC methods from the tlock_api.
@@ -26,7 +26,7 @@ impl<S: Send + Sync + 'static> ServerBuilder<S> {
     where
         M: RpcMethod + 'static,
         F: Fn(Arc<S>, M::Params) -> Fut + Send + Sync + 'static,
-        Fut: Future<Output = Result<M::Output, RpcErrorCode>> + MaybeSend + 'static,
+        Fut: Future<Output = Result<M::Output, RpcError>> + MaybeSend + 'static,
     {
         self.s = self.s.with_method(M::NAME, func);
         self

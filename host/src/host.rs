@@ -18,7 +18,7 @@ use tlock_hdk::{
     },
     tlock_pdk::server::ServerBuilder,
     wasmi_hdk::plugin::{Plugin, PluginError, PluginId},
-    wasmi_pdk::{rpc_message::RpcErrorCode, server::Server},
+    wasmi_pdk::{rpc_message::RpcError, server::Server},
 };
 use tracing::{info, warn};
 
@@ -97,8 +97,7 @@ impl Host {
 
         info!("Registered plugin {}", new_plugin.id());
         match plugin::Init.call(new_plugin.clone(), ()).await {
-            Err(PluginError::RpcError(RpcErrorCode::MethodNotFound))
-            | Err(PluginError::RpcError(RpcErrorCode::MethodNotSupported)) => {
+            Err(PluginError::RpcError(RpcError::MethodNotFound)) => {
                 info!(
                     "Plugin {} does not implement Init, skipping",
                     new_plugin.id()
@@ -161,21 +160,21 @@ impl Host {
         interfaces.get(&interface_id).cloned()
     }
 
-    ///? Helper to get the plugin or return an RpcErrorCode if not found
-    fn get_entity_plugin_error(&self, entity_id: &EntityId) -> Result<Arc<Plugin>, RpcErrorCode> {
+    ///? Helper to get the plugin or return an RpcError if not found
+    fn get_entity_plugin_error(&self, entity_id: &EntityId) -> Result<Arc<Plugin>, RpcError> {
         let plugin = self.get_entity_plugin(entity_id).ok_or_else(|| {
             warn!("Entity {:?} not found", entity_id);
-            RpcErrorCode::InvalidParams
+            RpcError::InvalidParams
         })?;
         Ok(plugin)
     }
 
-    pub async fn ping_plugin(&self, plugin_id: &PluginId) -> Result<String, RpcErrorCode> {
+    pub async fn ping_plugin(&self, plugin_id: &PluginId) -> Result<String, RpcError> {
         let plugin = if let Some(plugin) = self.get_plugin(plugin_id) {
             plugin
         } else {
             warn!("Plugin {} not found", plugin_id);
-            return Err(RpcErrorCode::InvalidParams);
+            return Err(RpcError::InvalidParams);
         };
 
         let resp = global::Ping.call(plugin, ()).await.map_err(|e| {
@@ -187,7 +186,7 @@ impl Host {
 }
 
 impl Host {
-    pub async fn ping(&self, _plugin_id: &PluginId, _params: ()) -> Result<String, RpcErrorCode> {
+    pub async fn ping(&self, _plugin_id: &PluginId, _params: ()) -> Result<String, RpcError> {
         Ok("Pong from host".to_string())
     }
 
@@ -195,7 +194,7 @@ impl Host {
         &self,
         plugin_id: &PluginId,
         entity_id: EntityId,
-    ) -> Result<(), RpcErrorCode> {
+    ) -> Result<(), RpcError> {
         let mut entities = self.entities.lock().unwrap();
         if let Some(existing_plugin_id) = entities.get(&entity_id) {
             if existing_plugin_id == plugin_id {
@@ -205,7 +204,7 @@ impl Host {
                     "Entity {:?} is already registered by plugin {}",
                     entity_id, existing_plugin_id
                 );
-                return Err(RpcErrorCode::InvalidParams);
+                return Err(RpcError::InvalidParams);
             }
         }
 
@@ -223,7 +222,7 @@ impl Host {
         &self,
         plugin_id: &PluginId,
         req: host::Request,
-    ) -> Result<Result<Vec<u8>, String>, RpcErrorCode> {
+    ) -> Result<Result<Vec<u8>, String>, RpcError> {
         info!("Plugin {} requested fetch: {:?}", plugin_id, req);
 
         let mut headers = reqwest::header::HeaderMap::new();
@@ -264,7 +263,7 @@ impl Host {
         &self,
         plugin_id: &PluginId,
         _params: (),
-    ) -> Result<Option<Vec<u8>>, RpcErrorCode> {
+    ) -> Result<Option<Vec<u8>>, RpcError> {
         Ok(self.state.lock().unwrap().get(plugin_id).cloned())
     }
 
@@ -272,7 +271,7 @@ impl Host {
         &self,
         plugin_id: &PluginId,
         state_data: Vec<u8>,
-    ) -> Result<(), RpcErrorCode> {
+    ) -> Result<(), RpcError> {
         self.state
             .lock()
             .unwrap()
@@ -284,7 +283,7 @@ impl Host {
         &self,
         _plugin_id: &PluginId,
         params: (u32, Component),
-    ) -> Result<(), RpcErrorCode> {
+    ) -> Result<(), RpcError> {
         let (interface_id, component) = params;
         self.interfaces
             .lock()
@@ -296,7 +295,7 @@ impl Host {
     pub async fn vault_get_assets(
         &self,
         vault_id: VaultId,
-    ) -> Result<Vec<(AssetId, U256)>, RpcErrorCode> {
+    ) -> Result<Vec<(AssetId, U256)>, RpcError> {
         let entity_id = vault_id.as_entity_id();
         let plugin = self.get_entity_plugin_error(&entity_id)?;
 
@@ -310,7 +309,7 @@ impl Host {
     pub async fn vault_withdraw(
         &self,
         params: (VaultId, AccountId, AssetId, U256),
-    ) -> Result<Result<(), String>, RpcErrorCode> {
+    ) -> Result<Result<(), String>, RpcError> {
         let (vault_id, to, asset, amount) = params;
         let entity_id = vault_id.as_entity_id();
         let plugin = self.get_entity_plugin_error(&entity_id)?;
@@ -328,7 +327,7 @@ impl Host {
     pub async fn vault_get_deposit_address(
         &self,
         params: (VaultId, AssetId),
-    ) -> Result<Result<AccountId, String>, RpcErrorCode> {
+    ) -> Result<Result<AccountId, String>, RpcError> {
         let (vault_id, asset) = params;
         let entity_id = vault_id.as_entity_id();
         let plugin = self.get_entity_plugin_error(&entity_id)?;
@@ -343,7 +342,7 @@ impl Host {
         Ok(result)
     }
 
-    pub async fn vault_on_deposit(&self, params: (VaultId, AssetId)) -> Result<(), RpcErrorCode> {
+    pub async fn vault_on_deposit(&self, params: (VaultId, AssetId)) -> Result<(), RpcError> {
         let (vault_id, asset) = params;
         let entity_id = vault_id.as_entity_id();
         let plugin = self.get_entity_plugin_error(&entity_id)?;
@@ -358,7 +357,7 @@ impl Host {
         Ok(())
     }
 
-    pub async fn page_on_load(&self, params: (PageId, u32)) -> Result<(), RpcErrorCode> {
+    pub async fn page_on_load(&self, params: (PageId, u32)) -> Result<(), RpcError> {
         let (page_id, interface_id) = params;
         let plugin = self.get_entity_plugin_error(&page_id.as_entity_id())?;
 
@@ -375,7 +374,7 @@ impl Host {
     pub async fn page_on_update(
         &self,
         params: (PageId, u32, page::PageEvent),
-    ) -> Result<(), RpcErrorCode> {
+    ) -> Result<(), RpcError> {
         let (page_id, interface_id, event) = params;
         let plugin = self.get_entity_plugin_error(&page_id.as_entity_id())?;
 
@@ -392,7 +391,7 @@ impl Host {
     pub async fn eth_provider_block_number(
         &self,
         provider_id: EthProviderId,
-    ) -> Result<u64, RpcErrorCode> {
+    ) -> Result<u64, RpcError> {
         let plugin = self.get_entity_plugin_error(&provider_id.as_entity_id())?;
 
         let block_number = eth::BlockNumber
@@ -408,7 +407,7 @@ impl Host {
     pub async fn eth_provider_call(
         &self,
         params: <eth::Call as RpcMethod>::Params,
-    ) -> Result<<eth::Call as RpcMethod>::Output, RpcErrorCode> {
+    ) -> Result<<eth::Call as RpcMethod>::Output, RpcError> {
         let plugin = self.get_entity_plugin_error(&params.0.as_entity_id())?;
 
         let resp = eth::Call.call(plugin, params).await.map_err(|e| {
@@ -421,7 +420,7 @@ impl Host {
     pub async fn eth_provider_get_balance(
         &self,
         params: <eth::GetBalance as RpcMethod>::Params,
-    ) -> Result<<eth::GetBalance as RpcMethod>::Output, RpcErrorCode> {
+    ) -> Result<<eth::GetBalance as RpcMethod>::Output, RpcError> {
         let plugin = self.get_entity_plugin_error(&params.0.as_entity_id())?;
 
         let resp = eth::GetBalance.call(plugin, params).await.map_err(|e| {

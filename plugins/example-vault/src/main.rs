@@ -13,7 +13,7 @@ use tlock_pdk::{
         global, host, page, plugin, vault,
     },
     wasmi_pdk::{
-        rpc_message::RpcErrorCode,
+        rpc_message::RpcError,
         tracing::{error, info, warn},
         tracing_subscriber::fmt,
         transport::JsonRpcTransport,
@@ -25,7 +25,7 @@ struct PluginState {
     vaults: HashMap<VaultId, String>, // Maps VaultId to private_key
 }
 
-async fn init(transport: Arc<JsonRpcTransport>, _params: ()) -> Result<(), RpcErrorCode> {
+async fn init(transport: Arc<JsonRpcTransport>, _params: ()) -> Result<(), RpcError> {
     info!("Calling Init on Vault Plugin");
 
     // ? Register the vault's page
@@ -37,7 +37,7 @@ async fn init(transport: Arc<JsonRpcTransport>, _params: ()) -> Result<(), RpcEr
     Ok(())
 }
 
-async fn ping(transport: Arc<JsonRpcTransport>, _params: ()) -> Result<String, RpcErrorCode> {
+async fn ping(transport: Arc<JsonRpcTransport>, _params: ()) -> Result<String, RpcError> {
     global::Ping.call(transport.clone(), ()).await?;
     Ok("pong from vault".to_string())
 }
@@ -45,7 +45,7 @@ async fn ping(transport: Arc<JsonRpcTransport>, _params: ()) -> Result<String, R
 async fn get_assets(
     transport: Arc<JsonRpcTransport>,
     params: VaultId,
-) -> Result<Vec<(AssetId, U256)>, RpcErrorCode> {
+) -> Result<Vec<(AssetId, U256)>, RpcError> {
     let vault_id = params;
     info!("Received BalanceOf request for vault: {}", vault_id);
 
@@ -55,7 +55,7 @@ async fn get_assets(
     let vaults = state.vaults;
     let private_key = vaults.get(&vault_id).ok_or_else(|| {
         error!("Vault ID not found in state: {}", vault_id);
-        RpcErrorCode::InvalidParams
+        RpcError::InvalidParams
     })?;
 
     //? Here you would normally query the balances from an external source.
@@ -73,7 +73,7 @@ async fn get_assets(
 async fn on_load(
     transport: Arc<JsonRpcTransport>,
     params: (PageId, u32),
-) -> Result<(), RpcErrorCode> {
+) -> Result<(), RpcError> {
     let (_page_id, interface_id) = params;
     info!("OnPageLoad called for interface ID: {}", interface_id);
 
@@ -100,7 +100,7 @@ async fn on_load(
 async fn on_update(
     transport: Arc<JsonRpcTransport>,
     params: (PageId, u32, page::PageEvent),
-) -> Result<(), RpcErrorCode> {
+) -> Result<(), RpcError> {
     let (_page_id, interface_id, event) = params;
     info!("Page updated in Vault Plugin: {:?}", event);
 
@@ -143,19 +143,19 @@ async fn on_update(
             //? Create a vault from the provided private key
             let Some(private_key) = form_data.get("dev_private_key") else {
                 error!("Private key not found in form data");
-                return Err(RpcErrorCode::InvalidParams);
+                return Err(RpcError::InvalidParams);
             };
 
             let Some(private_key) = private_key.get(0) else {
                 error!("Private key value is empty");
-                return Err(RpcErrorCode::InvalidParams);
+                return Err(RpcError::InvalidParams);
             };
 
             info!("Received private key: {}", private_key);
 
             let signer = PrivateKeySigner::from_str(private_key).map_err(|e| {
                 error!("Failed to create signer: {}", e);
-                RpcErrorCode::InvalidParams
+                RpcError::InvalidParams
             })?;
 
             let address = signer.address();
