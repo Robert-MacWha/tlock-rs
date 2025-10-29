@@ -1,34 +1,18 @@
 use std::{io::stderr, sync::Arc};
 
 use tlock_pdk::{
-    async_trait::async_trait,
-    dispatcher::{Dispatcher, RpcHandler},
     futures::executor::block_on,
+    server::ServerBuilder,
     tlock_api::{RpcMethod, global},
     wasmi_pdk::{
-        rpc_message::RpcErrorCode, tracing::info, tracing_subscriber::fmt,
+        rpc_message::RpcError, tracing::info, tracing_subscriber::fmt,
         transport::JsonRpcTransport,
     },
 };
 
-struct MyPlugin {
-    transport: Arc<JsonRpcTransport>,
-}
-
-impl MyPlugin {
-    pub fn new(transport: Arc<JsonRpcTransport>) -> Self {
-        Self {
-            transport: transport,
-        }
-    }
-}
-
-#[async_trait]
-impl RpcHandler<global::Ping> for MyPlugin {
-    async fn invoke(&self, _params: ()) -> Result<String, RpcErrorCode> {
-        global::Ping.call(self.transport.clone(), ()).await?;
-        Ok("pong".to_string())
-    }
+async fn ping(transport: Arc<JsonRpcTransport>, _: ()) -> Result<String, RpcError> {
+    global::Ping.call(transport, ()).await?;
+    Ok("pong".to_string())
 }
 
 fn main() {
@@ -40,14 +24,13 @@ fn main() {
     let transport = JsonRpcTransport::new(Box::new(reader), Box::new(writer));
     let transport = Arc::new(transport);
 
-    let plugin = MyPlugin::new(transport.clone());
+    let plugin = ServerBuilder::new(transport.clone())
+        .with_method(global::Ping, ping)
+        .finish();
+
     let plugin = Arc::new(plugin);
 
-    let mut dispatcher = Dispatcher::new(plugin);
-    dispatcher.register::<global::Ping>();
-    let dispatcher = Arc::new(dispatcher);
-
     block_on(async move {
-        let _ = transport.process_next_line(Some(dispatcher)).await;
+        let _ = transport.process_next_line(Some(plugin)).await;
     });
 }

@@ -38,12 +38,12 @@ pub fn spawn_wasm<T: Send + Sync + 'static>(
 ) -> impl Future<Output = ()> {
     trace!("Spawning plugin task");
     let is_running = is_running.clone();
-    return async move {
+    async move {
         if let Err(e) = run_wasm(store, start_func, is_running.clone(), max_fuel).await {
             error!("Plugin error: {:?}", e);
         }
         is_running.store(false, std::sync::atomic::Ordering::SeqCst);
-    };
+    }
 }
 
 /// run_wasm manages the plugin's lifecycle. Essentially - because

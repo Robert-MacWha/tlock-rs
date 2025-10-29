@@ -32,55 +32,72 @@ pub struct RpcErrorResponse {
     pub error: RpcError,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
-pub struct RpcError {
-    pub code: RpcErrorCode,
-    pub message: String,
-}
-
-#[derive(Error, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[repr(i64)]
-/// https://www.jsonrpc.org/specification
-pub enum RpcErrorCode {
-    // standard
+#[derive(Error, Debug, Clone, PartialEq, Eq)]
+pub enum RpcError {
     #[error("Parse error")]
-    ParseError = -32700,
+    ParseError,
     #[error("Invalid request")]
-    InvalidRequest = -32600,
+    InvalidRequest,
     #[error("Method not found")]
-    MethodNotFound = -32601,
+    MethodNotFound,
     #[error("Invalid params")]
-    InvalidParams = -32602,
+    InvalidParams,
     #[error("Internal error")]
-    InternalError = -32603,
-
-    // non-standard
-    // https://github.com/ethereum/EIPs/blob/master/EIPS/eip-1474.md
-    #[error("Invalid input")]
-    InvalidInput = -32000,
-    #[error("Resource not found")]
-    ResourceNotFound = -32001,
-    #[error("Resource unavailable")]
-    ResourceUnavailable = -32002,
-    #[error("Transaction rejected")]
-    TransactionRejected = -32003,
-    #[error("Method not supported")]
-    MethodNotSupported = -32004,
-    #[error("Limit exceeded")]
-    LimitExceeded = -32005,
-    #[error("JSON-RPC version not supported")]
-    JsonRpcVersionNotSupported = -32006,
+    InternalError,
+    #[error("{0}")]
+    Custom(String),
 }
 
-impl RpcErrorResponse {
-    pub fn from_rpc_error(id: u64, code: RpcErrorCode) -> Self {
-        RpcErrorResponse {
-            jsonrpc: "2.0".to_string(),
-            id,
-            error: RpcError {
-                code,
-                message: code.to_string(),
-            },
+impl RpcError {
+    pub fn code(&self) -> i64 {
+        match self {
+            RpcError::ParseError => -32700,
+            RpcError::InvalidRequest => -32600,
+            RpcError::MethodNotFound => -32601,
+            RpcError::InvalidParams => -32602,
+            RpcError::InternalError => -32603,
+            RpcError::Custom(_) => -32000,
         }
+    }
+
+    pub fn message(&self) -> String {
+        self.to_string()
+    }
+}
+
+impl Serialize for RpcError {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut state = serializer.serialize_struct("RpcError", 2)?;
+        state.serialize_field("code", &self.code())?;
+        state.serialize_field("message", &self.message())?;
+        state.end()
+    }
+}
+
+impl<'de> Deserialize<'de> for RpcError {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct RpcErrorData {
+            code: i64,
+            message: String,
+        }
+
+        let data = RpcErrorData::deserialize(deserializer)?;
+
+        Ok(match data.code {
+            -32700 => RpcError::ParseError,
+            -32600 => RpcError::InvalidRequest,
+            -32601 => RpcError::MethodNotFound,
+            -32602 => RpcError::InvalidParams,
+            -32603 => RpcError::InternalError,
+            _ => RpcError::Custom(data.message),
+        })
     }
 }
