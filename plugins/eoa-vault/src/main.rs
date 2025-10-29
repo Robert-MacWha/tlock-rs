@@ -70,10 +70,7 @@ async fn get_assets(
     Ok(vec![(dummy_asset_id, U256::from(1000u64))])
 }
 
-async fn on_load(
-    transport: Arc<JsonRpcTransport>,
-    params: (PageId, u32),
-) -> Result<(), RpcError> {
+async fn on_load(transport: Arc<JsonRpcTransport>, params: (PageId, u32)) -> Result<(), RpcError> {
     let (_page_id, interface_id) = params;
     info!("OnPageLoad called for interface ID: {}", interface_id);
 
@@ -143,19 +140,19 @@ async fn on_update(
             //? Create a vault from the provided private key
             let Some(private_key) = form_data.get("dev_private_key") else {
                 error!("Private key not found in form data");
-                return Err(RpcError::InvalidParams);
+                return Err(RpcError::Custom("Private key not found in form".into()));
             };
 
             let Some(private_key) = private_key.get(0) else {
                 error!("Private key value is empty");
-                return Err(RpcError::InvalidParams);
+                return Err(RpcError::Custom("Private key value is empty".into()));
             };
 
             info!("Received private key: {}", private_key);
 
             let signer = PrivateKeySigner::from_str(private_key).map_err(|e| {
                 error!("Failed to create signer: {}", e);
-                RpcError::InvalidParams
+                RpcError::Custom("Failed to create signer".into())
             })?;
 
             let address = signer.address();

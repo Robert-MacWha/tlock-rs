@@ -13,7 +13,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let host = Host::new();
     let host = Arc::new(host);
 
-    let wasm_bytes = std::fs::read("target/wasm32-wasip1/release/example-vault.wasm")?;
+    let wasm_bytes = std::fs::read("target/wasm32-wasip1/release/eoa-vault.wasm")?;
     let example_vault_id = host
         .load_plugin(&wasm_bytes, "Example Vault Plugin")
         .await?;
