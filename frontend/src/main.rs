@@ -47,7 +47,7 @@ fn control_panel() -> Element {
             };
 
             let files = file_engine.files();
-            let Some(file_name) = files.get(0) else {
+            let Some(file_name) = files.first() else {
                 error!("No file selected");
                 return;
             };
@@ -64,9 +64,8 @@ fn control_panel() -> Element {
                 }
                 Err(e) => {
                     error!("Failed to load plugin: {:?}", e);
-                    return;
                 }
-            };
+            }
         });
     };
 

@@ -28,6 +28,12 @@ enum Errno {
     Io = 29,
 }
 
+impl Default for WasiCtx {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl WasiCtx {
     pub fn new() -> Self {
         Self {

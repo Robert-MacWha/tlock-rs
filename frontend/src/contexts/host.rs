@@ -23,9 +23,9 @@ impl HostContext {
     pub fn new(host: Arc<Host>) -> Self {
         Self {
             host,
-            plugins: use_signal(|| Vec::new()),
-            entities: use_signal(|| Vec::new()),
-            interfaces: use_signal(|| HashMap::new()),
+            plugins: use_signal(Vec::new),
+            entities: use_signal(Vec::new),
+            interfaces: use_signal(HashMap::new),
         }
     }
 

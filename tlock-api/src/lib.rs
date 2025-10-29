@@ -33,10 +33,10 @@ pub trait RpcMethod: Send + Sync {
         T: Transport<E> + Send + Sync + 'static,
     {
         let raw_params =
-            serde_json::to_value(params).map_err(|_| RpcError::InvalidParams.into())?;
+            serde_json::to_value(params).map_err(|_| RpcError::InvalidParams)?;
         let resp = transport.call(Self::NAME, raw_params).await?;
         let result =
-            serde_json::from_value(resp.result).map_err(|_| RpcError::InternalError.into())?;
+            serde_json::from_value(resp.result).map_err(|_| RpcError::InternalError)?;
         Ok(result)
     }
 }

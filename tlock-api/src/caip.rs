@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use alloy::primitives::{Address, ChainId};
 use serde::{Deserialize, Serialize};
 
@@ -25,9 +27,11 @@ impl AccountId {
     pub fn address(&self) -> &Address {
         &self.1
     }
+}
 
-    pub fn to_string(&self) -> String {
-        format!("{}:{}", self.0, self.1)
+impl Display for AccountId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}:{}", self.0, self.1)
     }
 }
 
@@ -55,8 +59,10 @@ impl AssetId {
     pub fn reference(&self) -> &str {
         &self.2
     }
+}
 
-    pub fn to_string(&self) -> String {
-        format!("{}:{}:{}", self.0, self.1, self.2)
+impl Display for AssetId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}:{}:{}", self.0, self.1, self.2)
     }
 }

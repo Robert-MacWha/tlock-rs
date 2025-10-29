@@ -32,6 +32,12 @@ pub struct Host {
     interfaces: Mutex<HashMap<u32, Component>>, // interface_id -> Component
 }
 
+impl Default for Host {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Host {
     pub fn new() -> Self {
         Self {
@@ -66,7 +72,7 @@ impl Host {
     }
 
     pub fn get_server(self: &Arc<Host>) -> Server<(Option<PluginId>, Weak<Host>)> {
-        let server = ServerBuilder::new(Arc::new((None, Arc::downgrade(&self))))
+        ServerBuilder::new(Arc::new((None, Arc::downgrade(self))))
             .with_method(global::Ping, ping)
             .with_method(host::RegisterEntity, register_entity)
             .with_method(host::Fetch, fetch)
@@ -82,9 +88,7 @@ impl Host {
             .with_method(eth::BlockNumber, eth_provider_block_number)
             .with_method(eth::Call, eth_provider_call)
             .with_method(eth::GetBalance, eth_provider_get_balance)
-            .finish();
-
-        return server;
+            .finish()
     }
 
     /// Register a plugin with the host, calling its Init method if it exists
@@ -106,7 +110,7 @@ impl Host {
             }
             Err(e) => {
                 warn!("Error calling Init on plugin {}: {:?}", new_plugin.id(), e);
-                return Err(e);
+                Err(e)
             }
             Ok(_) => {
                 info!("Plugin {} initialized", new_plugin.id());

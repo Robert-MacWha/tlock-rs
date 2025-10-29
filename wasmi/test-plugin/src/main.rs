@@ -26,7 +26,7 @@ async fn many_echo(transport: Arc<JsonRpcTransport>, limit: u64) -> Result<(), R
     for i in 0..limit {
         let resp = transport.call("echo", Value::Number(i.into())).await?;
 
-        if resp.id != i as u64 {
+        if resp.id != i {
             error!("Incorrect response id: expected {}, got {}", i, resp.id);
             return Err(RpcError::InternalError);
         }

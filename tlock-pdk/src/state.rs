@@ -30,10 +30,7 @@ where
     R: DeserializeOwned + Default,
     E: ApiError + From<RpcError>,
 {
-    match get_state::<T, R, E>(transport).await {
-        Ok(state) => state,
-        Err(_) => R::default(),
-    }
+    get_state::<T, R, E>(transport).await.unwrap_or_default()
 }
 
 pub async fn set_state<T, S, E>(transport: Arc<T>, state: &S) -> Result<(), E>

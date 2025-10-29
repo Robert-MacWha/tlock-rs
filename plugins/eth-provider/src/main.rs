@@ -71,15 +71,15 @@ async fn on_load(transport: Arc<JsonRpcTransport>, params: (PageId, u32)) -> Res
     let state: ProviderState = get_state(transport.clone()).await.unwrap_or_default();
 
     let component = container(vec![
-        text("This is the Ethereum Provider Plugin").into(),
-        text(format!("RPC URL: {}", state.rpc_url)).into(),
+        text("This is the Ethereum Provider Plugin"),
+        text(format!("RPC URL: {}", state.rpc_url)),
     ]);
 
     host::SetInterface
         .call(transport.clone(), (interface_id, component))
         .await?;
 
-    return Ok(());
+    Ok(())
 }
 
 async fn block_number(
@@ -93,7 +93,7 @@ async fn block_number(
         error!("Error fetching block number: {:?}", e);
         RpcError::InternalError
     })?;
-    return Ok(block_number);
+    Ok(block_number)
 }
 
 async fn call(
@@ -120,7 +120,7 @@ async fn call(
             RpcError::Custom(format!("Call failed: {:?}", e))
         })?;
 
-    return Ok(resp);
+    Ok(resp)
 }
 
 async fn gas_price(
@@ -136,7 +136,7 @@ async fn gas_price(
     })?;
     let gas_price = U256::from(gas_price);
 
-    return Ok(gas_price);
+    Ok(gas_price)
 }
 
 async fn get_balance(
@@ -155,7 +155,7 @@ async fn get_balance(
             error!("Error fetching balance: {:?}", e);
             RpcError::Custom(format!("Failed to fetch balance: {:?}", e))
         })?;
-    return Ok(balance);
+    Ok(balance)
 }
 
 async fn get_block(
@@ -217,7 +217,7 @@ async fn get_code(
             RpcError::Custom(format!("Failed to fetch code: {:?}", e))
         })?;
 
-    return Ok(code);
+    Ok(code)
 }
 
 async fn get_logs(
@@ -233,7 +233,7 @@ async fn get_logs(
         RpcError::Custom(format!("Failed to fetch logs: {:?}", e))
     })?;
 
-    return Ok(logs);
+    Ok(logs)
 }
 
 async fn get_transaction_by_hash(
@@ -294,7 +294,7 @@ async fn send_raw_transaction(
     })?;
     let tx_hash = tx.tx_hash();
 
-    return Ok(tx_hash.clone());
+    Ok(*tx_hash)
 }
 
 fn main() {
@@ -340,8 +340,8 @@ pub fn create_alloy_provider(
 ) -> impl alloy::providers::Provider {
     let host_transport = HostTransportService::new(transport, url);
     let client = RpcClient::new(host_transport, false);
-    let provider = ProviderBuilder::new().connect_client(client);
-    provider
+    
+    ProviderBuilder::new().connect_client(client)
 }
 
 #[derive(Clone)]

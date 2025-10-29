@@ -126,8 +126,8 @@ async fn on_update(
             let component = container(vec![
                 heading("Vault Component"),
                 text("New dev private key generated!"),
-                text(&format!("Your address: {}", address)),
-                text(&format!("Your private key: {}", private_key_hex)),
+                text(format!("Your address: {}", address)),
+                text(format!("Your private key: {}", private_key_hex)),
             ]);
 
             host::SetInterface
@@ -143,7 +143,7 @@ async fn on_update(
                 return Err(RpcError::Custom("Private key not found in form".into()));
             };
 
-            let Some(private_key) = private_key.get(0) else {
+            let Some(private_key) = private_key.first() else {
                 error!("Private key value is empty");
                 return Err(RpcError::Custom("Private key value is empty".into()));
             };
@@ -174,8 +174,8 @@ async fn on_update(
             let component = container(vec![
                 heading("Vault Component"),
                 text("Private key received!"),
-                text(&format!("Your address: {}", address)),
-                text(&format!("Your private key: {}", private_key)),
+                text(format!("Your address: {}", address)),
+                text(format!("Your private key: {}", private_key)),
             ]);
 
             host::SetInterface
@@ -188,7 +188,7 @@ async fn on_update(
             warn!("Unhandled page event: {:?}", event);
         }
     }
-    return Ok(());
+    Ok(())
 }
 
 fn main() {

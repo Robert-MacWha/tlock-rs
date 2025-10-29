@@ -81,7 +81,7 @@ impl<S: Send + Sync + 'static> ServerBuilder<S> {
         );
 
         self.handlers.insert(name.to_string(), f);
-        return self;
+        self
     }
 
     pub fn finish(self) -> Server<S> {
@@ -93,6 +93,7 @@ impl<S: Send + Sync + 'static> ServerBuilder<S> {
 }
 
 impl<S: Send + Sync + 'static> Server<S> {
+    #[allow(clippy::new_ret_no_self)]
     pub fn new(state: Arc<S>) -> ServerBuilder<S> {
         ServerBuilder::new(state)
     }
