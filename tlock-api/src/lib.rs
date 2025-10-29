@@ -127,8 +127,8 @@ pub mod eth {
         eips::BlockId,
         primitives::{Address, Bytes, TxHash},
         rpc::types::{
-            Block, BlockOverrides, Filter, Log, Transaction, TransactionReceipt,
-            TransactionRequest, state::StateOverride,
+            Block, BlockOverrides, BlockTransactionsKind, Filter, Log, Transaction,
+            TransactionReceipt, TransactionRequest, state::StateOverride,
         },
     };
 
@@ -156,7 +156,7 @@ pub mod eth {
 
     rpc_method!(
         /// Gets a block by its hash or number.
-        eth_get_block, GetBlock, (EthProviderId, BlockId), Block
+        eth_get_block, GetBlock, (EthProviderId, BlockId, BlockTransactionsKind), Block
     );
 
     rpc_method!(
@@ -179,7 +179,7 @@ pub mod eth {
 
     rpc_method!(
         /// Gets a transaction by its hash
-        eth_get_transaction, GetTransaction, (EthProviderId, TxHash), Transaction
+        eth_get_transaction_by_hash, GetTransactionByHash, (EthProviderId, TxHash), Transaction
     );
 
     rpc_method!(
@@ -187,6 +187,8 @@ pub mod eth {
         eth_get_transaction_receipt, GetTransactionReceipt, (EthProviderId, TxHash), TransactionReceipt
     );
 
+    // TODO: Consider making this a different domain and having a distinction between "eth-read" and "eth-write"
+    // methods. Would also make it easier to add custom send methods (IE to private pool, or forwarding to devp2p, etc).
     rpc_method!(
         /// Sends a raw transaction to the network.
         eth_send_raw_transaction, SendRawTransaction, (EthProviderId, Bytes), TxHash
