@@ -32,11 +32,9 @@ pub trait RpcMethod: Send + Sync {
         E: ApiError,
         T: Transport<E> + Send + Sync + 'static,
     {
-        let raw_params =
-            serde_json::to_value(params).map_err(|_| RpcError::InvalidParams)?;
+        let raw_params = serde_json::to_value(params).map_err(|_| RpcError::InvalidParams)?;
         let resp = transport.call(Self::NAME, raw_params).await?;
-        let result =
-            serde_json::from_value(resp.result).map_err(|_| RpcError::InternalError)?;
+        let result = serde_json::from_value(resp.result).map_err(|_| RpcError::InternalError)?;
         Ok(result)
     }
 }
@@ -72,7 +70,11 @@ pub mod global {
 /// The host namespace contains methods for interacting with the host and
 /// performing privileged operations.
 pub mod host {
-    use crate::{component::Component, entities::EntityId};
+    use crate::{
+        component::Component,
+        domains::Domain,
+        entities::{EntityId, PageId},
+    };
     use serde::{Deserialize, Serialize};
 
     #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -86,7 +88,7 @@ pub mod host {
     rpc_method!(
         /// Request the host registers a new entity with the given ID and this
         /// plugin as its owner.
-        host_register_entity, RegisterEntity, EntityId, ()
+        host_register_entity, RegisterEntity, Domain, EntityId
     );
 
     rpc_method!(
@@ -107,8 +109,8 @@ pub mod host {
     );
 
     rpc_method!(
-        /// Sets an interface for a given interface ID.
-        host_set_interface, SetInterface, (u32, Component), ()
+        /// Sets a specific page to the given component.
+        host_set_page, SetInterface, (PageId, Component), ()
     );
 }
 
@@ -252,11 +254,11 @@ pub mod page {
         /// Called by the host when a registered page is loaded in the frontend. The
         /// plugin should setup any necessary interfaces with `host::SetInterface` here,
         /// dependant on the plugin's internal state.
-        page_on_load, OnLoad, (PageId, u32), ()
+        page_on_load, OnLoad, PageId, ()
     );
 
     rpc_method!(
         /// Called by the host when a registered page is updated in the frontend.
-        page_on_update, OnUpdate, (PageId, u32, PageEvent), ()
+        page_on_update, OnUpdate, (PageId, PageEvent), ()
     );
 }

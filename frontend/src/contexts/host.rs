@@ -6,7 +6,10 @@ use dioxus::{
 };
 use host::host::Host;
 use tlock_hdk::{
-    tlock_api::{component::Component, entities::EntityId},
+    tlock_api::{
+        component::Component,
+        entities::{EntityId, PageId},
+    },
     wasmi_hdk::plugin::{PluginError, PluginId},
 };
 use tracing_log::log::info;
@@ -16,7 +19,7 @@ pub struct HostContext {
     pub host: Arc<Host>,
     pub plugins: Signal<Vec<PluginId>>,
     pub entities: Signal<Vec<EntityId>>,
-    pub interfaces: Signal<HashMap<u32, Component>>, // interface_id -> Component
+    pub interfaces: Signal<HashMap<PageId, Component>>,
 }
 
 impl HostContext {

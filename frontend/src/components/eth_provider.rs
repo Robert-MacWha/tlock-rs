@@ -17,11 +17,10 @@ pub fn EthProvider(props: EthProviderProps) -> Element {
 
     let handle_block_number = move |_| {
         let state = state.clone();
-        let id: EthProviderId = eth_provider_id.clone();
 
         spawn(async move {
-            info!("Fetch block number for EthProvider {id}");
-            match state.host.eth_provider_block_number(id).await {
+            info!("Fetch block number for EthProvider {eth_provider_id}");
+            match state.host.eth_provider_block_number(eth_provider_id).await {
                 Ok(block_number) => {
                     info!("Block number: {block_number}");
                     block_number_resp.set(block_number);

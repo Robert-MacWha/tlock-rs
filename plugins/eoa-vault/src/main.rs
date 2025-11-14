@@ -7,8 +7,9 @@ use tlock_pdk::{
     state::{get_state, get_state_or_default, set_state},
     tlock_api::{
         RpcMethod,
-        caip::{AccountId, AssetId},
+        caip::AssetId,
         component::{button_input, container, form, heading, submit_input, text, text_input},
+        domains::Domain,
         entities::{EntityId, PageId, VaultId},
         global, host, page, plugin, vault,
     },
@@ -22,16 +23,15 @@ use tlock_pdk::{
 
 #[derive(Serialize, Deserialize, Default)]
 struct PluginState {
-    vaults: HashMap<VaultId, String>, // Maps VaultId to private_key
+    vaults: HashMap<EntityId, String>, // Maps EntityId to private_key
 }
 
 async fn init(transport: Arc<JsonRpcTransport>, _params: ()) -> Result<(), RpcError> {
     info!("Calling Init on Vault Plugin");
 
     // ? Register the vault's page
-    let page_id = PageId::new("vault_page".to_string());
     host::RegisterEntity
-        .call(transport.clone(), EntityId::from(page_id))
+        .call(transport.clone(), Domain::Page)
         .await?;
 
     Ok(())
@@ -53,7 +53,7 @@ async fn get_assets(
     let state: PluginState = get_state(transport.clone()).await?;
 
     let vaults = state.vaults;
-    let private_key = vaults.get(&vault_id).ok_or_else(|| {
+    let private_key = vaults.get(&vault_id.into()).ok_or_else(|| {
         error!("Vault ID not found in state: {}", vault_id);
         RpcError::InvalidParams
     })?;
@@ -70,9 +70,8 @@ async fn get_assets(
     Ok(vec![(dummy_asset_id, U256::from(1000u64))])
 }
 
-async fn on_load(transport: Arc<JsonRpcTransport>, params: (PageId, u32)) -> Result<(), RpcError> {
-    let (_page_id, interface_id) = params;
-    info!("OnPageLoad called for interface ID: {}", interface_id);
+async fn on_load(transport: Arc<JsonRpcTransport>, page_id: PageId) -> Result<(), RpcError> {
+    info!("OnPageLoad called for page: {}", page_id);
 
     let component = container(vec![
         heading("Vault Component"),
@@ -88,7 +87,7 @@ async fn on_load(transport: Arc<JsonRpcTransport>, params: (PageId, u32)) -> Res
     ]);
 
     host::SetInterface
-        .call(transport.clone(), (interface_id, component))
+        .call(transport.clone(), (page_id, component))
         .await?;
 
     Ok(())
@@ -96,9 +95,9 @@ async fn on_load(transport: Arc<JsonRpcTransport>, params: (PageId, u32)) -> Res
 
 async fn on_update(
     transport: Arc<JsonRpcTransport>,
-    params: (PageId, u32, page::PageEvent),
+    params: (PageId, page::PageEvent),
 ) -> Result<(), RpcError> {
-    let (_page_id, interface_id, event) = params;
+    let (page_id, event) = params;
     info!("Page updated in Vault Plugin: {:?}", event);
 
     match event {
@@ -110,17 +109,13 @@ async fn on_update(
             let address = signer.address();
 
             // Register the vault entity
-            let account_id = AccountId::new(1, address);
-            let vault_id = VaultId::new(account_id.to_string());
-            let entity_id = vault_id.as_entity_id();
-
-            host::RegisterEntity
-                .call(transport.clone(), entity_id)
+            let entity_id = host::RegisterEntity
+                .call(transport.clone(), Domain::Vault)
                 .await?;
 
             // Save the vault ID and private key in the plugin state
             let mut state: PluginState = get_state_or_default(transport.clone()).await;
-            state.vaults.insert(vault_id, private_key_hex.clone());
+            state.vaults.insert(entity_id, private_key_hex.clone());
             set_state(transport.clone(), &state).await?;
 
             let component = container(vec![
@@ -131,7 +126,7 @@ async fn on_update(
             ]);
 
             host::SetInterface
-                .call(transport.clone(), (interface_id, component))
+                .call(transport.clone(), (page_id, component))
                 .await?;
 
             return Ok(());
@@ -158,17 +153,13 @@ async fn on_update(
             let address = signer.address();
 
             // Register the vault entity
-            let account_id = AccountId::new(1, address);
-            let vault_id = VaultId::new(account_id.to_string());
-            let entity_id = vault_id.as_entity_id();
-
-            host::RegisterEntity
-                .call(transport.clone(), entity_id)
+            let entity_id = host::RegisterEntity
+                .call(transport.clone(), Domain::Vault)
                 .await?;
 
             // Save the vault ID and private key in the plugin state
             let mut state: PluginState = get_state_or_default(transport.clone()).await;
-            state.vaults.insert(vault_id, private_key.clone());
+            state.vaults.insert(entity_id, private_key.clone());
             set_state(transport.clone(), &state).await?;
 
             let component = container(vec![
@@ -179,7 +170,7 @@ async fn on_update(
             ]);
 
             host::SetInterface
-                .call(transport.clone(), (interface_id, component))
+                .call(transport.clone(), (page_id, component))
                 .await?;
 
             return Ok(());

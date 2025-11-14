@@ -22,6 +22,7 @@ use tlock_pdk::{
     tlock_api::{
         RpcMethod,
         component::{container, text},
+        domains::Domain,
         entities::{EthProviderId, PageId},
         eth, global, host, page, plugin,
     },
@@ -46,16 +47,15 @@ async fn ping(transport: Arc<JsonRpcTransport>, _params: ()) -> Result<String, R
 
 async fn init(transport: Arc<JsonRpcTransport>, _params: ()) -> Result<(), RpcError> {
     info!("Initializing Ethereum Provider Plugin...");
-    let page_id = PageId::new("eth_provider_page".to_string());
+
     host::RegisterEntity
-        .call(transport.clone(), page_id.into())
+        .call(transport.clone(), Domain::Page)
         .await?;
 
     info!("Registering Ethereum Provider...");
 
-    let provider_id = EthProviderId::new("eth_provider".to_string());
     host::RegisterEntity
-        .call(transport.clone(), provider_id.into())
+        .call(transport.clone(), Domain::EthProvider)
         .await?;
 
     let state = ProviderState {
@@ -66,8 +66,7 @@ async fn init(transport: Arc<JsonRpcTransport>, _params: ()) -> Result<(), RpcEr
     Ok(())
 }
 
-async fn on_load(transport: Arc<JsonRpcTransport>, params: (PageId, u32)) -> Result<(), RpcError> {
-    let (_page_id, interface_id) = params;
+async fn on_load(transport: Arc<JsonRpcTransport>, page_id: PageId) -> Result<(), RpcError> {
     let state: ProviderState = get_state(transport.clone()).await.unwrap_or_default();
 
     let component = container(vec![
@@ -76,7 +75,7 @@ async fn on_load(transport: Arc<JsonRpcTransport>, params: (PageId, u32)) -> Res
     ]);
 
     host::SetInterface
-        .call(transport.clone(), (interface_id, component))
+        .call(transport.clone(), (page_id, component))
         .await?;
 
     Ok(())
@@ -340,7 +339,7 @@ pub fn create_alloy_provider(
 ) -> impl alloy::providers::Provider {
     let host_transport = HostTransportService::new(transport, url);
     let client = RpcClient::new(host_transport, false);
-    
+
     ProviderBuilder::new().connect_client(client)
 }
 

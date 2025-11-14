@@ -25,11 +25,10 @@ use tracing::{info, warn};
 pub struct Host {
     plugins: Mutex<HashMap<PluginId, Arc<Plugin>>>,
     entities: Mutex<HashMap<EntityId, PluginId>>,
-    domains: Mutex<HashMap<Domain, Vec<EntityId>>>,
 
     // TODO: Restrict these to a max size / otherwise prevent plugins from abusing storage
     state: Mutex<HashMap<PluginId, Vec<u8>>>,
-    interfaces: Mutex<HashMap<u32, Component>>, // interface_id -> Component
+    interfaces: Mutex<HashMap<PageId, Component>>,
 }
 
 impl Default for Host {
@@ -43,7 +42,6 @@ impl Host {
         Self {
             plugins: Mutex::new(HashMap::new()),
             entities: Mutex::new(HashMap::new()),
-            domains: Mutex::new(HashMap::new()),
             state: Mutex::new(HashMap::new()),
             interfaces: Mutex::new(HashMap::new()),
         }
@@ -131,12 +129,6 @@ impl Host {
         plugins.keys().cloned().collect()
     }
 
-    /// Get all entities for a given domain
-    pub fn get_entities_by_domain(&self, domain: &Domain) -> Vec<EntityId> {
-        let domains = self.domains.lock().unwrap();
-        domains.get(domain).cloned().unwrap_or_default()
-    }
-
     /// Get a plugin by its PluginId
     pub fn get_plugin(&self, plugin_id: &PluginId) -> Option<Arc<Plugin>> {
         let plugins = self.plugins.lock().unwrap();
@@ -144,28 +136,32 @@ impl Host {
     }
 
     /// Get the PluginId responsible for a given EntityId
-    pub fn get_entity_plugin_id(&self, entity_id: &EntityId) -> Option<PluginId> {
+    pub fn get_entity_plugin_id(&self, entity_id: impl Into<EntityId>) -> Option<PluginId> {
         let entities = self.entities.lock().unwrap();
-        entities.get(entity_id).cloned()
+        entities.get(&entity_id.into()).cloned()
     }
 
-    pub fn get_entity_plugin(&self, entity_id: &EntityId) -> Option<Arc<Plugin>> {
+    pub fn get_entity_plugin(&self, entity_id: impl Into<EntityId>) -> Option<Arc<Plugin>> {
         let plugin_id = self.get_entity_plugin_id(entity_id)?;
         self.get_plugin(&plugin_id)
     }
 
-    pub fn get_interfaces(&self) -> HashMap<u32, Component> {
+    pub fn get_interfaces(&self) -> HashMap<PageId, Component> {
         let interfaces = self.interfaces.lock().unwrap();
         interfaces.clone()
     }
 
-    pub fn get_interface(&self, interface_id: u32) -> Option<Component> {
+    pub fn get_interface(&self, page_id: PageId) -> Option<Component> {
         let interfaces = self.interfaces.lock().unwrap();
-        interfaces.get(&interface_id).cloned()
+        interfaces.get(&page_id).cloned()
     }
 
     ///? Helper to get the plugin or return an RpcError if not found
-    fn get_entity_plugin_error(&self, entity_id: &EntityId) -> Result<Arc<Plugin>, RpcError> {
+    fn get_entity_plugin_error(
+        &self,
+        entity_id: impl Into<EntityId>,
+    ) -> Result<Arc<Plugin>, RpcError> {
+        let entity_id = entity_id.into();
         let plugin = self.get_entity_plugin(entity_id).ok_or_else(|| {
             warn!("Entity {:?} not found", entity_id);
             RpcError::InvalidParams
@@ -197,29 +193,18 @@ impl Host {
     pub async fn register_entity(
         &self,
         plugin_id: &PluginId,
-        entity_id: EntityId,
-    ) -> Result<(), RpcError> {
+        domain: Domain,
+    ) -> Result<EntityId, RpcError> {
+        let entity_id: EntityId = match domain {
+            Domain::EthProvider => EthProviderId::new().into(),
+            Domain::Page => PageId::new().into(),
+            Domain::Vault => VaultId::new().into(),
+        };
+
         let mut entities = self.entities.lock().unwrap();
-        if let Some(existing_plugin_id) = entities.get(&entity_id) {
-            if existing_plugin_id == plugin_id {
-                return Ok(());
-            } else {
-                warn!(
-                    "Entity {:?} is already registered by plugin {}",
-                    entity_id, existing_plugin_id
-                );
-                return Err(RpcError::InvalidParams);
-            }
-        }
+        entities.insert(entity_id, plugin_id.clone());
 
-        entities.insert(entity_id.clone(), plugin_id.clone());
-
-        let mut domains = self.domains.lock().unwrap();
-        domains
-            .entry(entity_id.domain())
-            .or_default()
-            .push(entity_id.clone());
-        Ok(())
+        Ok(entity_id)
     }
 
     pub async fn fetch(
@@ -286,13 +271,10 @@ impl Host {
     pub async fn set_interface(
         &self,
         _plugin_id: &PluginId,
-        params: (u32, Component),
+        params: (PageId, Component),
     ) -> Result<(), RpcError> {
-        let (interface_id, component) = params;
-        self.interfaces
-            .lock()
-            .unwrap()
-            .insert(interface_id, component);
+        let (page_id, component) = params;
+        self.interfaces.lock().unwrap().insert(page_id, component);
         Ok(())
     }
 
@@ -300,8 +282,7 @@ impl Host {
         &self,
         vault_id: VaultId,
     ) -> Result<Vec<(AssetId, U256)>, RpcError> {
-        let entity_id = vault_id.as_entity_id();
-        let plugin = self.get_entity_plugin_error(&entity_id)?;
+        let plugin = self.get_entity_plugin_error(vault_id)?;
 
         let balance = vault::GetAssets.call(plugin, vault_id).await.map_err(|e| {
             warn!("Error calling BalanceOf: {:?}", e);
@@ -315,8 +296,7 @@ impl Host {
         params: (VaultId, AccountId, AssetId, U256),
     ) -> Result<Result<(), String>, RpcError> {
         let (vault_id, to, asset, amount) = params;
-        let entity_id = vault_id.as_entity_id();
-        let plugin = self.get_entity_plugin_error(&entity_id)?;
+        let plugin = self.get_entity_plugin_error(vault_id)?;
 
         let result = vault::Withdraw
             .call(plugin, (vault_id, to, asset, amount))
@@ -333,8 +313,7 @@ impl Host {
         params: (VaultId, AssetId),
     ) -> Result<Result<AccountId, String>, RpcError> {
         let (vault_id, asset) = params;
-        let entity_id = vault_id.as_entity_id();
-        let plugin = self.get_entity_plugin_error(&entity_id)?;
+        let plugin = self.get_entity_plugin_error(vault_id)?;
 
         let result = vault::GetDepositAddress
             .call(plugin, (vault_id, asset))
@@ -348,8 +327,7 @@ impl Host {
 
     pub async fn vault_on_deposit(&self, params: (VaultId, AssetId)) -> Result<(), RpcError> {
         let (vault_id, asset) = params;
-        let entity_id = vault_id.as_entity_id();
-        let plugin = self.get_entity_plugin_error(&entity_id)?;
+        let plugin = self.get_entity_plugin_error(vault_id)?;
 
         vault::OnDeposit
             .call(plugin, (vault_id, asset))
@@ -361,29 +339,22 @@ impl Host {
         Ok(())
     }
 
-    pub async fn page_on_load(&self, params: (PageId, u32)) -> Result<(), RpcError> {
-        let (page_id, interface_id) = params;
-        let plugin = self.get_entity_plugin_error(&page_id.as_entity_id())?;
+    pub async fn page_on_load(&self, page_id: PageId) -> Result<(), RpcError> {
+        let plugin = self.get_entity_plugin_error(page_id)?;
 
-        page::OnLoad
-            .call(plugin, (page_id, interface_id))
-            .await
-            .map_err(|e| {
-                warn!("Error calling OnPageLoad: {:?}", e);
-                e.as_rpc_code()
-            })?;
+        page::OnLoad.call(plugin, page_id).await.map_err(|e| {
+            warn!("Error calling OnPageLoad: {:?}", e);
+            e.as_rpc_code()
+        })?;
         Ok(())
     }
 
-    pub async fn page_on_update(
-        &self,
-        params: (PageId, u32, page::PageEvent),
-    ) -> Result<(), RpcError> {
-        let (page_id, interface_id, event) = params;
-        let plugin = self.get_entity_plugin_error(&page_id.as_entity_id())?;
+    pub async fn page_on_update(&self, params: (PageId, page::PageEvent)) -> Result<(), RpcError> {
+        let (page_id, event) = params;
+        let plugin = self.get_entity_plugin_error(page_id)?;
 
         page::OnUpdate
-            .call(plugin, (page_id, interface_id, event))
+            .call(plugin, (page_id, event))
             .await
             .map_err(|e| {
                 warn!("Error calling OnPageUpdate: {:?}", e);
@@ -396,7 +367,7 @@ impl Host {
         &self,
         provider_id: EthProviderId,
     ) -> Result<u64, RpcError> {
-        let plugin = self.get_entity_plugin_error(&provider_id.as_entity_id())?;
+        let plugin = self.get_entity_plugin_error(provider_id)?;
 
         let block_number = eth::BlockNumber
             .call(plugin, provider_id)
@@ -412,7 +383,7 @@ impl Host {
         &self,
         params: <eth::Call as RpcMethod>::Params,
     ) -> Result<<eth::Call as RpcMethod>::Output, RpcError> {
-        let plugin = self.get_entity_plugin_error(&params.0.as_entity_id())?;
+        let plugin = self.get_entity_plugin_error(params.0)?;
 
         let resp = eth::Call.call(plugin, params).await.map_err(|e| {
             warn!("Error calling Call: {:?}", e);
@@ -425,7 +396,7 @@ impl Host {
         &self,
         params: <eth::GetBalance as RpcMethod>::Params,
     ) -> Result<<eth::GetBalance as RpcMethod>::Output, RpcError> {
-        let plugin = self.get_entity_plugin_error(&params.0.as_entity_id())?;
+        let plugin = self.get_entity_plugin_error(params.0)?;
 
         let resp = eth::GetBalance.call(plugin, params).await.map_err(|e| {
             warn!("Error calling GetBalance: {:?}", e);

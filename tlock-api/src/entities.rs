@@ -1,65 +1,35 @@
 use serde::{Deserialize, Serialize};
 use std::fmt::{self, Display};
+use uuid::Uuid;
 
-use crate::domains::Domain;
+#[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub struct VaultId(Uuid);
+#[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub struct PageId(Uuid);
 
-/// Entities are uniquely identified registerable objects in tlock that act as
-/// instances of a domain implemented by a particular plugin.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub struct EthProviderId(Uuid);
+
+#[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum EntityId {
     Vault(VaultId),
     Page(PageId),
     EthProvider(EthProviderId),
 }
 
-impl EntityId {
-    pub fn domain(&self) -> Domain {
-        match self {
-            EntityId::Vault(_) => Domain::Vault,
-            EntityId::Page(_) => Domain::Page,
-            EntityId::EthProvider(_) => Domain::EthProvider,
-        }
-    }
-}
-
 impl Display for EntityId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            EntityId::Vault(v) => v.fmt(f),
-            EntityId::Page(p) => p.fmt(f),
-            EntityId::EthProvider(e) => e.fmt(f),
+            EntityId::Vault(vault_id) => write!(f, "{}", vault_id),
+            EntityId::Page(page_id) => write!(f, "{}", page_id),
+            EntityId::EthProvider(eth_provider_id) => write!(f, "{}", eth_provider_id),
         }
     }
 }
 
-impl From<VaultId> for EntityId {
-    fn from(id: VaultId) -> Self {
-        EntityId::Vault(id)
-    }
-}
-
-impl From<PageId> for EntityId {
-    fn from(id: PageId) -> Self {
-        EntityId::Page(id)
-    }
-}
-
-impl From<EthProviderId> for EntityId {
-    fn from(id: EthProviderId) -> Self {
-        EntityId::EthProvider(id)
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct VaultId(String);
-
 impl VaultId {
-    pub fn new(id: String) -> Self {
-        Self(id)
-    }
-
-    pub fn as_entity_id(&self) -> EntityId {
-        EntityId::Vault(self.clone())
+    pub fn new() -> Self {
+        VaultId(Uuid::new_v4())
     }
 }
 
@@ -69,16 +39,15 @@ impl Display for VaultId {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct PageId(String);
+impl From<VaultId> for EntityId {
+    fn from(vault_id: VaultId) -> Self {
+        EntityId::Vault(vault_id)
+    }
+}
 
 impl PageId {
-    pub fn new(id: String) -> Self {
-        Self(id)
-    }
-
-    pub fn as_entity_id(&self) -> EntityId {
-        EntityId::Page(self.clone())
+    pub fn new() -> Self {
+        PageId(Uuid::new_v4())
     }
 }
 
@@ -88,21 +57,26 @@ impl Display for PageId {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct EthProviderId(String);
+impl From<PageId> for EntityId {
+    fn from(page_id: PageId) -> Self {
+        EntityId::Page(page_id)
+    }
+}
 
 impl EthProviderId {
-    pub fn new(id: String) -> Self {
-        Self(id)
-    }
-
-    pub fn as_entity_id(&self) -> EntityId {
-        EntityId::EthProvider(self.clone())
+    pub fn new() -> Self {
+        EthProviderId(Uuid::new_v4())
     }
 }
 
 impl Display for EthProviderId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "ethprovider:{}", self.0)
+        write!(f, "eth_provider:{}", self.0)
+    }
+}
+
+impl From<EthProviderId> for EntityId {
+    fn from(eth_provider_id: EthProviderId) -> Self {
+        EntityId::EthProvider(eth_provider_id)
     }
 }

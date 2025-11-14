@@ -12,7 +12,7 @@ pub struct VaultProps {
 #[component]
 pub fn Vault(props: VaultProps) -> Element {
     let state = use_context::<HostContext>();
-    let entity_plugin = state.host.get_entity_plugin(&props.id.as_entity_id());
+    let entity_plugin = state.host.get_entity_plugin(props.id);
     let entity_plugin = match entity_plugin {
         Some(id) => id,
         None => return rsx! { div { "Vault component - ID: {props.id}, Plugin: Unknown" } },
