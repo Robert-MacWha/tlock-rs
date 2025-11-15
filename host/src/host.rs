@@ -360,11 +360,10 @@ impl Host {
         };
 
         info!("Sending request: {:?}", request);
+        // TODO: Handle errors properly
         let resp = request.send().await.unwrap();
-        // let resp = request.send().await.map_err(|e| Ok(Err(e.to_string())))?;
         info!("Received response: {:?}", resp);
         let bytes = resp.bytes().await.unwrap();
-        // let bytes = resp.bytes().await.map_err(|e| Ok(Err(e.to_string())))?;
         info!("Response bytes: {:?}", bytes);
         Ok(Ok(bytes.to_vec()))
     }
