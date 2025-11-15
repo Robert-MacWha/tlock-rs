@@ -8,6 +8,7 @@ pub mod caip;
 pub mod component;
 pub mod domains;
 pub mod entities;
+pub use alloy;
 
 // TODO: Consider adding a `mod sealed::Sealed {}` to prevent external impl, forcing
 // plugins to only use provided methods.
@@ -164,7 +165,7 @@ pub mod eth {
 
     rpc_method!(
         /// Gets the current gas price.
-        eth_gas_price, GasPrice, EthProviderId, alloy::primitives::U256
+        eth_gas_price, GasPrice, EthProviderId, u128
     );
 
     rpc_method!(
@@ -205,6 +206,11 @@ pub mod eth {
         eth_get_transaction_receipt, GetTransactionReceipt, (EthProviderId, TxHash), TransactionReceipt
     );
 
+    rpc_method!(
+        /// Gets the transaction count (AKA "nonce") for an address at a given block.
+        eth_get_transaction_count, GetTransactionCount, (EthProviderId, Address, BlockId), u64
+    );
+
     // TODO: Consider making this a different domain and having a distinction between "eth-read" and "eth-write"
     // methods. Would also make it easier to add custom send methods (IE to private pool, or forwarding to devp2p, etc).
     rpc_method!(
@@ -229,7 +235,7 @@ pub mod vault {
 
     rpc_method!(
         /// Withdraw an amount of some asset from this vault to another account.
-        vault_withdraw, Withdraw, (VaultId, AccountId, AssetId, U256), Result<(), String>
+        vault_withdraw, Withdraw, (VaultId, AccountId, AssetId, U256), ()
     );
 
     rpc_method!(
@@ -242,7 +248,7 @@ pub mod vault {
         /// as might the supported assets.
         ///
         /// TODO: Consider making this automatic via the host? Not sure how.
-        vault_get_deposit_address, GetDepositAddress, (VaultId, AssetId), Result<AccountId, String>
+        vault_get_deposit_address, GetDepositAddress, (VaultId, AssetId), AccountId
     );
 
     rpc_method!(

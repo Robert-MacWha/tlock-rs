@@ -1,0 +1,4 @@
+- [x] Finish eoa-vault plugin
+- [ ] Implement uniswap plugin with its own UI and using the eoa-vault
+- [ ] Build all three plugins & setup host project with cloudflare
+- [ ] Bugfix & polish UI a little bit to make it prettier than just a unordered list

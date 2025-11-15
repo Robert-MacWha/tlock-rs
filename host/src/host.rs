@@ -114,6 +114,9 @@ impl Host {
             .with_method(eth::BlockNumber, eth_provider_block_number)
             .with_method(eth::Call, eth_provider_call)
             .with_method(eth::GetBalance, eth_provider_get_balance)
+            .with_method(eth::GasPrice, eth_provider_gas_price)
+            .with_method(eth::GetTransactionCount, eth_transaction_count)
+            .with_method(eth::SendRawTransaction, eth_send_raw_transaction)
             .finish()
     }
 
@@ -276,16 +279,6 @@ impl Host {
         plugin_id: &PluginId,
         chain_id: caip::ChainId,
     ) -> Result<Option<EthProviderId>, RpcError> {
-        let has_providers = {
-            let entities = self.entities.lock().unwrap();
-            entities
-                .keys()
-                .any(|entity_id| matches!(entity_id, EntityId::EthProvider(_)))
-        };
-        if !has_providers {
-            return Ok(None);
-        }
-
         let request_id = Uuid::new_v4();
         let (sender, receiver) = oneshot::channel();
 
@@ -415,7 +408,7 @@ impl Host {
     pub async fn vault_withdraw(
         &self,
         params: (VaultId, AccountId, AssetId, U256),
-    ) -> Result<Result<(), String>, RpcError> {
+    ) -> Result<(), RpcError> {
         let (vault_id, to, asset, amount) = params;
         let plugin = self.get_entity_plugin_error(vault_id)?;
 
@@ -432,7 +425,7 @@ impl Host {
     pub async fn vault_get_deposit_address(
         &self,
         params: (VaultId, AssetId),
-    ) -> Result<Result<AccountId, String>, RpcError> {
+    ) -> Result<AccountId, RpcError> {
         let (vault_id, asset) = params;
         let plugin = self.get_entity_plugin_error(vault_id)?;
 
@@ -538,6 +531,51 @@ impl Host {
         })?;
         Ok(resp)
     }
+
+    pub async fn eth_provider_gas_price(
+        &self,
+        provider_id: EthProviderId,
+    ) -> Result<u128, RpcError> {
+        let plugin = self.get_entity_plugin_error(provider_id)?;
+
+        let gas_price = eth::GasPrice.call(plugin, provider_id).await.map_err(|e| {
+            warn!("Error calling GasPrice: {:?}", e);
+            e.as_rpc_code()
+        })?;
+        Ok(gas_price)
+    }
+
+    pub async fn eth_transaction_count(
+        &self,
+        params: <eth::GetTransactionCount as RpcMethod>::Params,
+    ) -> Result<<eth::GetTransactionCount as RpcMethod>::Output, RpcError> {
+        let plugin = self.get_entity_plugin_error(params.0)?;
+
+        let resp = eth::GetTransactionCount
+            .call(plugin, params)
+            .await
+            .map_err(|e| {
+                warn!("Error calling GetTransactionCount: {:?}", e);
+                e.as_rpc_code()
+            })?;
+        Ok(resp)
+    }
+
+    pub async fn eth_send_raw_transaction(
+        &self,
+        params: <eth::SendRawTransaction as RpcMethod>::Params,
+    ) -> Result<<eth::SendRawTransaction as RpcMethod>::Output, RpcError> {
+        let plugin = self.get_entity_plugin_error(params.0)?;
+
+        let tx_hash = eth::SendRawTransaction
+            .call(plugin, params)
+            .await
+            .map_err(|e| {
+                warn!("Error calling SendRawTransaction: {:?}", e);
+                e.as_rpc_code()
+            })?;
+        Ok(tx_hash)
+    }
 }
 
 // Macro invocations to implement the host RPC methods
@@ -563,3 +601,6 @@ impl_host_rpc_no_id!(Host, eth::ChainId, eth_provider_chain_id);
 impl_host_rpc_no_id!(Host, eth::BlockNumber, eth_provider_block_number);
 impl_host_rpc_no_id!(Host, eth::Call, eth_provider_call);
 impl_host_rpc_no_id!(Host, eth::GetBalance, eth_provider_get_balance);
+impl_host_rpc_no_id!(Host, eth::GasPrice, eth_provider_gas_price);
+impl_host_rpc_no_id!(Host, eth::GetTransactionCount, eth_transaction_count);
+impl_host_rpc_no_id!(Host, eth::SendRawTransaction, eth_send_raw_transaction);

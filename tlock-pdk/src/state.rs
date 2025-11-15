@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{fmt::Debug, sync::Arc};
 
 use serde::Serialize;
 use serde::de::DeserializeOwned;
@@ -38,11 +38,11 @@ where
 pub async fn set_state<T, S, E>(transport: Arc<T>, state: &S) -> Result<(), E>
 where
     T: Transport<E> + Send + Sync + 'static,
-    S: Serialize,
+    S: Debug + Serialize,
     E: ApiError + From<RpcError>,
 {
     let state_bytes = serde_json::to_vec(state).map_err(|e| {
-        error!("Failed to serialize state: {}", e);
+        error!("Failed to serialize state {:?}: {}", state, e);
         E::from(RpcError::InternalError)
     })?;
 

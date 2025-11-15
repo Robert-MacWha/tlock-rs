@@ -21,6 +21,13 @@ impl ChainId {
         }
     }
 
+    pub fn new_evm(chain_id: u64) -> Self {
+        Self {
+            namespace: "eip155".to_string(),
+            reference: Some(chain_id.to_string()),
+        }
+    }
+
     pub fn namespace(&self) -> &str {
         &self.namespace
     }
@@ -59,6 +66,16 @@ impl AccountId {
 
     pub fn address(&self) -> &Address {
         &self.1
+    }
+
+    pub fn try_into_evm_address(&self) -> Result<Address, String> {
+        if self.0.namespace() != "eip155" {
+            return Err(format!(
+                "Unsupported chain namespace: {}",
+                self.0.namespace()
+            ));
+        }
+        Ok(self.1)
     }
 }
 

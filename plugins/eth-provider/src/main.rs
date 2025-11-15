@@ -35,7 +35,7 @@ use tlock_pdk::{
 };
 use tower_service::Service;
 
-#[derive(Serialize, Deserialize, Default)]
+#[derive(Serialize, Deserialize, Default, Debug)]
 struct ProviderState {
     rpc_url: String,
 }
@@ -59,7 +59,7 @@ async fn init(transport: Arc<JsonRpcTransport>, _params: ()) -> Result<(), RpcEr
         .await?;
 
     let state = ProviderState {
-        rpc_url: "https://eth.llamarpc.com".to_string(),
+        rpc_url: "https://1rpc.io/sepolia".to_string(),
     };
     set_state(transport.clone(), &state).await?;
 
@@ -141,7 +141,7 @@ async fn call(
 async fn gas_price(
     transport: Arc<JsonRpcTransport>,
     _provider_id: EthProviderId,
-) -> Result<U256, RpcError> {
+) -> Result<u128, RpcError> {
     let state: ProviderState = try_get_state(transport.clone()).await?;
 
     let provider = create_alloy_provider(transport.clone(), state.rpc_url);
@@ -149,7 +149,6 @@ async fn gas_price(
         error!("Error fetching gas price: {:?}", e);
         RpcError::Custom(format!("Failed to fetch gas price: {:?}", e))
     })?;
-    let gas_price = U256::from(gas_price);
 
     Ok(gas_price)
 }
@@ -295,6 +294,26 @@ async fn get_transaction_receipt(
     }
 }
 
+async fn get_transaction_count(
+    transport: Arc<JsonRpcTransport>,
+    params: (EthProviderId, Address, BlockId),
+) -> Result<u64, RpcError> {
+    let state: ProviderState = try_get_state(transport.clone()).await?;
+    let (_provider_id, address, block_id) = params;
+
+    let provider = create_alloy_provider(transport.clone(), state.rpc_url);
+    let tx_count = provider
+        .get_transaction_count(address)
+        .block_id(block_id)
+        .await
+        .map_err(|e| {
+            error!("Error fetching transaction count: {:?}", e);
+            RpcError::Custom(format!("Failed to fetch transaction count: {:?}", e))
+        })?;
+
+    Ok(tx_count)
+}
+
 async fn send_raw_transaction(
     transport: Arc<JsonRpcTransport>,
     params: (EthProviderId, Bytes),
@@ -341,6 +360,7 @@ fn main() {
         .with_method(eth::GetLogs, get_logs)
         .with_method(eth::GetTransactionByHash, get_transaction_by_hash)
         .with_method(eth::GetTransactionReceipt, get_transaction_receipt)
+        .with_method(eth::GetTransactionCount, get_transaction_count)
         .with_method(eth::SendRawTransaction, send_raw_transaction)
         .finish();
     let plugin = Arc::new(plugin);
