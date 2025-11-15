@@ -32,10 +32,20 @@ fn app() -> Element {
         div {
             class: "container mx-auto p-4",
             h1 { "Tlock" }
-            control_panel {}
-            request_list {}
-            plugin_list {}
-            entities_list {}
+            div {
+                class: "row",
+                div {
+                    class: "col-lg-8",
+                    control_panel {}
+                    request_list {}
+                    entities_list {}
+                }
+                div {
+                    class: "col-lg-4",
+                    plugin_list {}
+                    event_log {}
+                }
+            }
         }
     }
 }
@@ -76,7 +86,7 @@ fn control_panel() -> Element {
 
     rsx! {
         div {
-            "Control Panel"
+            h5 { "Control Panel" }
             ul {
                 li {
                     input {
@@ -97,7 +107,7 @@ fn request_list() -> Element {
 
     rsx! {
         div {
-            "User Requests:",
+            h5 { "User Requests:" },
             if requests.is_empty() {
                 div { class: "text-muted", "No pending requests" }
             } else {
@@ -122,7 +132,7 @@ fn plugin_list() -> Element {
 
     rsx! {
         div {
-            "Plugin List:",
+            h5 { "Plugin List:" },
             ul {
                 for plugin in named_plugins {
                     li { key: "{plugin.id()}", "{plugin.name()} ({plugin.id()})" }
@@ -139,13 +149,30 @@ fn entities_list() -> Element {
 
     rsx! {
         div {
-            "Entities List:",
+            h5 { "Entities List:" },
             ul {
                 for entity_id in entities.iter() {
                     li {
                         key: "{entity_id}",
                         Entity { id: entity_id.clone() }
                      }
+                }
+            }
+        }
+    }
+}
+
+#[component]
+fn event_log() -> Element {
+    let state = use_context::<HostContext>();
+    let log = state.event_log.read();
+
+    rsx! {
+        div {
+            h5 { "Event Log:" },
+            ul {
+                for (index, event) in log.iter().enumerate() {
+                    li { key: "{index}", "{event}" }
                 }
             }
         }

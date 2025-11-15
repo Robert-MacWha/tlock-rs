@@ -252,12 +252,12 @@ async fn withdraw(
     info!("Withdrawal transaction sent with hash: {}", tx_hash);
     if let Some(page_id) = state.page_id {
         let component = container(vec![
-            heading("Vault Component"),
+            heading("EOA Vault"),
             text("Withdrawal transaction sent!"),
             text(format!("Transaction hash: {}", tx_hash)),
         ]);
 
-        host::SetInterface
+        host::SetPage
             .call(transport.clone(), (page_id, component))
             .await?;
     }
@@ -379,7 +379,7 @@ async fn on_load(transport: Arc<JsonRpcTransport>, page_id: PageId) -> Result<()
     set_state(transport.clone(), &state).await?;
 
     let component = container(vec![
-        heading("Vault Component"),
+        heading("EOA Vault"),
         text("This is an example vault plugin. Please enter a dev private key."),
         button_input("generate_dev_key", "Generate Dev Key"),
         form(
@@ -391,7 +391,7 @@ async fn on_load(transport: Arc<JsonRpcTransport>, page_id: PageId) -> Result<()
         ),
     ]);
 
-    host::SetInterface
+    host::SetPage
         .call(transport.clone(), (page_id, component))
         .await?;
 
@@ -430,13 +430,13 @@ async fn on_update(
             set_state(transport.clone(), &state).await?;
 
             let component = container(vec![
-                heading("Vault Component"),
+                heading("EOA Vault"),
                 text("New dev private key generated!"),
                 text(format!("Your address: {}", address)),
                 text(format!("Your private key: {}", private_key_hex)),
             ]);
 
-            host::SetInterface
+            host::SetPage
                 .call(transport.clone(), (page_id, component))
                 .await?;
 
@@ -480,13 +480,13 @@ async fn on_update(
             set_state(transport.clone(), &state).await?;
 
             let component = container(vec![
-                heading("Vault Component"),
+                heading("EOA Vault"),
                 text("Private key received!"),
                 text(format!("Your address: {}", address)),
                 text(format!("Your private key: {}", private_key)),
             ]);
 
-            host::SetInterface
+            host::SetPage
                 .call(transport.clone(), (page_id, component))
                 .await?;
 

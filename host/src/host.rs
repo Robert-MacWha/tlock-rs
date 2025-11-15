@@ -38,6 +38,7 @@ pub struct Host {
     user_request_senders: Mutex<HashMap<Uuid, oneshot::Sender<EthProviderId>>>,
 
     observers: Mutex<Vec<UnboundedSender<()>>>,
+    event_log: Mutex<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -65,6 +66,7 @@ impl Host {
             user_requests: Mutex::new(Vec::new()),
             user_request_senders: Mutex::new(HashMap::new()),
             observers: Mutex::new(Vec::new()),
+            event_log: Mutex::new(Vec::new()),
         }
     }
 
@@ -103,7 +105,7 @@ impl Host {
             .with_method(host::Fetch, fetch)
             .with_method(host::GetState, get_state)
             .with_method(host::SetState, set_state)
-            .with_method(host::SetInterface, set_interface)
+            .with_method(host::SetPage, set_interface)
             .with_method(vault::GetAssets, vault_get_assets)
             .with_method(vault::Withdraw, vault_withdraw)
             .with_method(vault::GetDepositAddress, vault_get_deposit_address)
@@ -191,6 +193,11 @@ impl Host {
         requests.clone()
     }
 
+    pub fn get_event_log(&self) -> Vec<String> {
+        let log = self.event_log.lock().unwrap();
+        log.clone()
+    }
+
     pub fn resolve_user_request(&self, request_id: Uuid, provider_id: EthProviderId) {
         let sender = self
             .user_request_senders
@@ -248,6 +255,12 @@ impl Host {
         for observer in observers.iter() {
             let _ = observer.unbounded_send(());
         }
+    }
+
+    pub fn log_event(&self, event: String) {
+        let mut log = self.event_log.lock().unwrap();
+        log.push(event);
+        self.notify_observers();
     }
 }
 
@@ -590,7 +603,7 @@ impl_host_rpc!(Host, host::RequestEthProvider, request_eth_provider);
 impl_host_rpc!(Host, host::Fetch, fetch);
 impl_host_rpc!(Host, host::GetState, get_state);
 impl_host_rpc!(Host, host::SetState, set_state);
-impl_host_rpc!(Host, host::SetInterface, set_interface);
+impl_host_rpc!(Host, host::SetPage, set_interface);
 impl_host_rpc_no_id!(Host, vault::GetAssets, vault_get_assets);
 impl_host_rpc_no_id!(Host, vault::Withdraw, vault_withdraw);
 impl_host_rpc_no_id!(Host, vault::GetDepositAddress, vault_get_deposit_address);

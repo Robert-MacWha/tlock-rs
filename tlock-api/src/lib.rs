@@ -125,7 +125,7 @@ pub mod host {
 
     rpc_method!(
         /// Sets a specific page to the given component.
-        host_set_page, SetInterface, (PageId, Component), ()
+        host_set_page, SetPage, (PageId, Component), ()
     );
 }
 

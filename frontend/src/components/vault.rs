@@ -223,6 +223,7 @@ pub fn Vault(props: VaultProps) -> Element {
                                 name: "to_address",
                                 r#type: "text",
                             }
+                            br {}
                             label {
                                 for: "amount",
                                 "Amount (in wei):"
@@ -232,6 +233,7 @@ pub fn Vault(props: VaultProps) -> Element {
                                 name: "amount",
                                 r#type: "text",
                             }
+                            br {}
                             label {
                                 for: "token",
                                 "Token:"
@@ -248,6 +250,7 @@ pub fn Vault(props: VaultProps) -> Element {
                                     "USDC"
                                 }
                             }
+                            br {}
                             button {
                                 r#type: "submit",
                                 "Withdraw"

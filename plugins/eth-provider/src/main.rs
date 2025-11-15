@@ -74,7 +74,7 @@ async fn on_load(transport: Arc<JsonRpcTransport>, page_id: PageId) -> Result<()
         text(format!("RPC URL: {}", state.rpc_url)),
     ]);
 
-    host::SetInterface
+    host::SetPage
         .call(transport.clone(), (page_id, component))
         .await?;
 
