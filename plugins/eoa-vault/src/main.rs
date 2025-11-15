@@ -4,14 +4,14 @@ use std::{collections::HashMap, io::stderr, str::FromStr, sync::Arc};
 use tlock_pdk::{
     futures::executor::block_on,
     server::ServerBuilder,
-    state::{get_state, get_state_or_default, set_state},
+    state::{get_state, set_state},
     tlock_api::{
         RpcMethod,
-        caip::AssetId,
+        caip::{AssetId, ChainId},
         component::{button_input, container, form, heading, submit_input, text, text_input},
         domains::Domain,
-        entities::{EntityId, PageId, VaultId},
-        global, host, page, plugin, vault,
+        entities::{EntityId, EthProviderId, PageId, VaultId},
+        eth, global, host, page, plugin, vault,
     },
     wasmi_pdk::{
         rpc_message::RpcError,
@@ -23,7 +23,8 @@ use tlock_pdk::{
 
 #[derive(Serialize, Deserialize, Default)]
 struct PluginState {
-    vaults: HashMap<EntityId, String>, // Maps EntityId to private_key
+    vaults: HashMap<EntityId, String>,
+    eth_provider_id: Option<EthProviderId>,
 }
 
 async fn init(transport: Arc<JsonRpcTransport>, _params: ()) -> Result<(), RpcError> {
@@ -34,12 +35,31 @@ async fn init(transport: Arc<JsonRpcTransport>, _params: ()) -> Result<(), RpcEr
         .call(transport.clone(), Domain::Page)
         .await?;
 
+    let chain_id: ChainId = ChainId::new("eip155".into(), Some("1".into()));
+    let provider_id = host::RequestEthProvider
+        .call(transport.clone(), chain_id)
+        .await?;
+
+    let mut state: PluginState = get_state(transport.clone()).await;
+    state.eth_provider_id = provider_id;
+    set_state(transport.clone(), &state).await?;
+
     Ok(())
 }
 
 async fn ping(transport: Arc<JsonRpcTransport>, _params: ()) -> Result<String, RpcError> {
-    global::Ping.call(transport.clone(), ()).await?;
-    Ok("pong from vault".to_string())
+    let state: PluginState = get_state(transport.clone()).await;
+    let Some(eth_provider_id) = state.eth_provider_id else {
+        error!("No Eth provider ID");
+        return Err(RpcError::Custom("Missing Eth Provider".into()));
+    };
+
+    info!(
+        "Pong received, querying chain ID from Eth provider: {}",
+        eth_provider_id
+    );
+    let chain_id = eth::ChainId.call(transport, eth_provider_id).await?;
+    Ok(format!("Pong! Connected to chain: {}", chain_id))
 }
 
 async fn get_assets(
@@ -50,7 +70,7 @@ async fn get_assets(
     info!("Received BalanceOf request for vault: {}", vault_id);
 
     //? Retrieve the plugin state to get the vault account ID
-    let state: PluginState = get_state(transport.clone()).await?;
+    let state: PluginState = get_state(transport.clone()).await;
 
     let vaults = state.vaults;
     let private_key = vaults.get(&vault_id.into()).ok_or_else(|| {
@@ -58,16 +78,9 @@ async fn get_assets(
         RpcError::InvalidParams
     })?;
 
-    //? Here you would normally query the balances from an external source.
-    //? For this example, we'll return a dummy balance.
-    info!("Fetching balances for account: {:?}", private_key);
-    let dummy_asset_id = AssetId::new(
-        1,
-        "erc20".into(),
-        "0x11223344556677889900aabbccddeeff".into(),
-    );
+    _ = private_key;
 
-    Ok(vec![(dummy_asset_id, U256::from(1000u64))])
+    Ok(vec![])
 }
 
 async fn on_load(transport: Arc<JsonRpcTransport>, page_id: PageId) -> Result<(), RpcError> {
@@ -114,7 +127,7 @@ async fn on_update(
                 .await?;
 
             // Save the vault ID and private key in the plugin state
-            let mut state: PluginState = get_state_or_default(transport.clone()).await;
+            let mut state: PluginState = get_state(transport.clone()).await;
             state.vaults.insert(entity_id, private_key_hex.clone());
             set_state(transport.clone(), &state).await?;
 
@@ -158,7 +171,7 @@ async fn on_update(
                 .await?;
 
             // Save the vault ID and private key in the plugin state
-            let mut state: PluginState = get_state_or_default(transport.clone()).await;
+            let mut state: PluginState = get_state(transport.clone()).await;
             state.vaults.insert(entity_id, private_key.clone());
             set_state(transport.clone(), &state).await?;
 

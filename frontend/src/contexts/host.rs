@@ -1,18 +1,18 @@
 use std::{collections::HashMap, sync::Arc};
 
 use dioxus::{
-    hooks::use_signal,
+    hooks::{UnboundedReceiver, use_coroutine, use_signal},
     signals::{Signal, Writable},
 };
-use host::host::Host;
+use futures::StreamExt;
+use host::host::{Host, UserRequest};
 use tlock_hdk::{
     tlock_api::{
         component::Component,
         entities::{EntityId, PageId},
     },
-    wasmi_hdk::plugin::{PluginError, PluginId},
+    wasmi_hdk::plugin::PluginId,
 };
-use tracing_log::log::info;
 
 #[derive(Clone)]
 pub struct HostContext {
@@ -20,40 +20,42 @@ pub struct HostContext {
     pub plugins: Signal<Vec<PluginId>>,
     pub entities: Signal<Vec<EntityId>>,
     pub interfaces: Signal<HashMap<PageId, Component>>,
+    pub user_requests: Signal<Vec<UserRequest>>,
 }
 
 impl HostContext {
     pub fn new(host: Arc<Host>) -> Self {
+        let plugins = use_signal(Vec::new);
+        let entities = use_signal(Vec::new);
+        let interfaces = use_signal(HashMap::new);
+        let user_requests = use_signal(Vec::new);
+
+        let host_clone = host.clone();
+        let coro = use_coroutine(move |mut rx: UnboundedReceiver<()>| {
+            let host = host_clone.clone();
+            let mut plugins_sig = plugins;
+            let mut entities_sig = entities;
+            let mut interfaces_sig = interfaces;
+            let mut user_requests_sig = user_requests;
+
+            async move {
+                while let Some(()) = rx.next().await {
+                    plugins_sig.set(host.get_plugins());
+                    entities_sig.set(host.get_entities());
+                    interfaces_sig.set(host.get_interfaces());
+                    user_requests_sig.set(host.get_user_requests());
+                }
+            }
+        });
+
+        host.subscribe(coro.tx());
+
         Self {
             host,
-            plugins: use_signal(Vec::new),
-            entities: use_signal(Vec::new),
-            interfaces: use_signal(HashMap::new),
+            plugins,
+            entities,
+            interfaces,
+            user_requests,
         }
-    }
-
-    pub async fn load_plugin(
-        &mut self,
-        wasm_bytes: &[u8],
-        name: &str,
-    ) -> Result<PluginId, PluginError> {
-        let id = self.host.load_plugin(wasm_bytes, name).await?;
-        self.reload_state();
-        Ok(id)
-    }
-
-    // TODO: Setup a watcher where the host notifies us of changes and we update
-    // automatically.  Right now we need to manually refresh, which is both
-    // inefficient and *very* error-prone.
-    pub fn reload_state(&mut self) {
-        info!("Reloading HostContext state");
-        let plugins = self.host.get_plugins();
-        self.plugins.set(plugins);
-
-        let plugin_entities = self.host.get_entities();
-        self.entities.set(plugin_entities);
-
-        let interfaces = self.host.get_interfaces();
-        self.interfaces.set(interfaces);
     }
 }

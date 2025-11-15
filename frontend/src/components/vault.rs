@@ -33,12 +33,6 @@ pub fn Vault(props: VaultProps) -> Element {
                     info!("Ping plugin {plugin_id}");
 
                     // Test artificial work
-                    ping_resp.set("Doing fake work...".into());
-                    for _ in 0..20 {
-                        let resp = reqwest::get("https://httpbin.org/get").await;
-                        info!("Ping sub-request result: {resp:?}");
-                    }
-
                     let response = match state.host.ping_plugin(&plugin_id).await {
                         Ok(resp) => format!("Ping response: {resp}"),
                         Err(err) => format!("Ping error: {err}"),

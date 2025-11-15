@@ -18,13 +18,12 @@ pub fn Page(props: PageProps) -> Element {
     let _ = use_resource({
         let state = state.clone();
         move || {
-            let mut state = state.clone();
+            let state = state.clone();
             async move {
                 match state.host.page_on_load(page_id).await {
                     Ok(()) => info!("OnPageLoad success"),
                     Err(err) => info!("OnPageLoad error: {err}"),
                 }
-                state.reload_state();
             }
         }
     });
@@ -33,14 +32,12 @@ pub fn Page(props: PageProps) -> Element {
         let state = state.clone();
 
         move |event: PageEvent| {
-            let mut state = state.clone();
-
+            let state = state.clone();
             spawn(async move {
                 match state.host.page_on_update((page_id, event)).await {
                     Ok(()) => info!("OnPageUpdate success"),
                     Err(err) => info!("OnPageUpdate error: {err}"),
                 }
-                state.reload_state();
             });
         }
     });

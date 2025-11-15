@@ -18,7 +18,7 @@ use serde::{Deserialize, Serialize};
 use tlock_pdk::{
     futures::executor::block_on,
     server::ServerBuilder,
-    state::{get_state, set_state},
+    state::{get_state, set_state, try_get_state},
     tlock_api::{
         RpcMethod,
         component::{container, text},
@@ -67,7 +67,7 @@ async fn init(transport: Arc<JsonRpcTransport>, _params: ()) -> Result<(), RpcEr
 }
 
 async fn on_load(transport: Arc<JsonRpcTransport>, page_id: PageId) -> Result<(), RpcError> {
-    let state: ProviderState = get_state(transport.clone()).await.unwrap_or_default();
+    let state: ProviderState = get_state(transport.clone()).await;
 
     let component = container(vec![
         text("This is the Ethereum Provider Plugin"),
@@ -81,11 +81,27 @@ async fn on_load(transport: Arc<JsonRpcTransport>, page_id: PageId) -> Result<()
     Ok(())
 }
 
+async fn chain_id(
+    transport: Arc<JsonRpcTransport>,
+    _params: EthProviderId,
+) -> Result<U256, RpcError> {
+    let state: ProviderState = try_get_state(transport.clone()).await?;
+
+    let provider = create_alloy_provider(transport.clone(), state.rpc_url);
+    let chain_id = provider.get_chain_id().await.map_err(|e| {
+        error!("Error fetching chain ID: {:?}", e);
+        RpcError::InternalError
+    })?;
+    let chain_id = U256::from(chain_id);
+
+    Ok(chain_id)
+}
+
 async fn block_number(
     transport: Arc<JsonRpcTransport>,
     _params: EthProviderId,
 ) -> Result<u64, RpcError> {
-    let state: ProviderState = get_state(transport.clone()).await?;
+    let state: ProviderState = try_get_state(transport.clone()).await?;
 
     let provider = create_alloy_provider(transport.clone(), state.rpc_url);
     let block_number = provider.get_block_number().await.map_err(|e| {
@@ -104,7 +120,7 @@ async fn call(
         Option<StateOverride>,
     ),
 ) -> Result<Bytes, RpcError> {
-    let state: ProviderState = get_state(transport.clone()).await?;
+    let state: ProviderState = try_get_state(transport.clone()).await?;
 
     let (_provider_id, tx, block_overrides, state_overrides) = params;
 
@@ -126,7 +142,7 @@ async fn gas_price(
     transport: Arc<JsonRpcTransport>,
     _provider_id: EthProviderId,
 ) -> Result<U256, RpcError> {
-    let state: ProviderState = get_state(transport.clone()).await?;
+    let state: ProviderState = try_get_state(transport.clone()).await?;
 
     let provider = create_alloy_provider(transport.clone(), state.rpc_url);
     let gas_price = provider.get_gas_price().await.map_err(|e| {
@@ -142,7 +158,7 @@ async fn get_balance(
     transport: Arc<JsonRpcTransport>,
     params: (EthProviderId, Address, BlockId),
 ) -> Result<U256, RpcError> {
-    let state: ProviderState = get_state(transport.clone()).await?;
+    let state: ProviderState = try_get_state(transport.clone()).await?;
     let (_provider_id, address, block_id) = params;
 
     let provider = create_alloy_provider(transport.clone(), state.rpc_url);
@@ -161,7 +177,7 @@ async fn get_block(
     transport: Arc<JsonRpcTransport>,
     params: (EthProviderId, BlockId, BlockTransactionsKind),
 ) -> Result<Block, RpcError> {
-    let state: ProviderState = get_state(transport.clone()).await?;
+    let state: ProviderState = try_get_state(transport.clone()).await?;
     let (_provider_id, block_id, include_transactions) = params;
 
     let provider = create_alloy_provider(transport.clone(), state.rpc_url);
@@ -184,7 +200,7 @@ async fn get_block_receipts(
     transport: Arc<JsonRpcTransport>,
     params: (EthProviderId, BlockId),
 ) -> Result<Vec<TransactionReceipt>, RpcError> {
-    let state: ProviderState = get_state(transport.clone()).await?;
+    let state: ProviderState = try_get_state(transport.clone()).await?;
     let (_provider_id, block_id) = params;
 
     let provider = create_alloy_provider(transport.clone(), state.rpc_url);
@@ -203,7 +219,7 @@ async fn get_code(
     transport: Arc<JsonRpcTransport>,
     params: (EthProviderId, Address, BlockId),
 ) -> Result<Bytes, RpcError> {
-    let state: ProviderState = get_state(transport.clone()).await?;
+    let state: ProviderState = try_get_state(transport.clone()).await?;
     let (_provider_id, address, block_id) = params;
 
     let provider = create_alloy_provider(transport.clone(), state.rpc_url);
@@ -223,7 +239,7 @@ async fn get_logs(
     transport: Arc<JsonRpcTransport>,
     params: (EthProviderId, Filter),
 ) -> Result<Vec<Log>, RpcError> {
-    let state: ProviderState = get_state(transport.clone()).await?;
+    let state: ProviderState = try_get_state(transport.clone()).await?;
     let (_provider_id, filter) = params;
 
     let provider = create_alloy_provider(transport.clone(), state.rpc_url);
@@ -239,7 +255,7 @@ async fn get_transaction_by_hash(
     transport: Arc<JsonRpcTransport>,
     params: (EthProviderId, TxHash),
 ) -> Result<Transaction, RpcError> {
-    let state: ProviderState = get_state(transport.clone()).await?;
+    let state: ProviderState = try_get_state(transport.clone()).await?;
     let (_provider_id, tx_hash) = params;
 
     let provider = create_alloy_provider(transport.clone(), state.rpc_url);
@@ -261,7 +277,7 @@ async fn get_transaction_receipt(
     transport: Arc<JsonRpcTransport>,
     params: (EthProviderId, TxHash),
 ) -> Result<TransactionReceipt, RpcError> {
-    let state: ProviderState = get_state(transport.clone()).await?;
+    let state: ProviderState = try_get_state(transport.clone()).await?;
     let (_provider_id, tx_hash) = params;
 
     let provider = create_alloy_provider(transport.clone(), state.rpc_url);
@@ -283,7 +299,7 @@ async fn send_raw_transaction(
     transport: Arc<JsonRpcTransport>,
     params: (EthProviderId, Bytes),
 ) -> Result<TxHash, RpcError> {
-    let state: ProviderState = get_state(transport.clone()).await?;
+    let state: ProviderState = try_get_state(transport.clone()).await?;
     let (_provider_id, raw_tx) = params;
 
     let provider = create_alloy_provider(transport.clone(), state.rpc_url);
@@ -314,6 +330,7 @@ fn main() {
         .with_method(global::Ping, ping)
         .with_method(plugin::Init, init)
         .with_method(page::OnLoad, on_load)
+        .with_method(eth::ChainId, chain_id)
         .with_method(eth::BlockNumber, block_number)
         .with_method(eth::Call, call)
         .with_method(eth::GasPrice, gas_price)
@@ -333,6 +350,8 @@ fn main() {
     });
 }
 
+//? Helpers to create an alloy provider using the host transport and `Request`
+// instead of a  standard HTTP transport.
 pub fn create_alloy_provider(
     transport: Arc<JsonRpcTransport>,
     url: String,

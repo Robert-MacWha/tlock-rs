@@ -3,4 +3,5 @@ pub mod container;
 pub mod entity;
 pub mod eth_provider;
 pub mod page;
+pub mod user_requests;
 pub mod vault;

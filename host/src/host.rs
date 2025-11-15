@@ -4,12 +4,15 @@ use std::{
     sync::{Arc, Mutex, Weak},
 };
 
+use futures::channel::{mpsc::UnboundedSender, oneshot};
+use uuid::Uuid;
+
 use alloy::{primitives::U256, transports::http::reqwest};
 use tlock_hdk::{
     impl_host_rpc, impl_host_rpc_no_id,
     tlock_api::{
         RpcMethod,
-        caip::{AccountId, AssetId},
+        caip::{self, AccountId, AssetId},
         component::Component,
         domains::Domain,
         entities::{EntityId, EthProviderId, PageId, VaultId},
@@ -29,6 +32,21 @@ pub struct Host {
     // TODO: Restrict these to a max size / otherwise prevent plugins from abusing storage
     state: Mutex<HashMap<PluginId, Vec<u8>>>,
     interfaces: Mutex<HashMap<PageId, Component>>,
+
+    // User requests awaiting user decisions
+    user_requests: Mutex<Vec<UserRequest>>,
+    user_request_senders: Mutex<HashMap<Uuid, oneshot::Sender<EthProviderId>>>,
+
+    observers: Mutex<Vec<UnboundedSender<()>>>,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub enum UserRequest {
+    EthProviderSelection {
+        id: Uuid,
+        plugin_id: PluginId,
+        chain_id: caip::ChainId,
+    },
 }
 
 impl Default for Host {
@@ -44,7 +62,15 @@ impl Host {
             entities: Mutex::new(HashMap::new()),
             state: Mutex::new(HashMap::new()),
             interfaces: Mutex::new(HashMap::new()),
+            user_requests: Mutex::new(Vec::new()),
+            user_request_senders: Mutex::new(HashMap::new()),
+            observers: Mutex::new(Vec::new()),
         }
+    }
+
+    pub fn subscribe(&self, observer: UnboundedSender<()>) {
+        let mut observers = self.observers.lock().unwrap();
+        observers.push(observer);
     }
 
     /// Load a plugin from wasm bytes, register it, and return its PluginId
@@ -73,6 +99,7 @@ impl Host {
         ServerBuilder::new(Arc::new((None, Arc::downgrade(self))))
             .with_method(global::Ping, ping)
             .with_method(host::RegisterEntity, register_entity)
+            .with_method(host::RequestEthProvider, request_eth_provider)
             .with_method(host::Fetch, fetch)
             .with_method(host::GetState, get_state)
             .with_method(host::SetState, set_state)
@@ -83,6 +110,7 @@ impl Host {
             .with_method(vault::OnDeposit, vault_on_deposit)
             .with_method(page::OnLoad, page_on_load)
             .with_method(page::OnUpdate, page_on_update)
+            .with_method(eth::ChainId, eth_provider_chain_id)
             .with_method(eth::BlockNumber, eth_provider_block_number)
             .with_method(eth::Call, eth_provider_call)
             .with_method(eth::GetBalance, eth_provider_get_balance)
@@ -104,38 +132,37 @@ impl Host {
                     "Plugin {} does not implement Init, skipping",
                     new_plugin.id()
                 );
+                self.notify_observers();
                 Ok(())
             }
             Err(e) => {
                 warn!("Error calling Init on plugin {}: {:?}", new_plugin.id(), e);
+                self.notify_observers();
                 Err(e)
             }
             Ok(_) => {
                 info!("Plugin {} initialized", new_plugin.id());
+                self.notify_observers();
                 Ok(())
             }
         }
     }
 
-    /// Get all registered entities
     pub fn get_entities(&self) -> Vec<EntityId> {
         let entities = self.entities.lock().unwrap();
         entities.keys().cloned().collect()
     }
 
-    /// Get all registered plugins
     pub fn get_plugins(&self) -> Vec<PluginId> {
         let plugins = self.plugins.lock().unwrap();
         plugins.keys().cloned().collect()
     }
 
-    /// Get a plugin by its PluginId
     pub fn get_plugin(&self, plugin_id: &PluginId) -> Option<Arc<Plugin>> {
         let plugins = self.plugins.lock().unwrap();
         plugins.get(plugin_id).cloned()
     }
 
-    /// Get the PluginId responsible for a given EntityId
     pub fn get_entity_plugin_id(&self, entity_id: impl Into<EntityId>) -> Option<PluginId> {
         let entities = self.entities.lock().unwrap();
         entities.get(&entity_id.into()).cloned()
@@ -154,6 +181,35 @@ impl Host {
     pub fn get_interface(&self, page_id: PageId) -> Option<Component> {
         let interfaces = self.interfaces.lock().unwrap();
         interfaces.get(&page_id).cloned()
+    }
+
+    pub fn get_user_requests(&self) -> Vec<UserRequest> {
+        let requests = self.user_requests.lock().unwrap();
+        requests.clone()
+    }
+
+    pub fn resolve_user_request(&self, request_id: Uuid, provider_id: EthProviderId) {
+        let sender = self
+            .user_request_senders
+            .lock()
+            .unwrap()
+            .remove(&request_id);
+        let Some(sender) = sender else {
+            warn!("No sender found for user request {}", request_id);
+            return;
+        };
+
+        if let Err(_) = sender.send(provider_id) {
+            warn!("Failed to send response for user request {}", request_id);
+        }
+    }
+
+    pub fn deny_user_request(&self, request_id: Uuid) {
+        //? Drop the sender to cancel the request
+        self.user_request_senders
+            .lock()
+            .unwrap()
+            .remove(&request_id);
     }
 
     ///? Helper to get the plugin or return an RpcError if not found
@@ -183,6 +239,13 @@ impl Host {
         })?;
         Ok(resp)
     }
+
+    fn notify_observers(&self) {
+        let observers = self.observers.lock().unwrap();
+        for observer in observers.iter() {
+            let _ = observer.unbounded_send(());
+        }
+    }
 }
 
 impl Host {
@@ -204,7 +267,65 @@ impl Host {
         let mut entities = self.entities.lock().unwrap();
         entities.insert(entity_id, plugin_id.clone());
 
+        self.notify_observers();
         Ok(entity_id)
+    }
+
+    pub async fn request_eth_provider(
+        &self,
+        plugin_id: &PluginId,
+        chain_id: caip::ChainId,
+    ) -> Result<Option<EthProviderId>, RpcError> {
+        let has_providers = {
+            let entities = self.entities.lock().unwrap();
+            entities
+                .keys()
+                .any(|entity_id| matches!(entity_id, EntityId::EthProvider(_)))
+        };
+        if !has_providers {
+            return Ok(None);
+        }
+
+        let request_id = Uuid::new_v4();
+        let (sender, receiver) = oneshot::channel();
+
+        info!(
+            "Created eth provider selection request {} for chain_id: {}",
+            request_id, chain_id
+        );
+
+        let user_request = UserRequest::EthProviderSelection {
+            id: request_id,
+            plugin_id: plugin_id.clone(),
+            chain_id,
+        };
+
+        self.user_requests.lock().unwrap().push(user_request);
+        self.user_request_senders
+            .lock()
+            .unwrap()
+            .insert(request_id, sender);
+
+        self.notify_observers();
+        let resp = receiver.await;
+
+        // Remove the request from the list
+        self.user_requests.lock().unwrap().retain(|req| match req {
+            UserRequest::EthProviderSelection { id, .. } => *id != request_id,
+        });
+
+        match resp {
+            Ok(selected_provider) => {
+                info!("User selected provider: {:?}", selected_provider);
+                self.notify_observers();
+                Ok(Some(selected_provider))
+            }
+            Err(_) => {
+                warn!("User request cancelled - receiver dropped");
+                self.notify_observers();
+                Err(RpcError::InternalError)
+            }
+        }
     }
 
     pub async fn fetch(
@@ -275,6 +396,7 @@ impl Host {
     ) -> Result<(), RpcError> {
         let (page_id, component) = params;
         self.interfaces.lock().unwrap().insert(page_id, component);
+        self.notify_observers();
         Ok(())
     }
 
@@ -363,6 +485,19 @@ impl Host {
         Ok(())
     }
 
+    pub async fn eth_provider_chain_id(
+        &self,
+        provider_id: EthProviderId,
+    ) -> Result<U256, RpcError> {
+        let plugin = self.get_entity_plugin_error(provider_id)?;
+
+        let chain_id = eth::ChainId.call(plugin, provider_id).await.map_err(|e| {
+            warn!("Error calling ChainId: {:?}", e);
+            e.as_rpc_code()
+        })?;
+        Ok(chain_id)
+    }
+
     pub async fn eth_provider_block_number(
         &self,
         provider_id: EthProviderId,
@@ -406,8 +541,15 @@ impl Host {
     }
 }
 
+// Macro invocations to implement the host RPC methods
+//
+// Because some host methods rely on the entity ID, while others are ID-less, we have
+// two seperate macros. Functionally they do the same thing, it just cleans up
+// the ID-less function signatures for external callers so they don't need to pass
+// a dummy ID.
 impl_host_rpc!(Host, global::Ping, ping);
 impl_host_rpc!(Host, host::RegisterEntity, register_entity);
+impl_host_rpc!(Host, host::RequestEthProvider, request_eth_provider);
 impl_host_rpc!(Host, host::Fetch, fetch);
 impl_host_rpc!(Host, host::GetState, get_state);
 impl_host_rpc!(Host, host::SetState, set_state);
@@ -418,6 +560,7 @@ impl_host_rpc_no_id!(Host, vault::GetDepositAddress, vault_get_deposit_address);
 impl_host_rpc_no_id!(Host, vault::OnDeposit, vault_on_deposit);
 impl_host_rpc_no_id!(Host, page::OnLoad, page_on_load);
 impl_host_rpc_no_id!(Host, page::OnUpdate, page_on_update);
+impl_host_rpc_no_id!(Host, eth::ChainId, eth_provider_chain_id);
 impl_host_rpc_no_id!(Host, eth::BlockNumber, eth_provider_block_number);
 impl_host_rpc_no_id!(Host, eth::Call, eth_provider_call);
 impl_host_rpc_no_id!(Host, eth::GetBalance, eth_provider_get_balance);

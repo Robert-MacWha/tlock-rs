@@ -2,9 +2,13 @@ use dioxus::{
     logger::tracing::{error, info},
     prelude::*,
 };
-use frontend::{components::entity::Entity, contexts::host::HostContext};
+use frontend::{
+    components::{entity::Entity, user_requests::UserRequestComponent},
+    contexts::host::HostContext,
+};
 use host::host::Host;
 use std::sync::Arc;
+
 fn main() {
     dioxus::launch(app);
 }
@@ -29,6 +33,7 @@ fn app() -> Element {
             class: "container mx-auto p-4",
             h1 { "Tlock" }
             control_panel {}
+            request_list {}
             plugin_list {}
             entities_list {}
         }
@@ -39,7 +44,7 @@ fn app() -> Element {
 fn control_panel() -> Element {
     let state = use_context::<HostContext>();
     let on_wasm_file = move |evt: Event<FormData>| {
-        let mut state = state.clone();
+        let state = state.clone();
         spawn(async move {
             let Some(file_engine) = evt.files() else {
                 error!("No file engine available");
@@ -58,7 +63,7 @@ fn control_panel() -> Element {
                 return;
             };
 
-            match state.load_plugin(&file, file_name).await {
+            match state.host.load_plugin(&file, file_name).await {
                 Ok(id) => {
                     info!("Loaded plugin with id: {}", id);
                 }
@@ -78,6 +83,30 @@ fn control_panel() -> Element {
                         r#type: "file",
                         accept: ".wasm",
                         onchange: on_wasm_file,
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[component]
+fn request_list() -> Element {
+    let state = use_context::<HostContext>();
+    let requests = state.user_requests.read();
+
+    rsx! {
+        div {
+            "User Requests:",
+            if requests.is_empty() {
+                div { class: "text-muted", "No pending requests" }
+            } else {
+                ul {
+                    for (index, request) in requests.iter().enumerate() {
+                        li {
+                            key: "{index}",
+                            UserRequestComponent { request: request.clone() }
+                        }
                     }
                 }
             }

@@ -15,3 +15,5 @@ tokio = { version = "1.47.1", features = ["rt", "macros"] }
 tracing = "0.1.41"
 tracing-subscriber = "0.3.20"
 gloo-timers = { version = "0.3.0", features = ["futures"] }
+futures = "0.3"
+uuid = { version = "1.18.1", features = ["v4"] }

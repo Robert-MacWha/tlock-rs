@@ -71,9 +71,10 @@ pub mod global {
 /// performing privileged operations.
 pub mod host {
     use crate::{
+        caip::ChainId,
         component::Component,
         domains::Domain,
-        entities::{EntityId, PageId},
+        entities::{EntityId, EthProviderId, PageId},
     };
     use serde::{Deserialize, Serialize};
 
@@ -89,6 +90,19 @@ pub mod host {
         /// Request the host registers a new entity with the given ID and this
         /// plugin as its owner.
         host_register_entity, RegisterEntity, Domain, EntityId
+    );
+
+    // TODO: Consider better approaches for these getters. Ultimately we'll want
+    // to have one for each domain, and perhaps a more general function / standard
+    // identification schema for entities would be better.
+    //
+    // For now this is quick and dirty and works.
+    rpc_method!(
+        /// Request
+        host_request_eth_provider,
+        RequestEthProvider,
+        ChainId,
+        Option<EthProviderId>
     );
 
     rpc_method!(
@@ -127,7 +141,7 @@ pub mod plugin {
 pub mod eth {
     use alloy::{
         eips::BlockId,
-        primitives::{Address, Bytes, TxHash},
+        primitives::{Address, Bytes, TxHash, U256},
         rpc::types::{
             Block, BlockOverrides, BlockTransactionsKind, Filter, Log, Transaction,
             TransactionReceipt, TransactionRequest, state::StateOverride,
@@ -135,6 +149,8 @@ pub mod eth {
     };
 
     use crate::entities::EthProviderId;
+
+    rpc_method!(eth_chain_id, ChainId, EthProviderId, U256);
 
     rpc_method!(
         /// Get the current block number.

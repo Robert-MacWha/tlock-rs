@@ -5,7 +5,18 @@ use serde::de::DeserializeOwned;
 use tlock_api::{RpcMethod, host};
 use wasmi_pdk::{api::ApiError, rpc_message::RpcError, tracing::error, transport::Transport};
 
-pub async fn get_state<T, R, E>(transport: Arc<T>) -> Result<R, E>
+pub async fn get_state<T, R, E>(transport: Arc<T>) -> R
+where
+    T: Transport<E> + Send + Sync + 'static,
+    R: DeserializeOwned + Default,
+    E: ApiError + From<RpcError>,
+{
+    try_get_state::<T, R, E>(transport)
+        .await
+        .unwrap_or_default()
+}
+
+pub async fn try_get_state<T, R, E>(transport: Arc<T>) -> Result<R, E>
 where
     T: Transport<E> + Send + Sync + 'static,
     R: DeserializeOwned,
@@ -22,15 +33,6 @@ where
     })?;
 
     Ok(state)
-}
-
-pub async fn get_state_or_default<T, R, E>(transport: Arc<T>) -> R
-where
-    T: Transport<E> + Send + Sync + 'static,
-    R: DeserializeOwned + Default,
-    E: ApiError + From<RpcError>,
-{
-    get_state::<T, R, E>(transport).await.unwrap_or_default()
 }
 
 pub async fn set_state<T, S, E>(transport: Arc<T>, state: &S) -> Result<(), E>

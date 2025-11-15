@@ -2805,6 +2805,7 @@ dependencies = [
  "serde_json",
  "tlock-hdk",
  "tracing-log",
+ "uuid",
 ]
 
 [[package]]
@@ -3438,6 +3439,7 @@ name = "host"
 version = "0.1.0"
 dependencies = [
  "alloy",
+ "futures",
  "gloo-timers",
  "serde",
  "serde_json",
@@ -3447,6 +3449,7 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "uuid",
  "wasmi-async",
 ]
 

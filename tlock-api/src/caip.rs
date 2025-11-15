@@ -1,11 +1,44 @@
 use std::fmt::Display;
 
-use alloy::primitives::{Address, ChainId};
+use alloy::primitives::Address;
 use serde::{Deserialize, Serialize};
 
 // TODO: Consider making these stricter or enums to prevent invalid IDs.
 pub type AssetNamespace = String;
 pub type AssetReference = String;
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct ChainId {
+    namespace: String,
+    reference: Option<String>,
+}
+
+impl ChainId {
+    pub fn new(namespace: String, reference: Option<String>) -> Self {
+        Self {
+            namespace,
+            reference,
+        }
+    }
+
+    pub fn namespace(&self) -> &str {
+        &self.namespace
+    }
+
+    pub fn reference(&self) -> Option<&str> {
+        self.reference.as_deref()
+    }
+}
+
+impl Display for ChainId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if let Some(ref reference) = self.reference {
+            write!(f, "{}:{}", self.namespace, reference)
+        } else {
+            write!(f, "{}:_", self.namespace)
+        }
+    }
+}
 
 /// CAIP-10 Account ID.
 ///
