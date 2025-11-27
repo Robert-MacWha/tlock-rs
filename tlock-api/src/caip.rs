@@ -113,6 +113,6 @@ impl AssetId {
 
 impl Display for AssetId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}:{}:{}", self.0, self.1, self.2)
+        write!(f, "{}/{}:{}", self.0, self.1, self.2)
     }
 }

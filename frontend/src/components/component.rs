@@ -61,7 +61,11 @@ pub fn RenderComponent(props: ComponentProps) -> Element {
                     class: "form",
                     onsubmit: move |e| {
                         let data = e.data().clone().values();
-                        let data = data.iter().map(|(k, v)| (k.clone(), v.0.clone())).collect();
+                        let data = data.iter().filter_map(|(k, v)| match v {
+                            FormValue::Text(v) => Some((k.clone(), v.clone())),
+                            _ => None,
+                        })
+                        .collect();
                         props.on_event.call(PageEvent::FormSubmitted(id.clone(), data));
                     },
                     {

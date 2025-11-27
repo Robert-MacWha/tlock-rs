@@ -268,8 +268,8 @@ pub mod page {
 
     #[derive(Serialize, Deserialize, Debug)]
     pub enum PageEvent {
-        ButtonClicked(String),                               // (button_id)
-        FormSubmitted(String, HashMap<String, Vec<String>>), // (form_id, form_values)
+        ButtonClicked(String),                          // (button_id)
+        FormSubmitted(String, HashMap<String, String>), // (form_id, form_values)
     }
 
     rpc_method!(

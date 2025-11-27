@@ -2,7 +2,7 @@ use std::{collections::HashMap, sync::Arc};
 
 use dioxus::{
     hooks::{UnboundedReceiver, use_coroutine, use_signal},
-    signals::{Signal, Writable},
+    signals::{Signal, Writable, WritableExt},
 };
 use futures::StreamExt;
 use host::host::{Host, UserRequest};

@@ -53,27 +53,23 @@ fn app() -> Element {
 #[component]
 fn control_panel() -> Element {
     let state = use_context::<HostContext>();
-    let on_wasm_file = move |evt: Event<FormData>| {
+    let on_wasm_file = move |e: Event<FormData>| {
         let state = state.clone();
         spawn(async move {
-            let Some(file_engine) = evt.files() else {
-                error!("No file engine available");
-                return;
-            };
-
-            let files = file_engine.files();
-            let Some(file_name) = files.first() else {
+            e.prevent_default();
+            let files = e.files();
+            let Some(file) = files.first() else {
                 error!("No file selected");
                 return;
             };
 
-            info!("Selected file: {}", file_name);
-            let Some(file) = file_engine.read_file(file_name).await else {
-                error!("Failed to read file: {}", file_name);
+            let name = file.name();
+            let Ok(data) = file.read_bytes().await else {
+                error!("Failed to read file: {}", name);
                 return;
             };
 
-            match state.host.load_plugin(&file, file_name).await {
+            match state.host.load_plugin(&data, &name).await {
                 Ok(id) => {
                     info!("Loaded plugin with id: {}", id);
                 }

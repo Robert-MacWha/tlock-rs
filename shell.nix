@@ -20,7 +20,8 @@ pkgs.mkShell {
     cargo
     rustfmt
     rust-bin.stable.latest.rust-analyzer
-    dioxus-cli
+    unstable.rust-analyzer
+    unstable.dioxus-cli
 
     # For dioxus-cli
     lld

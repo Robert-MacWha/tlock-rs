@@ -449,11 +449,6 @@ async fn on_update(
                 return Err(RpcError::Custom("Private key not found in form".into()));
             };
 
-            let Some(private_key) = private_key.first() else {
-                error!("Private key value is empty");
-                return Err(RpcError::Custom("Private key value is empty".into()));
-            };
-
             info!("Received private key: {}", private_key);
 
             let signer = PrivateKeySigner::from_str(private_key).map_err(|e| {

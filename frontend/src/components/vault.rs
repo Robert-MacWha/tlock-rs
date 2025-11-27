@@ -2,6 +2,7 @@ use std::str::FromStr;
 
 use dioxus::prelude::*;
 use dioxus_logger::tracing::info;
+use serde::{Deserialize, Serialize};
 use tlock_hdk::tlock_api::{
     alloy::primitives::{Address, U256},
     caip::{AccountId, AssetId, ChainId},
@@ -13,6 +14,13 @@ use crate::contexts::host::HostContext;
 #[derive(Clone, PartialEq, Props)]
 pub struct VaultProps {
     pub id: VaultId,
+}
+
+#[derive(Serialize, Deserialize)]
+struct WithdrawForm {
+    to_address: Address,
+    amount: U256,
+    token: String,
 }
 
 #[component]
@@ -68,7 +76,7 @@ pub fn Vault(props: VaultProps) -> Element {
                         Ok(balances) => {
                             let mut resp = String::new();
                             for (asset, amount) in balances {
-                                resp.push_str(&format!("Asset: {:?}, Amount: {}\n", asset, amount));
+                                resp.push_str(&format!("Asset: {}, Amount: {}\n", asset, amount));
                             }
                             resp
                         }
@@ -114,41 +122,21 @@ pub fn Vault(props: VaultProps) -> Element {
         move |e: FormEvent| {
             spawn({
                 let state = state.clone();
-                let vault_id = vault_id.clone();
-                let form_data = e.data();
                 async move {
                     info!("Withdraw for vault {vault_id}");
 
-                    let to_address = form_data
-                        .values()
-                        .get("to_address")
-                        .cloned()
-                        .unwrap_or_default();
-                    let Ok(to_address) = Address::from_str(&to_address.as_value()) else {
-                        withdraw_resp.set("Invalid to_address".into());
-                        return;
+                    let form_data: WithdrawForm = match e.parsed_values() {
+                        Ok(data) => data,
+                        Err(err) => {
+                            withdraw_resp.set(format!("Form parse error: {err}"));
+                            return;
+                        }
                     };
+
+                    let to_address = form_data.to_address;
+                    let amount = form_data.amount;
+                    let token = form_data.token;
                     let account_id = AccountId::new(ChainId::new_evm(11155111), to_address);
-                    let amount_str = form_data
-                        .values()
-                        .get("amount")
-                        .cloned()
-                        .unwrap_or_default();
-                    let Ok(amount) = U256::from_str(&amount_str.as_value()) else {
-                        withdraw_resp.set("Invalid amount".into());
-                        return;
-                    };
-                    let token = form_data
-                        .values()
-                        .get("token")
-                        .cloned()
-                        .unwrap_or_default()
-                        .as_value()
-                        .to_string();
-                    info!(
-                        "Withdraw to: {}, amount: {}, token: {}",
-                        to_address, amount, token
-                    );
 
                     let asset_id = match token.as_str() {
                         "ETH" => {
