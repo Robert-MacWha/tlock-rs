@@ -1,7 +1,7 @@
 use dioxus::prelude::*;
 use tlock_hdk::tlock_api::entities::EntityId;
 
-use crate::components::{eth_provider::EthProvider, page::Page, vault::Vault};
+use crate::components::page::Page;
 
 #[derive(Clone, PartialEq, Props)]
 pub struct EntityProps {
@@ -11,8 +11,7 @@ pub struct EntityProps {
 #[component]
 pub fn Entity(props: EntityProps) -> Element {
     match props.id {
-        EntityId::Vault(id) => rsx! { Vault { id: id } },
         EntityId::Page(id) => rsx! { Page {id: id} },
-        EntityId::EthProvider(id) => rsx! { EthProvider{id: id} },
+        _ => rsx! { p { "Entity {props.id} cannot be rendered" } },
     }
 }
