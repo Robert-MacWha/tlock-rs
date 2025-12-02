@@ -20,7 +20,6 @@ pkgs.mkShell {
     cargo
     rustfmt
     rust-bin.stable.latest.rust-analyzer
-    unstable.rust-analyzer
     unstable.dioxus-cli
 
     # For dioxus-cli
@@ -33,6 +32,6 @@ pkgs.mkShell {
     libsoup_3
     xdotool
     openssl
-    unstable.wasm-bindgen-cli_0_2_104
+    wasm-bindgen-cli_0_2_104
   ];
 }
