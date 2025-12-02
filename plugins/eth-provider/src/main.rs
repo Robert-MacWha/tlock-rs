@@ -1,20 +1,15 @@
-use std::{io::stderr, sync::Arc, task::Poll};
-
+use crate::alloy_provider::create_alloy_provider;
 use alloy::{
-    eips::BlockId,
+    eips::{BlockId, BlockNumberOrTag},
     primitives::{Address, Bytes, TxHash, U256},
-    providers::{Provider, ProviderBuilder},
-    rpc::{
-        client::RpcClient,
-        types::{
-            Block, BlockOverrides, BlockTransactionsKind, Filter, Log, Transaction,
-            TransactionReceipt, TransactionRequest, state::StateOverride,
-        },
+    providers::{Provider, transport},
+    rpc::types::{
+        Block, BlockOverrides, BlockTransactionsKind, Filter, Log, Transaction, TransactionReceipt,
+        TransactionRequest, state::StateOverride,
     },
-    transports::{TransportError, TransportErrorKind, TransportFut},
 };
-use alloy_json_rpc::{RequestPacket, ResponsePacket};
 use serde::{Deserialize, Serialize};
+use std::{io::stderr, sync::Arc};
 use tlock_pdk::{
     futures::executor::block_on,
     server::ServerBuilder,
@@ -33,7 +28,8 @@ use tlock_pdk::{
         transport::JsonRpcTransport,
     },
 };
-use tower_service::Service;
+
+mod alloy_provider;
 
 #[derive(Serialize, Deserialize, Default, Debug)]
 struct ProviderState {
@@ -116,19 +112,21 @@ async fn call(
     params: (
         EthProviderId,
         TransactionRequest,
-        Option<BlockOverrides>,
+        BlockId,
         Option<StateOverride>,
+        Option<BlockOverrides>,
     ),
 ) -> Result<Bytes, RpcError> {
     let state: ProviderState = try_get_state(transport.clone()).await?;
 
-    let (_provider_id, tx, block_overrides, state_overrides) = params;
+    let (_provider_id, tx, block, state_overrides, block_overrides) = params;
 
     let provider = create_alloy_provider(transport.clone(), state.rpc_url);
     let resp = provider
         .call(tx)
-        .with_block_overrides_opt(block_overrides)
+        .block(block)
         .overrides_opt(state_overrides)
+        .with_block_overrides_opt(block_overrides)
         .await
         .map_err(|e| {
             error!("Error processing call: {:?}", e);
@@ -158,12 +156,12 @@ async fn get_balance(
     params: (EthProviderId, Address, BlockId),
 ) -> Result<U256, RpcError> {
     let state: ProviderState = try_get_state(transport.clone()).await?;
-    let (_provider_id, address, block_id) = params;
+    let (_provider_id, address, block) = params;
 
     let provider = create_alloy_provider(transport.clone(), state.rpc_url);
     let balance = provider
         .get_balance(address)
-        .block_id(block_id)
+        .block_id(block)
         .await
         .map_err(|e| {
             error!("Error fetching balance: {:?}", e);
@@ -331,6 +329,34 @@ async fn send_raw_transaction(
     Ok(*tx_hash)
 }
 
+async fn estimate_gas(
+    transport: Arc<JsonRpcTransport>,
+    params: (
+        EthProviderId,
+        TransactionRequest,
+        BlockId,
+        Option<StateOverride>,
+        Option<BlockOverrides>,
+    ),
+) -> Result<u64, RpcError> {
+    let state: ProviderState = try_get_state(transport.clone()).await?;
+    let (_provider_id, transaction_request, block_id, state_override, block_override) = params;
+
+    let provider = create_alloy_provider(transport.clone(), state.rpc_url);
+    let gas_estimate = provider
+        .estimate_gas(transaction_request)
+        .block(block_id)
+        .overrides_opt(state_override)
+        .with_block_overrides_opt(block_override)
+        .await
+        .map_err(|e| {
+            error!("Error estimating gas: {:?}", e);
+            RpcError::Custom(format!("Failed to estimate gas: {:?}", e))
+        })?;
+
+    Ok(gas_estimate)
+}
+
 fn main() {
     fmt()
         .with_writer(stderr)
@@ -342,7 +368,7 @@ fn main() {
 
     let reader = std::io::BufReader::new(::std::io::stdin());
     let writer = std::io::stdout();
-    let transport = JsonRpcTransport::new(Box::new(reader), Box::new(writer));
+    let transport = JsonRpcTransport::new(reader, writer);
     let transport = Arc::new(transport);
 
     let plugin = ServerBuilder::new(transport.clone())
@@ -362,80 +388,11 @@ fn main() {
         .with_method(eth::GetTransactionReceipt, get_transaction_receipt)
         .with_method(eth::GetTransactionCount, get_transaction_count)
         .with_method(eth::SendRawTransaction, send_raw_transaction)
+        .with_method(eth::EstimateGas, estimate_gas)
         .finish();
     let plugin = Arc::new(plugin);
 
     block_on(async move {
         let _ = transport.process_next_line(Some(plugin)).await;
     });
-}
-
-//? Helpers to create an alloy provider using the host transport and `Request`
-// instead of a  standard HTTP transport.
-pub fn create_alloy_provider(
-    transport: Arc<JsonRpcTransport>,
-    url: String,
-) -> impl alloy::providers::Provider {
-    let host_transport = HostTransportService::new(transport, url);
-    let client = RpcClient::new(host_transport, false);
-
-    ProviderBuilder::new().connect_client(client)
-}
-
-#[derive(Clone)]
-pub struct HostTransportService {
-    transport: Arc<JsonRpcTransport>,
-    rpc_url: String,
-}
-
-impl HostTransportService {
-    pub fn new(transport: Arc<JsonRpcTransport>, rpc_url: String) -> Self {
-        Self { transport, rpc_url }
-    }
-}
-
-impl Service<RequestPacket> for HostTransportService {
-    type Response = ResponsePacket;
-    type Error = TransportError;
-    type Future = TransportFut<'static>;
-
-    fn call(&mut self, req: RequestPacket) -> Self::Future {
-        let transport = self.transport.clone();
-        let rpc_url = self.rpc_url.clone();
-        Box::pin(async move {
-            let mut params = host::Request {
-                url: rpc_url,
-                method: "POST".to_string(),
-                headers: req
-                    .headers()
-                    .iter()
-                    .map(|(k, v)| (k.to_string(), v.as_bytes().into()))
-                    .collect(),
-                body: Some(serde_json::to_vec(&req).map_err(TransportErrorKind::custom)?),
-            };
-            params.headers.push((
-                "Content-Type".to_string(),
-                "application/json".as_bytes().into(),
-            ));
-
-            let resp = host::Fetch
-                .call(transport, params)
-                .await
-                .map_err(TransportErrorKind::custom)?;
-
-            let Ok(body) = resp else {
-                return Err(TransportErrorKind::custom_str(&resp.err().unwrap()));
-            };
-
-            serde_json::from_slice(&body)
-                .map_err(|err| TransportError::deser_err(err, String::from_utf8_lossy(&body)))
-        })
-    }
-
-    fn poll_ready(
-        &mut self,
-        _cx: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<Result<(), Self::Error>> {
-        Poll::Ready(Ok(()))
-    }
 }

@@ -75,7 +75,7 @@ pub mod host {
         caip::ChainId,
         component::Component,
         domains::Domain,
-        entities::{EntityId, EthProviderId, PageId},
+        entities::{EntityId, EthProviderId, PageId, VaultId},
     };
     use serde::{Deserialize, Serialize};
 
@@ -104,6 +104,11 @@ pub mod host {
         RequestEthProvider,
         ChainId,
         Option<EthProviderId>
+    );
+
+    rpc_method!(
+        /// Request the host to provide a vault entity for the plugin to interact with
+        host_request_vault, RequestVault, (), Option<VaultId>
     );
 
     rpc_method!(
@@ -139,6 +144,8 @@ pub mod plugin {
     );
 }
 
+/// The eth namespace contains methods for interacting with EVM chains.
+/// It aims to be fully compatible with standard Ethereum JSON-RPC methods.
 pub mod eth {
     use alloy::{
         eips::BlockId,
@@ -151,71 +158,75 @@ pub mod eth {
 
     use crate::entities::EthProviderId;
 
-    rpc_method!(eth_chain_id, ChainId, EthProviderId, U256);
+    rpc_method!(eth_chainId, ChainId, EthProviderId, U256);
 
     rpc_method!(
         /// Get the current block number.
-        eth_block_number, BlockNumber, EthProviderId, u64
+        eth_blockNumber, BlockNumber, EthProviderId, u64
     );
 
     rpc_method!(
         /// Executes a new message call immediately without creating a transaction on the block chain.
-        eth_call, Call, (EthProviderId, TransactionRequest, Option<BlockOverrides>, Option<StateOverride>), Bytes
+        eth_call, Call, (EthProviderId, TransactionRequest, BlockId, Option<StateOverride>, Option<BlockOverrides>), Bytes
     );
 
     rpc_method!(
         /// Gets the current gas price.
-        eth_gas_price, GasPrice, EthProviderId, u128
+        eth_gasPrice, GasPrice, EthProviderId, u128
     );
 
     rpc_method!(
         /// Gets the balance of an address at a given block.
-        eth_get_balance, GetBalance, (EthProviderId, alloy::primitives::Address, BlockId), alloy::primitives::U256
+        eth_getBalance, GetBalance, (EthProviderId, alloy::primitives::Address, BlockId), alloy::primitives::U256
     );
 
     rpc_method!(
         /// Gets a block by its hash or number.
-        eth_get_block, GetBlock, (EthProviderId, BlockId, BlockTransactionsKind), Block
+        eth_getBlock, GetBlock, (EthProviderId, BlockId, BlockTransactionsKind), Block
     );
 
     rpc_method!(
         /// Gets a block receipt by its hash or number.
-        eth_get_block_receipts, GetBlockReceipts, (EthProviderId, BlockId), Vec<TransactionReceipt>
+        eth_getBlockReceipts, GetBlockReceipts, (EthProviderId, BlockId), Vec<TransactionReceipt>
     );
 
     rpc_method!(
         // Gets logs matching the given filter object.
-        eth_get_logs,
+        eth_getLogs,
         GetLogs,
         (EthProviderId, Filter),
         Vec<Log>
     );
-
     rpc_method!(
         /// Gets the compiled bytecode of a smart contract.
-        eth_get_code, GetCode, (EthProviderId, Address, BlockId), Bytes
+        eth_getCode, GetCode, (EthProviderId, Address, BlockId), Bytes
     );
 
     rpc_method!(
         /// Gets a transaction by its hash
-        eth_get_transaction_by_hash, GetTransactionByHash, (EthProviderId, TxHash), Transaction
+        eth_getTransactionByHash, GetTransactionByHash, (EthProviderId, TxHash), Transaction
     );
 
     rpc_method!(
         /// Gets a transaction receipt by its hash
-        eth_get_transaction_receipt, GetTransactionReceipt, (EthProviderId, TxHash), TransactionReceipt
+        eth_getTransactionReceipt, GetTransactionReceipt, (EthProviderId, TxHash), TransactionReceipt
     );
 
     rpc_method!(
         /// Gets the transaction count (AKA "nonce") for an address at a given block.
-        eth_get_transaction_count, GetTransactionCount, (EthProviderId, Address, BlockId), u64
+        eth_getTransactionCount, GetTransactionCount, (EthProviderId, Address, BlockId), u64
+    );
+
+    rpc_method!(
+        /// Estimates the gas necessary to complete a transaction.
+        eth_estimateGas, EstimateGas, (EthProviderId, TransactionRequest, BlockId, Option<StateOverride>, Option<BlockOverrides>), u64
     );
 
     // TODO: Consider making this a different domain and having a distinction between "eth-read" and "eth-write"
     // methods. Would also make it easier to add custom send methods (IE to private pool, or forwarding to devp2p, etc).
     rpc_method!(
         /// Sends a raw transaction to the network.
-        eth_send_raw_transaction, SendRawTransaction, (EthProviderId, Bytes), TxHash
+        eth_sendRawTransaction, SendRawTransaction, (EthProviderId, Bytes), TxHash
     );
 }
 
@@ -230,6 +241,10 @@ pub mod vault {
 
     rpc_method!(
         /// Get the balance for all assets in a given account.
+        ///
+        /// Plugins MAY return zero balances for unsupported assets.
+        ///
+        /// The list of supported assets MAY change over time.
         vault_get_assets, GetAssets, VaultId, Vec<(AssetId, U256)>
     );
 
@@ -242,12 +257,13 @@ pub mod vault {
         /// Gets the deposit address for a particular account and asset. Accounts can
         /// also use this to block deposits from unsupported assets or asset classes.
         ///
+        /// Plugins MUST return an address if the asset is supported, or an error
+        /// if the asset is not supported.
+        ///
         /// Because vault implementations are black boxes, any plugin sending an asset
         /// to a vault MUST first call this method to ensure the asset is supported and
         /// the destination address is correct. Destination addresses may change over time,
         /// as might the supported assets.
-        ///
-        /// TODO: Consider making this automatic via the host? Not sure how.
         vault_get_deposit_address, GetDepositAddress, (VaultId, AssetId), AccountId
     );
 

@@ -65,6 +65,10 @@ impl RpcError {
     }
 }
 
+pub fn to_rpc_err<E: std::error::Error>(e: E) -> RpcError {
+    RpcError::Custom(e.to_string())
+}
+
 impl Serialize for RpcError {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where

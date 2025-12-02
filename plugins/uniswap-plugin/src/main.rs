@@ -32,10 +32,10 @@ async fn on_load(transport: Arc<JsonRpcTransport>, page_id: PageId) -> Result<()
 }
 
 async fn on_update(
-    transport: Arc<JsonRpcTransport>,
+    _transport: Arc<JsonRpcTransport>,
     params: (PageId, PageEvent),
 ) -> Result<(), RpcError> {
-    let (page_id, _event) = params;
+    let (_page_id, _event) = params;
     Ok(())
 }
 
@@ -45,7 +45,7 @@ fn main() {
 
     let reader = std::io::BufReader::new(::std::io::stdin());
     let writer = std::io::stdout();
-    let transport = JsonRpcTransport::new(Box::new(reader), Box::new(writer));
+    let transport = JsonRpcTransport::new(reader, writer);
     let transport = Arc::new(transport);
 
     let plugin = ServerBuilder::new(transport.clone())

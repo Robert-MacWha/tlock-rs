@@ -72,7 +72,7 @@ fn main() {
 
     let reader = std::io::BufReader::new(stdin());
     let writer = stdout();
-    let transport = JsonRpcTransport::new(Box::new(reader), Box::new(writer));
+    let transport = JsonRpcTransport::new(reader, writer);
     let transport = Arc::new(transport);
 
     let plugin = ServerBuilder::new(transport.clone());

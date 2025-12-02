@@ -48,7 +48,7 @@ pub enum UserRequest {
         plugin_id: PluginId,
         chain_id: caip::ChainId,
     },
-VaultSelection {
+    VaultSelection {
         id: Uuid,
         plugin_id: PluginId,
     },
@@ -112,7 +112,7 @@ impl Host {
             .with_method(global::Ping, ping)
             .with_method(host::RegisterEntity, register_entity)
             .with_method(host::RequestEthProvider, request_eth_provider)
-.with_method(host::RequestVault, request_vault)
+            .with_method(host::RequestVault, request_vault)
             .with_method(host::Fetch, fetch)
             .with_method(host::GetState, get_state)
             .with_method(host::SetState, set_state)
@@ -130,6 +130,9 @@ impl Host {
             .with_method(eth::GasPrice, eth_provider_gas_price)
             .with_method(eth::GetTransactionCount, eth_transaction_count)
             .with_method(eth::SendRawTransaction, eth_send_raw_transaction)
+            .with_method(eth::EstimateGas, eth_estimate_gas)
+            .with_method(eth::GetTransactionReceipt, eth_get_transaction_receipt)
+            .with_method(eth::GetBlock, eth_get_block)
             .finish()
     }
 
@@ -345,7 +348,7 @@ impl Host {
         // Remove the request from the list
         self.user_requests.lock().unwrap().retain(|req| match req {
             UserRequest::EthProviderSelection { id, .. } => *id != request_id,
-UserRequest::VaultSelection { .. } => true,
+            UserRequest::VaultSelection { .. } => true,
         });
 
         match resp {
@@ -354,7 +357,7 @@ UserRequest::VaultSelection { .. } => true,
                 self.notify_observers();
                 Ok(Some(selected_provider))
             }
-Ok(_) => {
+            Ok(_) => {
                 warn!("Unexpected response type for EthProvider request");
                 self.notify_observers();
                 Err(RpcError::InternalError)
@@ -674,6 +677,48 @@ Ok(_) => {
             })?;
         Ok(tx_hash)
     }
+
+    pub async fn eth_estimate_gas(
+        &self,
+        params: <eth::EstimateGas as RpcMethod>::Params,
+    ) -> Result<<eth::EstimateGas as RpcMethod>::Output, RpcError> {
+        let plugin = self.get_entity_plugin_error(params.0)?;
+
+        let gas_estimate = eth::EstimateGas.call(plugin, params).await.map_err(|e| {
+            warn!("Error calling EstimateGas: {:?}", e);
+            e.as_rpc_code()
+        })?;
+        Ok(gas_estimate)
+    }
+
+    pub async fn eth_get_transaction_receipt(
+        &self,
+        params: <eth::GetTransactionReceipt as RpcMethod>::Params,
+    ) -> Result<<eth::GetTransactionReceipt as RpcMethod>::Output, RpcError> {
+        let plugin = self.get_entity_plugin_error(params.0)?;
+
+        let receipt = eth::GetTransactionReceipt
+            .call(plugin, params)
+            .await
+            .map_err(|e| {
+                warn!("Error calling GetTransactionReceipt: {:?}", e);
+                e.as_rpc_code()
+            })?;
+        Ok(receipt)
+    }
+
+    pub async fn eth_get_block(
+        &self,
+        params: <eth::GetBlock as RpcMethod>::Params,
+    ) -> Result<<eth::GetBlock as RpcMethod>::Output, RpcError> {
+        let plugin = self.get_entity_plugin_error(params.0)?;
+
+        let block = eth::GetBlock.call(plugin, params).await.map_err(|e| {
+            warn!("Error calling GetBlock: {:?}", e);
+            e.as_rpc_code()
+        })?;
+        Ok(block)
+    }
 }
 
 // Macro invocations to implement the host RPC methods
@@ -703,3 +748,10 @@ impl_host_rpc_no_id!(Host, eth::GetBalance, eth_provider_get_balance);
 impl_host_rpc_no_id!(Host, eth::GasPrice, eth_provider_gas_price);
 impl_host_rpc_no_id!(Host, eth::GetTransactionCount, eth_transaction_count);
 impl_host_rpc_no_id!(Host, eth::SendRawTransaction, eth_send_raw_transaction);
+impl_host_rpc_no_id!(Host, eth::EstimateGas, eth_estimate_gas);
+impl_host_rpc_no_id!(
+    Host,
+    eth::GetTransactionReceipt,
+    eth_get_transaction_receipt
+);
+impl_host_rpc_no_id!(Host, eth::GetBlock, eth_get_block);

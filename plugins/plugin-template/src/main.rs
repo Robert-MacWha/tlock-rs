@@ -5,8 +5,7 @@ use tlock_pdk::{
     server::ServerBuilder,
     tlock_api::{RpcMethod, global},
     wasmi_pdk::{
-        rpc_message::RpcError, tracing::info, tracing_subscriber::fmt,
-        transport::JsonRpcTransport,
+        rpc_message::RpcError, tracing::info, tracing_subscriber::fmt, transport::JsonRpcTransport,
     },
 };
 
@@ -21,7 +20,7 @@ fn main() {
 
     let reader = std::io::BufReader::new(::std::io::stdin());
     let writer = std::io::stdout();
-    let transport = JsonRpcTransport::new(Box::new(reader), Box::new(writer));
+    let transport = JsonRpcTransport::new(reader, writer);
     let transport = Arc::new(transport);
 
     let plugin = ServerBuilder::new(transport.clone())
