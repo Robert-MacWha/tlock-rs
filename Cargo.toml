@@ -10,7 +10,6 @@ members = [
     "plugins/eoa-vault",
     "plugins/vault-page",
     "plugins/eth-provider",
-    "plugins/uniswap-plugin",
     "wasmi/runtime",
     "wasmi/wasmi-async",
     "wasmi/wasmi-pdk",
@@ -19,6 +18,9 @@ members = [
 ]
 
 resolver = "2"
+
+[profile.release]
+lto = true
 
 [profile.wasm-dev]
 inherits = "dev"

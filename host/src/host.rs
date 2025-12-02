@@ -9,7 +9,7 @@ use uuid::Uuid;
 
 use alloy::{primitives::U256, transports::http::reqwest};
 use tlock_hdk::{
-    impl_host_rpc, impl_host_rpc_no_id,
+    HostServer, impl_host_rpc, impl_host_rpc_no_id,
     tlock_api::{
         RpcMethod,
         caip::{self, AccountId, AssetId},
@@ -19,9 +19,8 @@ use tlock_hdk::{
         eth, global, host, page, plugin,
         vault::{self},
     },
-    tlock_pdk::server::ServerBuilder,
     wasmi_hdk::plugin::{Plugin, PluginError, PluginId},
-    wasmi_pdk::{rpc_message::RpcError, server::Server},
+    wasmi_pdk::rpc_message::RpcError,
 };
 use tracing::{info, warn};
 
@@ -107,8 +106,9 @@ impl Host {
         Ok(id)
     }
 
-    pub fn get_server(self: &Arc<Host>) -> Server<(Option<PluginId>, Weak<Host>)> {
-        ServerBuilder::new(Arc::new((None, Arc::downgrade(self))))
+    pub fn get_server(self: &Arc<Host>) -> HostServer<Weak<Host>> {
+        let weak_host = Arc::downgrade(self);
+        HostServer::new(Arc::new(weak_host))
             .with_method(global::Ping, ping)
             .with_method(host::RegisterEntity, register_entity)
             .with_method(host::RequestEthProvider, request_eth_provider)
@@ -133,7 +133,6 @@ impl Host {
             .with_method(eth::EstimateGas, eth_estimate_gas)
             .with_method(eth::GetTransactionReceipt, eth_get_transaction_receipt)
             .with_method(eth::GetBlock, eth_get_block)
-            .finish()
     }
 
     /// Register a plugin with the host, calling its Init method if it exists

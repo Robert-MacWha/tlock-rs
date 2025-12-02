@@ -1,38 +1,38 @@
 use std::sync::Arc;
 
 use tlock_api::RpcMethod;
-use wasmi_pdk::{rpc_message::RpcError, server::MaybeSend};
+use wasmi_pdk::{rpc_message::RpcError, server::MaybeSend, transport::JsonRpcTransport};
 
-/// ServerBuilder is a lightweight wrapper around wasmi_pdk::server::ServerBuilder
-/// that provides an interface for registering typed RPC methods from the tlock_api.
-pub struct ServerBuilder<S> {
-    s: wasmi_pdk::server::ServerBuilder<S>,
+/// Lightweight wrapper around wasmi_pdk::server::PluginServer that provides
+/// a typed interface for registering RPC methods from tlock_api.
+pub struct PluginServer {
+    s: wasmi_pdk::server::PluginServer,
 }
 
-impl<S: Default + Send + Sync + 'static> Default for ServerBuilder<S> {
-    fn default() -> Self {
-        Self::new(Arc::new(S::default()))
-    }
-}
-
-impl<S: Send + Sync + 'static> ServerBuilder<S> {
-    pub fn new(state: Arc<S>) -> Self {
+impl PluginServer {
+    pub fn new(transport: Arc<JsonRpcTransport>) -> Self {
         Self {
-            s: wasmi_pdk::server::ServerBuilder::new(state),
+            s: wasmi_pdk::server::PluginServer::new(transport),
+        }
+    }
+
+    pub fn new_with_transport() -> Self {
+        Self {
+            s: wasmi_pdk::server::PluginServer::new_with_transport(),
         }
     }
 
     pub fn with_method<M, F, Fut>(mut self, _: M, func: F) -> Self
     where
         M: RpcMethod + 'static,
-        F: Fn(Arc<S>, M::Params) -> Fut + Send + Sync + 'static,
+        F: Fn(Arc<JsonRpcTransport>, M::Params) -> Fut + Send + Sync + 'static,
         Fut: Future<Output = Result<M::Output, RpcError>> + MaybeSend + 'static,
     {
         self.s = self.s.with_method(M::NAME, func);
         self
     }
 
-    pub fn finish(self) -> wasmi_pdk::server::Server<S> {
-        self.s.finish()
+    pub fn run(self) {
+        self.s.run()
     }
 }

@@ -1,12 +1,8 @@
 use serde_json::{self, Value};
-use std::{
-    io::{stderr, stdin, stdout},
-    sync::Arc,
-};
+use std::{io::stderr, sync::Arc};
 use wasmi_pdk::{
-    futures::executor::block_on,
     rpc_message::RpcError,
-    server::ServerBuilder,
+    server::PluginServer,
     tracing::{error, info, level_filters::LevelFilter, trace},
     tracing_subscriber::fmt,
     transport::{JsonRpcTransport, Transport},
@@ -70,24 +66,12 @@ fn main() {
         .init();
     trace!("Starting plugin...");
 
-    let reader = std::io::BufReader::new(stdin());
-    let writer = stdout();
-    let transport = JsonRpcTransport::new(reader, writer);
-    let transport = Arc::new(transport);
-
-    let plugin = ServerBuilder::new(transport.clone());
-    let plugin = plugin.with_method("ping", |_, _params: ()| async move {
-        info!("Received ping request, sending pong response");
-        Ok("pong".to_string())
-    });
-    let plugin = plugin.with_method("prime_sieve", prime_sieve);
-    let plugin = plugin.with_method("many_echo", many_echo).finish();
-
-    let plugin = Arc::new(plugin);
-
-    let runtime_future = async move {
-        let _ = transport.process_next_line(Some(plugin)).await;
-    };
-
-    block_on(runtime_future);
+    PluginServer::new_with_transport()
+        .with_method("ping", |_, _params: ()| async move {
+            info!("Received ping request, sending pong response");
+            Ok("pong".to_string())
+        })
+        .with_method("prime_sieve", prime_sieve)
+        .with_method("many_echo", many_echo)
+        .run();
 }

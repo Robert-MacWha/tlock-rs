@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, io::stderr, sync::Arc};
 use tlock_alloy::AlloyBridge;
 use tlock_pdk::{
-    server::ServerBuilder,
+    server::PluginServer,
     state::{get_state, set_state},
     tlock_api::{
         RpcMethod,
@@ -37,7 +37,6 @@ use tlock_pdk::{
         transport::JsonRpcTransport,
     },
 };
-use tokio::{runtime::Builder, time::sleep_until};
 
 #[derive(Serialize, Deserialize, Default, Debug)]
 struct PluginState {
@@ -372,11 +371,9 @@ async fn get_vault(transport: &Arc<JsonRpcTransport>, id: VaultId) -> Result<Vau
     Ok(vault.clone())
 }
 
-// ---------- Entrypoint ----------
-
 /// Plugin entrypoint where the host initiates communication.
 ///
-/// # Plugin Lifecycle
+/// # Lifecycle
 ///
 /// Each plugin request runs in an isolated WASM runtime:
 /// 1. Host spawns new WASM instance and calls main()
@@ -385,23 +382,21 @@ async fn get_vault(transport: &Arc<JsonRpcTransport>, id: VaultId) -> Result<Vau
 /// 4. Host responds to plugin requests via stdin
 /// 5. Plugin writes final response to stdout and terminates
 ///
-/// Plugins are stateless (except for what they store via host calls) and
-/// may be run concurrently for multiple requests.
+/// Multiple concurrent requests run in separate isolated runtimes.
 ///
 /// # Execution Model
 ///
-/// - **I/O**: No direct file/network access - all I/O goes through host RPC calls
+/// - **Stateless**: Each runtime is fresh; persist data via host calls
+/// - **I/O**: No direct file/network access - all I/O through host calls
 /// - **Communication**: Bidirectional JSON-RPC over stdin/stdout
-/// - **Async**: Async support via wasm32-wasip1 syscalls. Tokio and other runtimes work
+/// - **Async**: Full async support via wasm32-wasip1 syscalls (tokio, etc.)
 ///
-/// # First-Time Setup
+/// # Initialization
 ///
-/// On first plugin load by a user, the host calls `plugin::Init` to allow
-/// initialization. Subsequent requests skip init and call registered methods
-/// directly.
+/// On first plugin load, the host calls `plugin::Init` for setup.
+/// Subsequent requests skip init and directly invoke registered methods.
 fn main() {
-    // Setup logging. The host captures stderr for plugin logs and forwards
-    // them to its own logging system.
+    // Setup logging - host captures stderr and forwards to its logging system
     fmt()
         .with_writer(stderr)
         .without_time()
@@ -410,18 +405,13 @@ fn main() {
         .init();
     info!("Starting plugin...");
 
-    // Create JSON-RPC transport over stdin/stdout. The transport handles:
-    // - Reading the initial host request
-    // - Sending outbound requests to the host and awaiting responses
-    // - Writing the final response back to the host
-    let reader = std::io::BufReader::new(::std::io::stdin());
-    let writer = std::io::stdout();
-    let transport = JsonRpcTransport::new(reader, writer);
-    let transport = Arc::new(transport);
-
-    // Register method handlers. The transport will route the initial host request
-    // to the corresponding handler function.
-    let plugin = ServerBuilder::new(transport.clone())
+    // Register method handlers and start processing.
+    // The server automatically:
+    // - Creates stdin/stdout JSON-RPC transport
+    // - Sets up async runtime
+    // - Reads initial host request and routes to handler
+    // - Handles bidirectional RPC until final response
+    PluginServer::new_with_transport()
         .with_method(plugin::Init, init)
         .with_method(global::Ping, ping)
         .with_method(vault::GetAssets, get_assets)
@@ -430,14 +420,5 @@ fn main() {
         .with_method(vault::OnDeposit, on_deposit)
         .with_method(page::OnLoad, on_load)
         .with_method(page::OnUpdate, on_update)
-        .finish();
-    let plugin = Arc::new(plugin);
-
-    // Start single-threaded async runtime and process the initial request
-    // from host.
-    let rt = Builder::new_current_thread().enable_time().build().unwrap();
-    let local = tokio::task::LocalSet::new();
-    rt.block_on(local.run_until(async move {
-        let _ = transport.process_next_line(Some(plugin)).await;
-    }));
+        .run();
 }

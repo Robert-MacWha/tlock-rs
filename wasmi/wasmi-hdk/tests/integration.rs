@@ -3,8 +3,7 @@ use std::{fs, path::PathBuf, sync::Arc, time::Duration};
 use tokio::time::timeout;
 use tracing::info;
 use tracing_test::traced_test;
-use wasmi_hdk::plugin::{Plugin, PluginId};
-use wasmi_pdk::server::{Server, ServerBuilder};
+use wasmi_hdk::{plugin::Plugin, server::HostServer};
 use wasmi_pdk::transport::Transport;
 
 fn load_plugin_wasm() -> Vec<u8> {
@@ -15,8 +14,8 @@ fn load_plugin_wasm() -> Vec<u8> {
     fs::read(wasm_path).expect("Failed to read plugin WASM file")
 }
 
-fn get_host_server() -> Server<(Option<PluginId>, ())> {
-    let server = ServerBuilder::default()
+fn get_host_server() -> HostServer<()> {
+    HostServer::default()
         .with_method("ping", |_, _params: ()| async move {
             info!("Received ping request, sending pong response");
             Ok("pong".to_string())
@@ -25,9 +24,6 @@ fn get_host_server() -> Server<(Option<PluginId>, ())> {
             info!("Received echo request, returning response");
             Ok(params)
         })
-        .finish();
-
-    return server;
 }
 
 #[tokio::test]
