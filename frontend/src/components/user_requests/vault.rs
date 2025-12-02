@@ -1,45 +1,39 @@
 use dioxus::{logger::tracing::info, prelude::*};
 use host::host::UserRequest;
-use tlock_hdk::tlock_api::entities::EthProviderId;
+use tlock_hdk::tlock_api::entities::VaultId;
 
 use crate::contexts::host::HostContext;
 
 #[component]
-pub fn EthProviderSelectionComponent(request: UserRequest) -> Element {
+pub fn VaultSelectionComponent(request: UserRequest) -> Element {
     let state = use_context::<HostContext>();
 
-    // Get available eth providers
-    let eth_providers: Vec<EthProviderId> = {
+    // Get available vaults
+    let vaults: Vec<VaultId> = {
         let entities = state.entities.read();
         entities
             .iter()
             .filter_map(|entity_id| match entity_id {
-                tlock_hdk::tlock_api::entities::EntityId::EthProvider(provider_id) => {
-                    Some(*provider_id)
-                }
+                tlock_hdk::tlock_api::entities::EntityId::Vault(vault_id) => Some(*vault_id),
                 _ => None,
             })
             .collect()
     };
 
-    let (request_id, plugin_id, chain_id) = match request {
-        UserRequest::EthProviderSelection {
-            id,
-            plugin_id,
-            chain_id,
-        } => (id, plugin_id, chain_id),
-        UserRequest::VaultSelection { .. } => {
-            panic!("VaultSelection request passed to EthProvider component")
+    let (request_id, plugin_id) = match request {
+        UserRequest::VaultSelection { id, plugin_id } => (id, plugin_id),
+        UserRequest::EthProviderSelection { .. } => {
+            panic!("EthProviderSelection request passed to Vault component")
         }
     };
 
     let state_for_handlers = state.clone();
-    let handle_select_provider = move |provider_id: EthProviderId| {
+    let handle_select_vault = move |vault_id: VaultId| {
         let state = state_for_handlers.clone();
         move |_| {
             let state = state.clone();
-            info!("User selected provider: {}", provider_id);
-            state.host.resolve_user_request(request_id, provider_id);
+            info!("User selected vault: {}", vault_id);
+            state.host.resolve_vault_request(request_id, vault_id);
         }
     };
 
@@ -47,7 +41,7 @@ pub fn EthProviderSelectionComponent(request: UserRequest) -> Element {
         let state = state.clone();
         move |_| {
             let state = state.clone();
-            info!("User denied provider selection");
+            info!("User denied vault selection");
             state.host.deny_user_request(request_id);
         }
     };
@@ -55,19 +49,18 @@ pub fn EthProviderSelectionComponent(request: UserRequest) -> Element {
     rsx! {
         div {
             p {
-                "Ethereum Provider Selection"
+                "Vault Selection"
                 ul {
                     li { "Plugin: {plugin_id}" }
-                    li { "Chain: {chain_id}" }
                     li {
-                        "Available providers:"
+                        "Available vaults:"
                         ul {
-                            for provider_id in eth_providers {
+                            for vault_id in vaults {
                                 li {
-                                    key: "{provider_id}",
+                                    key: "{vault_id}",
                                     button {
-                                        onclick: handle_select_provider(provider_id),
-                                        "Select Provider {provider_id}"
+                                        onclick: handle_select_vault(vault_id),
+                                        "Select Vault {vault_id}"
                                     }
                                 }
                             }

@@ -35,7 +35,7 @@ pub struct Host {
 
     // User requests awaiting user decisions
     user_requests: Mutex<Vec<UserRequest>>,
-    user_request_senders: Mutex<HashMap<Uuid, oneshot::Sender<EthProviderId>>>,
+    user_request_senders: Mutex<HashMap<Uuid, oneshot::Sender<UserResponse>>>,
 
     observers: Mutex<Vec<UnboundedSender<()>>>,
     event_log: Mutex<Vec<String>>,
@@ -48,6 +48,16 @@ pub enum UserRequest {
         plugin_id: PluginId,
         chain_id: caip::ChainId,
     },
+VaultSelection {
+        id: Uuid,
+        plugin_id: PluginId,
+    },
+}
+
+#[derive(Debug, Clone)]
+pub enum UserResponse {
+    EthProvider(EthProviderId),
+    Vault(VaultId),
 }
 
 impl Default for Host {
@@ -102,6 +112,7 @@ impl Host {
             .with_method(global::Ping, ping)
             .with_method(host::RegisterEntity, register_entity)
             .with_method(host::RequestEthProvider, request_eth_provider)
+.with_method(host::RequestVault, request_vault)
             .with_method(host::Fetch, fetch)
             .with_method(host::GetState, get_state)
             .with_method(host::SetState, set_state)
@@ -209,8 +220,24 @@ impl Host {
             return;
         };
 
-        if let Err(_) = sender.send(provider_id) {
+        if let Err(_) = sender.send(UserResponse::EthProvider(provider_id)) {
             warn!("Failed to send response for user request {}", request_id);
+        }
+    }
+
+    pub fn resolve_vault_request(&self, request_id: Uuid, vault_id: VaultId) {
+        let sender = self
+            .user_request_senders
+            .lock()
+            .unwrap()
+            .remove(&request_id);
+        let Some(sender) = sender else {
+            warn!("No sender found for user request {}", request_id);
+            return;
+        };
+
+        if let Err(_) = sender.send(UserResponse::Vault(vault_id)) {
+            warn!("Failed to send response for vault request {}", request_id);
         }
     }
 
@@ -318,13 +345,71 @@ impl Host {
         // Remove the request from the list
         self.user_requests.lock().unwrap().retain(|req| match req {
             UserRequest::EthProviderSelection { id, .. } => *id != request_id,
+UserRequest::VaultSelection { .. } => true,
         });
 
         match resp {
-            Ok(selected_provider) => {
+            Ok(UserResponse::EthProvider(selected_provider)) => {
                 info!("User selected provider: {:?}", selected_provider);
                 self.notify_observers();
                 Ok(Some(selected_provider))
+            }
+Ok(_) => {
+                warn!("Unexpected response type for EthProvider request");
+                self.notify_observers();
+                Err(RpcError::InternalError)
+            }
+            Err(_) => {
+                warn!("User request cancelled - receiver dropped");
+                self.notify_observers();
+                Err(RpcError::InternalError)
+            }
+        }
+    }
+
+    pub async fn request_vault(
+        &self,
+        plugin_id: &PluginId,
+        _params: (),
+    ) -> Result<Option<VaultId>, RpcError> {
+        let request_id = Uuid::new_v4();
+        let (sender, receiver) = oneshot::channel();
+
+        info!(
+            "Created vault selection request {} for plugin: {}",
+            request_id, plugin_id
+        );
+
+        let user_request = UserRequest::VaultSelection {
+            id: request_id,
+            plugin_id: plugin_id.clone(),
+        };
+
+        self.user_requests.lock().unwrap().push(user_request);
+        self.user_request_senders
+            .lock()
+            .unwrap()
+            .insert(request_id, sender);
+
+        self.notify_observers();
+        let resp = receiver.await;
+
+        // Remove the request from the list
+        self.user_requests.lock().unwrap().retain(|req| match req {
+            UserRequest::VaultSelection { id, .. } => *id != request_id,
+            UserRequest::EthProviderSelection { .. } => true,
+        });
+
+        match resp {
+            Ok(UserResponse::Vault(selected_vault)) => {
+                info!("User selected vault: {:?}", selected_vault);
+                self.notify_observers();
+                Ok(Some(selected_vault))
+            }
+            Ok(_) => {
+                warn!("Unexpected response type for Vault request");
+                self.notify_observers();
+                Err(RpcError::InternalError)
             }
             Err(_) => {
                 warn!("User request cancelled - receiver dropped");
@@ -600,6 +685,7 @@ impl Host {
 impl_host_rpc!(Host, global::Ping, ping);
 impl_host_rpc!(Host, host::RegisterEntity, register_entity);
 impl_host_rpc!(Host, host::RequestEthProvider, request_eth_provider);
+impl_host_rpc!(Host, host::RequestVault, request_vault);
 impl_host_rpc!(Host, host::Fetch, fetch);
 impl_host_rpc!(Host, host::GetState, get_state);
 impl_host_rpc!(Host, host::SetState, set_state);
