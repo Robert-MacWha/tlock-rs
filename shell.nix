@@ -32,6 +32,7 @@ pkgs.mkShell {
     libsoup_3
     xdotool
     openssl
+    binaryen
     wasm-bindgen-cli_0_2_104
   ];
 }
