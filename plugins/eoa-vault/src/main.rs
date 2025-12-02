@@ -374,7 +374,34 @@ async fn get_vault(transport: &Arc<JsonRpcTransport>, id: VaultId) -> Result<Vau
 
 // ---------- Entrypoint ----------
 
+/// Plugin entrypoint where the host initiates communication.
+///
+/// # Plugin Lifecycle
+///
+/// Each plugin request runs in an isolated WASM runtime:
+/// 1. Host spawns new WASM instance and calls main()
+/// 2. Host immediately sends one JSON-RPC request via stdin
+/// 3. Plugin processes request, may make JSON-RPC calls to host (via stdout)
+/// 4. Host responds to plugin requests via stdin
+/// 5. Plugin writes final response to stdout and terminates
+///
+/// Plugins are stateless (except for what they store via host calls) and
+/// may be run concurrently for multiple requests.
+///
+/// # Execution Model
+///
+/// - **I/O**: No direct file/network access - all I/O goes through host RPC calls
+/// - **Communication**: Bidirectional JSON-RPC over stdin/stdout
+/// - **Async**: Async support via wasm32-wasip1 syscalls. Tokio and other runtimes work
+///
+/// # First-Time Setup
+///
+/// On first plugin load by a user, the host calls `plugin::Init` to allow
+/// initialization. Subsequent requests skip init and call registered methods
+/// directly.
 fn main() {
+    // Setup logging. The host captures stderr for plugin logs and forwards
+    // them to its own logging system.
     fmt()
         .with_writer(stderr)
         .without_time()
@@ -383,11 +410,17 @@ fn main() {
         .init();
     info!("Starting plugin...");
 
+    // Create JSON-RPC transport over stdin/stdout. The transport handles:
+    // - Reading the initial host request
+    // - Sending outbound requests to the host and awaiting responses
+    // - Writing the final response back to the host
     let reader = std::io::BufReader::new(::std::io::stdin());
     let writer = std::io::stdout();
     let transport = JsonRpcTransport::new(reader, writer);
     let transport = Arc::new(transport);
 
+    // Register method handlers. The transport will route the initial host request
+    // to the corresponding handler function.
     let plugin = ServerBuilder::new(transport.clone())
         .with_method(plugin::Init, init)
         .with_method(global::Ping, ping)
@@ -400,10 +433,10 @@ fn main() {
         .finish();
     let plugin = Arc::new(plugin);
 
+    // Start single-threaded async runtime and process the initial request
+    // from host.
     let rt = Builder::new_current_thread().enable_time().build().unwrap();
-
     let local = tokio::task::LocalSet::new();
-
     rt.block_on(local.run_until(async move {
         let _ = transport.process_next_line(Some(plugin)).await;
     }));
