@@ -1,0 +1,365 @@
+use std::{collections::HashMap, io::stderr, sync::Arc};
+
+use serde::{Deserialize, Serialize};
+use tlock_pdk::{
+    futures::executor::block_on,
+    server::ServerBuilder,
+    state::{get_state, set_state},
+    tlock_api::{
+        RpcMethod,
+        caip::{AccountId, AssetId},
+        component::{
+            Component, button_input, container, dropdown, form, heading, submit_input, text,
+            text_input,
+        },
+        domains::Domain,
+        entities::{PageId, VaultId},
+        global, host, page, plugin,
+        vault::{self},
+    },
+    wasmi_pdk::{
+        rpc_message::RpcError,
+        tracing::{info, warn},
+        tracing_subscriber::fmt,
+        transport::JsonRpcTransport,
+    },
+};
+
+#[derive(Serialize, Deserialize, Default, Debug)]
+struct PluginState {
+    page_id: Option<PageId>,
+    vault_id: Option<VaultId>,
+    cached_assets: Vec<(AssetId, alloy::primitives::U256)>,
+    last_message: Option<String>,
+}
+
+// ---------- Plugin Handlers ----------
+
+async fn init(transport: Arc<JsonRpcTransport>, _params: ()) -> Result<(), RpcError> {
+    info!("Initializing Vault Page Plugin");
+
+    // Register the vault page
+    host::RegisterEntity
+        .call(transport.clone(), Domain::Page)
+        .await?;
+
+    handle_request_vault(&transport).await?;
+
+    Ok(())
+}
+
+async fn ping(transport: Arc<JsonRpcTransport>, _params: ()) -> Result<String, RpcError> {
+    info!("Ping received, testing vault request");
+
+    let vault_id = host::RequestVault.call(transport, ()).await?;
+
+    match vault_id {
+        Some(id) => Ok(format!("Pong! Got vault: {}", id)),
+        None => Ok("Pong! No vault selected".to_string()),
+    }
+}
+
+// ---------- UI Handlers ----------
+
+async fn on_load(transport: Arc<JsonRpcTransport>, page_id: PageId) -> Result<(), RpcError> {
+    info!("Page loaded: {}", page_id);
+
+    let mut state: PluginState = get_state(transport.clone()).await;
+    state.page_id = Some(page_id);
+    set_state(transport.clone(), &state).await?;
+
+    let component = build_ui(&state);
+    host::SetPage
+        .call(transport.clone(), (page_id, component))
+        .await?;
+
+    Ok(())
+}
+
+async fn on_update(
+    transport: Arc<JsonRpcTransport>,
+    params: (PageId, page::PageEvent),
+) -> Result<(), RpcError> {
+    let (page_id, event) = params;
+    info!("Page updated: {:?}", event);
+
+    let mut state: PluginState = get_state(transport.clone()).await;
+
+    match event {
+        page::PageEvent::ButtonClicked(button_id) if button_id == "refresh_assets" => {
+            handle_refresh_assets(&transport, &mut state).await?;
+        }
+        page::PageEvent::FormSubmitted(form_id, form_data) if form_id == "get_deposit_form" => {
+            handle_get_deposit(&transport, &mut state, form_data).await?;
+        }
+        page::PageEvent::FormSubmitted(form_id, form_data) if form_id == "withdraw_form" => {
+            handle_withdraw(&transport, &mut state, form_data).await?;
+        }
+        _ => {
+            warn!("Unhandled page event: {:?}", event);
+            return Ok(());
+        }
+    }
+
+    set_state(transport.clone(), &state).await?;
+
+    let component = build_ui(&state);
+    host::SetPage
+        .call(transport.clone(), (page_id, component))
+        .await?;
+
+    Ok(())
+}
+
+// ---------- Event Handlers ----------
+
+async fn handle_request_vault(transport: &Arc<JsonRpcTransport>) -> Result<(), RpcError> {
+    info!("Requesting vault from host");
+
+    let vault_id = host::RequestVault.call(transport.clone(), ()).await?;
+
+    let mut state: PluginState = get_state(transport.clone()).await;
+    match vault_id {
+        Some(id) => {
+            state.vault_id = Some(id);
+            state.last_message = Some(format!("Vault selected: {}", id));
+            info!("Vault selected: {}", id);
+        }
+        None => {
+            state.last_message = Some("No vault selected".to_string());
+            info!("User cancelled vault selection");
+        }
+    }
+
+    set_state(transport.clone(), &state).await?;
+    host::SetPage
+        .call(
+            transport.clone(),
+            (state.page_id.clone().unwrap(), build_ui(&state)),
+        )
+        .await?;
+
+    Ok(())
+}
+
+async fn handle_refresh_assets(
+    transport: &Arc<JsonRpcTransport>,
+    state: &mut PluginState,
+) -> Result<(), RpcError> {
+    let Some(vault_id) = state.vault_id else {
+        state.last_message = Some("No vault selected".to_string());
+        return Ok(());
+    };
+
+    info!("Refreshing assets for vault: {}", vault_id);
+
+    let assets = vault::GetAssets
+        .call(transport.clone(), vault_id)
+        .await
+        .map_err(|e| {
+            warn!("Error fetching assets: {:?}", e);
+            e
+        })?;
+
+    state.cached_assets = assets;
+    state.last_message = Some(format!("Fetched {} assets", state.cached_assets.len()));
+
+    Ok(())
+}
+
+async fn handle_get_deposit(
+    transport: &Arc<JsonRpcTransport>,
+    state: &mut PluginState,
+    form_data: HashMap<String, String>,
+) -> Result<(), RpcError> {
+    let Some(vault_id) = state.vault_id else {
+        state.last_message = Some("No vault selected".to_string());
+        return Ok(());
+    };
+
+    let Some(asset_str) = form_data.get("asset") else {
+        state.last_message = Some("No asset selected".to_string());
+        return Ok(());
+    };
+
+    let asset_id: AssetId = asset_str
+        .parse()
+        .map_err(|e| RpcError::Custom(format!("Invalid asset ID: {}", e)))?;
+
+    info!("Getting deposit address for asset: {}", asset_id);
+
+    let account_id = vault::GetDepositAddress
+        .call(transport.clone(), (vault_id, asset_id.clone()))
+        .await
+        .map_err(|e| {
+            warn!("Error getting deposit address: {:?}", e);
+            e
+        })?;
+
+    state.last_message = Some(format!("Deposit address for {}: {}", asset_id, account_id));
+
+    Ok(())
+}
+
+async fn handle_withdraw(
+    transport: &Arc<JsonRpcTransport>,
+    state: &mut PluginState,
+    form_data: HashMap<String, String>,
+) -> Result<(), RpcError> {
+    let Some(vault_id) = state.vault_id else {
+        state.last_message = Some("No vault selected".to_string());
+        return Ok(());
+    };
+
+    let Some(to_address_str) = form_data.get("to_address") else {
+        state.last_message = Some("Missing to_address".to_string());
+        return Ok(());
+    };
+
+    let Some(asset_str) = form_data.get("asset") else {
+        state.last_message = Some("Missing asset".to_string());
+        return Ok(());
+    };
+
+    let Some(amount_str) = form_data.get("amount") else {
+        state.last_message = Some("Missing amount".to_string());
+        return Ok(());
+    };
+
+    let to_address: AccountId = to_address_str
+        .parse()
+        .map_err(|e| RpcError::Custom(format!("Invalid to_address: {}", e)))?;
+
+    let asset_id: AssetId = asset_str
+        .parse()
+        .map_err(|e| RpcError::Custom(format!("Invalid asset ID: {}", e)))?;
+
+    let amount: alloy::primitives::U256 = amount_str
+        .parse()
+        .map_err(|_| RpcError::Custom("Invalid amount".to_string()))?;
+
+    info!(
+        "Withdrawing {} {} from vault {} to {}",
+        amount, asset_id, vault_id, to_address
+    );
+
+    vault::Withdraw
+        .call(transport.clone(), (vault_id, to_address, asset_id, amount))
+        .await
+        .map_err(|e| {
+            warn!("Error withdrawing: {:?}", e);
+            e
+        })?;
+
+    state.last_message = Some("Withdrawal successful".to_string());
+
+    Ok(())
+}
+
+// ---------- UI Builders ----------
+
+fn build_ui(state: &PluginState) -> Component {
+    let mut sections = vec![
+        heading("Vault Page"),
+        text("A simple UI for interacting with vault plugins"),
+    ];
+
+    // Status section
+    if let Some(vault_id) = &state.vault_id {
+        sections.push(text(format!("Current vault: {}", vault_id)));
+    } else {
+        sections.push(text("No vault selected"));
+    }
+
+    if let Some(msg) = &state.last_message {
+        sections.push(text(format!("Status: {}", msg)));
+    }
+
+    // Assets section (if vault exists)
+    if state.vault_id.is_some() {
+        sections.push(heading("Assets"));
+        sections.push(button_input("refresh_assets", "Refresh Assets"));
+
+        if !state.cached_assets.is_empty() {
+            for (asset_id, balance) in &state.cached_assets {
+                sections.push(text(format!("{}: {}", asset_id, balance)));
+            }
+        } else {
+            sections.push(text("No assets cached. Click Refresh Assets."));
+        }
+
+        // Deposit section
+        sections.push(heading("Get Deposit Address"));
+        if !state.cached_assets.is_empty() {
+            let asset_options: Vec<String> = state
+                .cached_assets
+                .iter()
+                .map(|(asset_id, _)| asset_id.to_string())
+                .collect();
+
+            sections.push(form(
+                "get_deposit_form",
+                vec![
+                    dropdown("asset", asset_options.clone(), None),
+                    submit_input("Get Address"),
+                ],
+            ));
+        } else {
+            sections.push(text("Refresh assets first to get deposit address"));
+        }
+
+        // Withdraw section
+        sections.push(heading("Withdraw"));
+        if !state.cached_assets.is_empty() {
+            let asset_options: Vec<String> = state
+                .cached_assets
+                .iter()
+                .map(|(asset_id, _)| asset_id.to_string())
+                .collect();
+
+            sections.push(form(
+                "withdraw_form",
+                vec![
+                    text_input("to_address", "Recipient address (CAIP-10)"),
+                    dropdown("asset", asset_options, None),
+                    text_input("amount", "Amount (wei)"),
+                    submit_input("Withdraw"),
+                ],
+            ));
+        } else {
+            sections.push(text("Refresh assets first to withdraw"));
+        }
+    }
+
+    container(sections)
+}
+
+// ---------- Entrypoint ----------
+
+fn main() {
+    fmt()
+        .with_writer(stderr)
+        .without_time()
+        .with_ansi(false)
+        .compact()
+        .init();
+    info!("Starting Vault Page Plugin...");
+
+    let reader = std::io::BufReader::new(::std::io::stdin());
+    let writer = std::io::stdout();
+    let transport = JsonRpcTransport::new(reader, writer);
+    let transport = Arc::new(transport);
+
+    let plugin = ServerBuilder::new(transport.clone())
+        .with_method(plugin::Init, init)
+        .with_method(global::Ping, ping)
+        .with_method(page::OnLoad, on_load)
+        .with_method(page::OnUpdate, on_update)
+        .finish();
+
+    let plugin = Arc::new(plugin);
+
+    block_on(async move {
+        let _ = transport.process_next_line(Some(plugin)).await;
+    });
+}
