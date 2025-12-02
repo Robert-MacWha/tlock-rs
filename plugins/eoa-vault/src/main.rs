@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, io::stderr, sync::Arc};
 use tlock_alloy::AlloyBridge;
 use tlock_pdk::{
-    server::ServerBuilder,
+    server::PluginServer,
     state::{get_state, set_state},
     tlock_api::{
         RpcMethod,
@@ -37,7 +37,6 @@ use tlock_pdk::{
         transport::JsonRpcTransport,
     },
 };
-use tokio::{runtime::Builder, time::sleep_until};
 
 #[derive(Serialize, Deserialize, Default, Debug)]
 struct PluginState {
@@ -372,9 +371,32 @@ async fn get_vault(transport: &Arc<JsonRpcTransport>, id: VaultId) -> Result<Vau
     Ok(vault.clone())
 }
 
-// ---------- Entrypoint ----------
-
+/// Plugin entrypoint where the host initiates communication.
+///
+/// # Lifecycle
+///
+/// Each plugin request runs in an isolated WASM runtime:
+/// 1. Host spawns new WASM instance and calls main()
+/// 2. Host immediately sends one JSON-RPC request via stdin
+/// 3. Plugin processes request, may make JSON-RPC calls to host (via stdout)
+/// 4. Host responds to plugin requests via stdin
+/// 5. Plugin writes final response to stdout and terminates
+///
+/// Multiple concurrent requests run in separate isolated runtimes.
+///
+/// # Execution Model
+///
+/// - **Stateless**: Each runtime is fresh; persist data via host calls
+/// - **I/O**: No direct file/network access - all I/O through host calls
+/// - **Communication**: Bidirectional JSON-RPC over stdin/stdout
+/// - **Async**: Full async support via wasm32-wasip1 syscalls (tokio, etc.)
+///
+/// # Initialization
+///
+/// On first plugin load, the host calls `plugin::Init` for setup.
+/// Subsequent requests skip init and directly invoke registered methods.
 fn main() {
+    // Setup logging - host captures stderr and forwards to its logging system
     fmt()
         .with_writer(stderr)
         .without_time()
@@ -383,12 +405,13 @@ fn main() {
         .init();
     info!("Starting plugin...");
 
-    let reader = std::io::BufReader::new(::std::io::stdin());
-    let writer = std::io::stdout();
-    let transport = JsonRpcTransport::new(reader, writer);
-    let transport = Arc::new(transport);
-
-    let plugin = ServerBuilder::new(transport.clone())
+    // Register method handlers and start processing.
+    // The server automatically:
+    // - Creates stdin/stdout JSON-RPC transport
+    // - Sets up async runtime
+    // - Reads initial host request and routes to handler
+    // - Handles bidirectional RPC until final response
+    PluginServer::new_with_transport()
         .with_method(plugin::Init, init)
         .with_method(global::Ping, ping)
         .with_method(vault::GetAssets, get_assets)
@@ -397,14 +420,5 @@ fn main() {
         .with_method(vault::OnDeposit, on_deposit)
         .with_method(page::OnLoad, on_load)
         .with_method(page::OnUpdate, on_update)
-        .finish();
-    let plugin = Arc::new(plugin);
-
-    let rt = Builder::new_current_thread().enable_time().build().unwrap();
-
-    let local = tokio::task::LocalSet::new();
-
-    rt.block_on(local.run_until(async move {
-        let _ = transport.process_next_line(Some(plugin)).await;
-    }));
+        .run();
 }

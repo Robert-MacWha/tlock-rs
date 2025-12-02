@@ -1,8 +1,8 @@
 use crate::alloy_provider::create_alloy_provider;
 use alloy::{
-    eips::{BlockId, BlockNumberOrTag},
+    eips::BlockId,
     primitives::{Address, Bytes, TxHash, U256},
-    providers::{Provider, transport},
+    providers::Provider,
     rpc::types::{
         Block, BlockOverrides, BlockTransactionsKind, Filter, Log, Transaction, TransactionReceipt,
         TransactionRequest, state::StateOverride,
@@ -11,8 +11,7 @@ use alloy::{
 use serde::{Deserialize, Serialize};
 use std::{io::stderr, sync::Arc};
 use tlock_pdk::{
-    futures::executor::block_on,
-    server::ServerBuilder,
+    server::PluginServer,
     state::{get_state, set_state, try_get_state},
     tlock_api::{
         RpcMethod,
@@ -366,12 +365,7 @@ fn main() {
         .init();
     info!("Starting plugin...");
 
-    let reader = std::io::BufReader::new(::std::io::stdin());
-    let writer = std::io::stdout();
-    let transport = JsonRpcTransport::new(reader, writer);
-    let transport = Arc::new(transport);
-
-    let plugin = ServerBuilder::new(transport.clone())
+    PluginServer::new_with_transport()
         .with_method(global::Ping, ping)
         .with_method(plugin::Init, init)
         .with_method(page::OnLoad, on_load)
@@ -389,10 +383,5 @@ fn main() {
         .with_method(eth::GetTransactionCount, get_transaction_count)
         .with_method(eth::SendRawTransaction, send_raw_transaction)
         .with_method(eth::EstimateGas, estimate_gas)
-        .finish();
-    let plugin = Arc::new(plugin);
-
-    block_on(async move {
-        let _ = transport.process_next_line(Some(plugin)).await;
-    });
+        .run();
 }

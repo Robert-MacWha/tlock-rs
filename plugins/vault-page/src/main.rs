@@ -2,8 +2,7 @@ use std::{collections::HashMap, io::stderr, sync::Arc};
 
 use serde::{Deserialize, Serialize};
 use tlock_pdk::{
-    futures::executor::block_on,
-    server::ServerBuilder,
+    server::PluginServer,
     state::{get_state, set_state},
     tlock_api::{
         RpcMethod,
@@ -345,21 +344,10 @@ fn main() {
         .init();
     info!("Starting Vault Page Plugin...");
 
-    let reader = std::io::BufReader::new(::std::io::stdin());
-    let writer = std::io::stdout();
-    let transport = JsonRpcTransport::new(reader, writer);
-    let transport = Arc::new(transport);
-
-    let plugin = ServerBuilder::new(transport.clone())
+    PluginServer::new_with_transport()
         .with_method(plugin::Init, init)
         .with_method(global::Ping, ping)
         .with_method(page::OnLoad, on_load)
         .with_method(page::OnUpdate, on_update)
-        .finish();
-
-    let plugin = Arc::new(plugin);
-
-    block_on(async move {
-        let _ = transport.process_next_line(Some(plugin)).await;
-    });
+        .run();
 }

@@ -1,8 +1,7 @@
 use std::{io::stderr, sync::Arc};
 
 use tlock_pdk::{
-    futures::executor::block_on,
-    server::ServerBuilder,
+    server::PluginServer,
     tlock_api::{RpcMethod, global},
     wasmi_pdk::{
         rpc_message::RpcError, tracing::info, tracing_subscriber::fmt, transport::JsonRpcTransport,
@@ -18,18 +17,7 @@ fn main() {
     fmt().with_writer(stderr).init();
     info!("Starting plugin...");
 
-    let reader = std::io::BufReader::new(::std::io::stdin());
-    let writer = std::io::stdout();
-    let transport = JsonRpcTransport::new(reader, writer);
-    let transport = Arc::new(transport);
-
-    let plugin = ServerBuilder::new(transport.clone())
+    PluginServer::new_with_transport()
         .with_method(global::Ping, ping)
-        .finish();
-
-    let plugin = Arc::new(plugin);
-
-    block_on(async move {
-        let _ = transport.process_next_line(Some(plugin)).await;
-    });
+        .run();
 }
