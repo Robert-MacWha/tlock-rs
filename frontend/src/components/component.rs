@@ -60,6 +60,7 @@ pub fn RenderComponent(props: ComponentProps) -> Element {
                 form {
                     class: "form",
                     onsubmit: move |e| {
+                        e.prevent_default();
                         let data = e.data().clone().values();
                         let data = data.iter().filter_map(|(k, v)| match v {
                             FormValue::Text(v) => Some((k.clone(), v.clone())),
@@ -82,6 +83,32 @@ pub fn RenderComponent(props: ComponentProps) -> Element {
                     class: "btn btn-primary",
                     r#type: "submit",
                     "{text}",
+                }
+            }
+        }
+        Component::Dropdown {
+            id,
+            options,
+            selected,
+        } => {
+            rsx! {
+                select {
+                    class: "form-select",
+                    name: "{id}",
+                    {
+                        options
+                            .iter()
+                            .map(|option| {
+                                let is_selected = selected.as_ref() == Some(option);
+                                rsx! {
+                                    option {
+                                        value: "{option}",
+                                        selected: is_selected,
+                                        "{option}"
+                                    }
+                                }
+                            })
+                    }
                 }
             }
         }

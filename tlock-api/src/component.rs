@@ -11,6 +11,7 @@ pub enum Component {
     Form { fields: Vec<Component>, id: String },
     TextInput { placeholder: String, id: String },
     SubmitInput { text: String },
+    Dropdown { id: String, options: Vec<String>, selected: Option<String> },
 }
 
 impl Component {
@@ -54,4 +55,12 @@ pub fn text_input(id: impl Into<String>, placeholder: impl Into<String>) -> Comp
 
 pub fn submit_input(text: impl Into<String>) -> Component {
     Component::SubmitInput { text: text.into() }
+}
+
+pub fn dropdown(id: impl Into<String>, options: Vec<String>, selected: Option<String>) -> Component {
+    Component::Dropdown {
+        id: id.into(),
+        options,
+        selected,
+    }
 }
