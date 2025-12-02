@@ -27,7 +27,7 @@ mod serde_helpers;
 /// much easier to integrate alloy-based functionality in tlock plugins.
 ///
 /// # Example
-/// ```no_run
+/// ```rust,ignore
 /// use alloy::providers::ProviderBuilder;
 /// let provider = ProviderBuilder::new().connect_client(AlloyBridge::new(transport, provider_id));
 /// ```
