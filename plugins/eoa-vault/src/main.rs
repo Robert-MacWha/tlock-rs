@@ -212,12 +212,13 @@ async fn withdraw(
 
 async fn withdraw_eth(provider: impl Provider, to: Address, amount: U256) -> Result<(), RpcError> {
     let tx = TransactionRequest::default().to(to).with_value(amount);
-    info!("Sending ETH withdrawal transaction: {:?}", tx);
-    let pending_tx = provider.send_transaction(tx).await.map_err(to_rpc_err)?;
-    info!("ETH withdrawal transaction submitted, waiting for hash...");
-    let pending_watcher = pending_tx.watch();
-    info!("Awaiting transaction hash...");
-    let tx_hash = pending_watcher.await.map_err(to_rpc_err)?;
+    let tx_hash = provider
+        .send_transaction(tx)
+        .await
+        .map_err(to_rpc_err)?
+        .watch()
+        .await
+        .map_err(to_rpc_err)?;
     info!("ETH withdrawal transaction sent with hash: {}", tx_hash);
     Ok(())
 }
@@ -404,9 +405,6 @@ fn main() {
     let local = tokio::task::LocalSet::new();
 
     rt.block_on(local.run_until(async move {
-        // Sleep for 1s
-        // info!("Plugin started, Sleeping for 1s first just because");
-        // sleep_until(tokio::time::Instant::now() + std::time::Duration::from_secs(1)).await;
         let _ = transport.process_next_line(Some(plugin)).await;
     }));
 }
