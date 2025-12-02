@@ -108,9 +108,7 @@ impl Host {
 
     pub fn get_server(self: &Arc<Host>) -> HostServer<Weak<Host>> {
         let weak_host = Arc::downgrade(self);
-        let server = HostServer::new(Arc::new(weak_host));
-
-        let server = server
+        HostServer::new(Arc::new(weak_host))
             .with_method(global::Ping, ping)
             .with_method(host::RegisterEntity, register_entity)
             .with_method(host::RequestEthProvider, request_eth_provider)
@@ -134,9 +132,7 @@ impl Host {
             .with_method(eth::SendRawTransaction, eth_send_raw_transaction)
             .with_method(eth::EstimateGas, eth_estimate_gas)
             .with_method(eth::GetTransactionReceipt, eth_get_transaction_receipt)
-            .with_method(eth::GetBlock, eth_get_block);
-
-        server
+            .with_method(eth::GetBlock, eth_get_block)
     }
 
     /// Register a plugin with the host, calling its Init method if it exists

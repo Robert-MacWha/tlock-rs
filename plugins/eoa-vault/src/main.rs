@@ -371,11 +371,9 @@ async fn get_vault(transport: &Arc<JsonRpcTransport>, id: VaultId) -> Result<Vau
     Ok(vault.clone())
 }
 
-// ---------- Entrypoint ----------
-
 /// Plugin entrypoint where the host initiates communication.
 ///
-/// # Plugin Lifecycle
+/// # Lifecycle
 ///
 /// Each plugin request runs in an isolated WASM runtime:
 /// 1. Host spawns new WASM instance and calls main()
@@ -384,23 +382,21 @@ async fn get_vault(transport: &Arc<JsonRpcTransport>, id: VaultId) -> Result<Vau
 /// 4. Host responds to plugin requests via stdin
 /// 5. Plugin writes final response to stdout and terminates
 ///
-/// Plugins are stateless (except for what they store via host calls) and
-/// may be run concurrently for multiple requests.
+/// Multiple concurrent requests run in separate isolated runtimes.
 ///
 /// # Execution Model
 ///
-/// - **I/O**: No direct file/network access - all I/O goes through host RPC calls
+/// - **Stateless**: Each runtime is fresh; persist data via host calls
+/// - **I/O**: No direct file/network access - all I/O through host calls
 /// - **Communication**: Bidirectional JSON-RPC over stdin/stdout
-/// - **Async**: Async support via wasm32-wasip1 syscalls. Tokio and other runtimes work
+/// - **Async**: Full async support via wasm32-wasip1 syscalls (tokio, etc.)
 ///
-/// # First-Time Setup
+/// # Initialization
 ///
-/// On first plugin load by a user, the host calls `plugin::Init` to allow
-/// initialization. Subsequent requests skip init and call registered methods
-/// directly.
+/// On first plugin load, the host calls `plugin::Init` for setup.
+/// Subsequent requests skip init and directly invoke registered methods.
 fn main() {
-    // Setup logging. The host captures stderr for plugin logs and forwards
-    // them to its own logging system.
+    // Setup logging - host captures stderr and forwards to its logging system
     fmt()
         .with_writer(stderr)
         .without_time()
@@ -409,8 +405,12 @@ fn main() {
         .init();
     info!("Starting plugin...");
 
-    // Register method handlers. The transport will route the initial host request
-    // to the corresponding handler function.
+    // Register method handlers and start processing.
+    // The server automatically:
+    // - Creates stdin/stdout JSON-RPC transport
+    // - Sets up async runtime
+    // - Reads initial host request and routes to handler
+    // - Handles bidirectional RPC until final response
     PluginServer::new_with_transport()
         .with_method(plugin::Init, init)
         .with_method(global::Ping, ping)
