@@ -171,7 +171,7 @@ impl JsonRpcTransport {
                 method,
                 params,
             }) => {
-                let handler = handler.ok_or(RpcError::MethodNotFound)?;
+                let handler = handler.ok_or(RpcError::Custom("Handler not found".into()))?;
                 match handler.handle(&method, params).await {
                     Ok(result) => {
                         let response = RpcMessage::RpcResponse(RpcResponse {
@@ -265,9 +265,9 @@ mod test {
         };
         let response_json = serde_json::to_string(&response).unwrap();
 
-        let reader = Box::new(BufReader::new(Cursor::new(format!("{}\n", response_json))));
+        let reader = BufReader::new(Cursor::new(format!("{}\n", response_json)));
         let output_buffer = Arc::new(Mutex::new(Vec::new()));
-        let writer = Box::new(MockWriter::new(output_buffer));
+        let writer = MockWriter::new(output_buffer);
         let transport = JsonRpcTransport::new(reader, writer);
 
         // Inject a fake pending request with the ID and a rx we control

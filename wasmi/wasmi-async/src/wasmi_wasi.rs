@@ -1,6 +1,9 @@
-use std::io::{Read, Write};
-use tracing::{info, trace, warn};
-use web_time::SystemTime;
+use runtime::web_time::{Instant, SystemTime};
+use std::{
+    io::{Read, Write},
+    time::Duration,
+};
+use tracing::{error, info, trace, warn};
 
 /// A WASI context that can be attached to a wasmi instance. Attaches
 /// a subset of WASI syscalls to the instance, allowing it to
@@ -13,6 +16,11 @@ pub struct WasiCtx {
     stdin_reader: Option<Box<dyn Read + Send + Sync>>,
     stdout_writer: Option<Box<dyn Write + Send + Sync>>,
     stderr_writer: Option<Box<dyn Write + Send + Sync>>,
+
+    // Time when the host should resume the guest from an out-of-fuel yield.
+    // If None, the guest should be started immediately. If Some, the guest
+    // should be resumed after this time is reached.
+    pub resume_time: Option<Instant>,
 }
 
 #[repr(i32)]
@@ -42,6 +50,7 @@ impl WasiCtx {
             stdin_reader: None,
             stdout_writer: None,
             stderr_writer: None,
+            resume_time: None,
         }
     }
 
@@ -85,15 +94,11 @@ pub fn add_to_linker(linker: &mut wasmi::Linker<WasiCtx>) -> Result<(), wasmi::E
     linker.func_wrap("wasi_snapshot_preview1", "random_get", random_get)?;
     linker.func_wrap("wasi_snapshot_preview1", "proc_exit", proc_exit)?;
     // TODO: Implement actual yielding once I figure out how
+    // We can't use the "run out of fuel" trick since wasmi will just trap on that indefinitely.
     linker.func_wrap("wasi_snapshot_preview1", "sched_yield", || -> i32 { 0 })?;
-    // TODO: Consider implementing the socket_* methods
-    // This would let any networking be done inside the guest, which is cool.  But it also means
-    // I need to introduce permissions in the WasICTX and that plugins will be able to send arbitrary
-    // requests to arbitrary hosts over tcp/udp, which might be a security concern.  Same reason browsers
-    // block raw sockets.
-    //
-    // I want plugins to be able to open raw sockets, but maybe it's best to do this via a host call so I can have
-    // extremely tight permissions.
+    linker.func_wrap("wasi_snapshot_preview1", "poll_oneoff", poll_oneoff)?;
+    // TODO: Implement poll_oneoff for timers, etc.
+    // https://docs.wasmtime.dev/api/src/wasi_common/snapshots/preview_1.rs.html#28-36
 
     Ok(())
 }
@@ -510,6 +515,186 @@ fn proc_exit(_caller: wasmi::Caller<'_, WasiCtx>, status: i32) -> Result<(), was
     info!("wasi proc_exit({})", status);
 
     Err(wasmi::Error::i32_exit(status))
+}
+
+const CLOCK_EVENT_TYPE: u8 = 0;
+
+/// Concurrently poll for the occurrence of a set of events.
+///
+/// Essentially allows the guest to wait for multiple events (timers, fd write/read
+/// readiness - subscription_u).
+///
+/// Based on my understanding & reading other implementations, the function is
+/// stateless. So each time it's called it waits until one of the subscriptions
+/// is ready, writes the corresponding events into `events_ptr` and returns the
+/// number of events written.
+///
+/// It is not persistent across calls - so if a guest wants to wait for multiple
+/// events, it needs to call this function with the same subscriptions again.
+///
+/// For this impl we only care about timers, so we'll ignore the fd subscriptions
+/// and return immediately with no event.
+fn poll_oneoff(
+    mut caller: wasmi::Caller<'_, WasiCtx>,
+    subs_ptr: i32,
+    events_ptr: i32,
+    nsubscriptions: i32,
+    result_ptr: i32,
+) -> i32 {
+    info!(
+        "wasi poll_oneoff({}, {}, {}, {})",
+        subs_ptr, events_ptr, nsubscriptions, result_ptr
+    );
+
+    if nsubscriptions == 0 {
+        error!("poll_oneoff called with zero subscriptions");
+        return Errno::Inval as i32;
+    }
+
+    let memory = caller
+        .get_export("memory")
+        .and_then(|e| e.into_memory())
+        .expect("guest must have memory");
+
+    let mut clock_subscriptions = Vec::new();
+    for i in 0..nsubscriptions {
+        // Each subscription is 48 bytes
+        let sub_offset = (subs_ptr as usize) + (i as usize * 48);
+
+        // Read the subscription struct
+        // subscription layout (48 bytes total):
+        // - userdata: u64 at offset 0
+        // - type: u8 at offset 8 (eventtype: 0=clock, 1=fd_read, 2=fd_write)
+        // - padding: 7 bytes
+        // - union data: 32 bytes at offset 16
+        //
+        // For clock subscription (subscription_clock at offset 16):
+        // - id: u32 (clockid) at offset 16
+        // - padding: 4 bytes
+        // - timeout: u64 (timestamp) at offset 24
+        // - precision: u64 (timestamp) at offset 32
+        // - flags: u16 (subclockflags) at offset 40
+
+        let mut sub_bytes = [0u8; 48];
+        memory
+            .read(&caller, sub_offset as usize, &mut sub_bytes)
+            .unwrap();
+
+        let userdata = u64::from_le_bytes(sub_bytes[0..8].try_into().unwrap());
+        let sub_type = sub_bytes[8];
+
+        if sub_type != CLOCK_EVENT_TYPE {
+            warn!(
+                "poll_oneoff: only clock subscriptions supported, got type {}",
+                sub_type
+            );
+            continue;
+        }
+
+        let clock_id = u32::from_le_bytes(sub_bytes[16..20].try_into().unwrap());
+        let timeout_ns = u64::from_le_bytes(sub_bytes[24..32].try_into().unwrap());
+        let precision_ns = u64::from_le_bytes(sub_bytes[32..40].try_into().unwrap());
+        let flags = u16::from_le_bytes(sub_bytes[40..42].try_into().unwrap());
+
+        if clock_id > 1 {
+            // Only realtime (0) and monotonic (1)
+            warn!("poll_oneoff: unsupported clock_id {}", clock_id);
+            continue;
+        }
+
+        let is_absolute = (flags & 1) != 0;
+        trace!(
+            "poll_oneoff: clock_id={}, timeout={}, precision={}, flags={:#x}, is_absolute={}",
+            clock_id, timeout_ns, precision_ns, flags, is_absolute
+        );
+
+        clock_subscriptions.push((userdata, clock_id, timeout_ns, is_absolute));
+    }
+
+    info!(
+        "poll_oneoff: {} clock subscriptions",
+        clock_subscriptions.len()
+    );
+
+    if clock_subscriptions.is_empty() {
+        warn!("poll_oneoff: no valid clock subscriptions found");
+        return Errno::Inval as i32;
+    }
+
+    // Convert all relative timeouts to absolute deadlines
+    let now_ns = match SystemTime::now().duration_since(SystemTime::UNIX_EPOCH) {
+        Ok(dur) => dur.as_nanos() as u64,
+        Err(_) => return Errno::Inval as i32, // time before epoch shouldn't happen
+    };
+
+    clock_subscriptions.iter_mut().for_each(|sub| {
+        if !sub.3 {
+            sub.2 = now_ns.saturating_add(sub.2);
+        }
+    });
+
+    // Find the earliest deadline
+    let (earliest_userdata, _earliest_clock_id, earliest_deadline_ns, _) =
+        clock_subscriptions.iter().min_by_key(|sub| sub.2).unwrap();
+
+    // Super Jank Time:
+    //
+    // Basically, poll_oneoff MUST block from the guest's perspective until 1+
+    // events are ready. If we try to return immediately with no events (either)
+    // via an Errno::Again or Errno::Success with 0 events, the guest will panic.
+    //
+    // We can't block here since that this isn't an async block (due to wasmi's API)
+    // and we don't want to block the entire executor thread since we're in a single-
+    // threaded-context. SO instead we instantly return a successful result for the
+    // earliest timer, and if the deadline hasn't been reached yet we set the fuel
+    // to zero to yield execution back to the host. The host can then notice that
+    // `resume_time` is Some(time in the future) and will wait until that time before
+    // resuming execution of the guest.
+    //
+    // TODO: Oh gods fix this please someone.
+
+    //? Future deadline trap
+    if earliest_deadline_ns > &now_ns {
+        let wait_duration = Duration::from_nanos(earliest_deadline_ns - now_ns);
+        caller.data_mut().resume_time = Some(Instant::now() + wait_duration);
+        info!(
+            "poll_oneoff: waiting for {:?} before resuming guest",
+            wait_duration
+        );
+
+        //? Need to yield, so set fuel to zero
+        caller.set_fuel(0).unwrap();
+    }
+
+    // Write the event for the earliest deadline
+    // size: 32
+    // - userdata: at offset 0
+    // - error: at offset 8
+    // - type: at offset 10
+    // - fd_readwrite: at offset 16 (empty for clock events)
+    let mut event_buf = [0u8; 32];
+    event_buf[0..8].copy_from_slice(&earliest_userdata.to_le_bytes());
+    event_buf[8..10].copy_from_slice(&(Errno::Success as u16).to_le_bytes());
+    event_buf[10] = CLOCK_EVENT_TYPE;
+    // fd_readwrite is empty for clock events
+
+    info!(
+        "Writing event: userdata={}, error={}, type={}",
+        earliest_userdata,
+        Errno::Success as u16,
+        CLOCK_EVENT_TYPE
+    );
+    info!("Event buffer: {:?}", &event_buf[..16]);
+
+    let event_offset = events_ptr as usize;
+    memory.write(&mut caller, event_offset, &event_buf).unwrap();
+
+    // Write number of events (1) into result_ptr
+    memory
+        .write(&mut caller, result_ptr as usize, &1u32.to_le_bytes())
+        .unwrap();
+
+    Errno::Success as i32
 }
 
 /// Write a pointer to a string into a table, and the string itself into a buffer,

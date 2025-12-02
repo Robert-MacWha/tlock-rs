@@ -1,9 +1,10 @@
 use std::sync::{Arc, atomic::AtomicBool};
 
-use runtime::yield_now;
 use thiserror::Error;
-use tracing::{error, trace};
+use tracing::{error, info, trace};
 use wasmi::{Func, Store};
+
+use crate::wasmi_wasi::WasiCtx;
 
 #[derive(Error, Debug)]
 pub enum RunError {
@@ -30,8 +31,8 @@ pub enum RunError {
 /// becomes a performance issue we can test it properly.
 const MAX_FUEL: u64 = 100_000;
 
-pub fn spawn_wasm<T: Send + Sync + 'static>(
-    store: Store<T>,
+pub fn spawn_wasm(
+    store: Store<WasiCtx>,
     start_func: Func,
     is_running: Arc<AtomicBool>,
     max_fuel: Option<u64>,
@@ -51,8 +52,8 @@ pub fn spawn_wasm<T: Send + Sync + 'static>(
 /// need some manual way of interrupting the plugin every so often to check if
 /// it's been killed and yield. Here I do that by setting a low fuel limit,
 /// catching the out-of-fuel condition and resuming the plugin when it's not killed.
-async fn run_wasm<T>(
-    mut store: Store<T>,
+async fn run_wasm(
+    mut store: Store<WasiCtx>,
     start_func: Func,
     is_running: Arc<AtomicBool>,
     max_fuel: Option<u64>,
@@ -79,12 +80,37 @@ async fn run_wasm<T>(
                 let top_up = required.max(max_fuel);
                 store.set_fuel(top_up).unwrap();
 
+                // Super Jank Time:
+                //
+                // Continuation from `wasmi_wasi::poll_oneoff` that sets
+                // a resume time in the future if the guest requested,
+                // here we actually need to wait until that time before
+                // resuming the guest.
+                if let Some(resume_time) = store.data().resume_time {
+                    let now = runtime::now();
+                    if resume_time > now {
+                        info!(
+                            "Plugin requested sleep until {:?}, sleeping...",
+                            resume_time
+                        );
+                        let dur = resume_time - now;
+                        runtime::sleep(dur).await;
+                    }
+                    store.data_mut().resume_time = None;
+                }
+
                 trace!("Plugin out of fuel, yielding...");
-                yield_now().await;
+                runtime::yield_now().await;
 
                 match out_of_fuel.resume(&mut store, &mut []) {
-                    Ok(next) => resumable = next,
-                    Err(e) => return Err(RunError::ResumeError(e)),
+                    Ok(next) => {
+                        trace!("Plugin resumed after yielding");
+                        resumable = next;
+                    }
+                    Err(e) => {
+                        error!("Error resuming plugin: {:?}", e);
+                        return Err(RunError::ResumeError(e));
+                    }
                 }
             }
         }

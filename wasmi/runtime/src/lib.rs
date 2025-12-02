@@ -1,31 +1,38 @@
-#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
-pub async fn yield_now() {
-    use gloo_timers::future::TimeoutFuture;
-    TimeoutFuture::new(0).await;
+use std::time::Duration;
+pub use web_time;
+
+pub fn yield_now() -> impl std::future::Future<Output = ()> {
+    #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+    {
+        use gloo_timers::future::TimeoutFuture;
+        TimeoutFuture::new(0)
+    }
+
+    #[cfg(all(target_arch = "wasm32", target_os = "wasi"))]
+    {
+        async {} // noop
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        tokio::task::yield_now()
+    }
 }
 
-#[cfg(all(target_arch = "wasm32", target_os = "wasi"))]
-pub async fn yield_now() {
-    // noop
+pub fn now() -> web_time::Instant {
+    web_time::Instant::now()
 }
 
-#[cfg(not(target_arch = "wasm32"))]
-pub async fn yield_now() {
-    tokio::task::yield_now().await;
-}
+pub async fn sleep(dur: Duration) {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        tokio::time::sleep(dur).await;
+    }
 
-#[cfg(target_arch = "wasm32")]
-pub fn spawn_local<F>(future: F)
-where
-    F: std::future::Future<Output = ()> + 'static,
-{
-    wasm_bindgen_futures::spawn_local(future);
-}
+    // TODO: Add tokio here for wasm32-wasip1
 
-#[cfg(not(target_arch = "wasm32"))]
-pub fn spawn_local<F>(future: F) -> tokio::task::JoinHandle<()>
-where
-    F: std::future::Future<Output = ()> + Send + 'static,
-{
-    tokio::task::spawn(future)
+    #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+    {
+        gloo_timers::future::TimeoutFuture::new(dur.as_millis() as u32).await;
+    }
 }
