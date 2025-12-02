@@ -4,8 +4,10 @@ use serde_json::Value;
 use std::{fs, path::PathBuf, sync::Arc};
 use tokio::runtime::Builder;
 use tracing::info;
-use wasmi_hdk::plugin::{Plugin, PluginId};
-use wasmi_pdk::server::{Server, ServerBuilder};
+use wasmi_hdk::{
+    plugin::{Plugin, PluginId},
+    server::HostServer,
+};
 use wasmi_pdk::transport::Transport;
 
 fn load_plugin_wasm() -> Vec<u8> {
@@ -16,12 +18,8 @@ fn load_plugin_wasm() -> Vec<u8> {
     fs::read(wasm_path).expect("Failed to read plugin WASM file")
 }
 
-fn get_host_server() -> Server<(Option<PluginId>, ())> {
-    let server = ServerBuilder::default()
-        .with_method("echo", |_, params: Value| async move { Ok(params) })
-        .finish();
-
-    server
+fn get_host_server() -> HostServer<(Option<PluginId>, ())> {
+    HostServer::default().with_method("echo", |_, params: Value| async move { Ok(params) })
 }
 
 /// Benchmark the prime sieve function with a small input. Primarily tests the overhead

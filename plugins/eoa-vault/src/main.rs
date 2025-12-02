@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, io::stderr, sync::Arc};
 use tlock_alloy::AlloyBridge;
 use tlock_pdk::{
-    server::ServerBuilder,
+    server::PluginServer,
     state::{get_state, set_state},
     tlock_api::{
         RpcMethod,
@@ -37,7 +37,6 @@ use tlock_pdk::{
         transport::JsonRpcTransport,
     },
 };
-use tokio::{runtime::Builder, time::sleep_until};
 
 #[derive(Serialize, Deserialize, Default, Debug)]
 struct PluginState {
@@ -410,18 +409,9 @@ fn main() {
         .init();
     info!("Starting plugin...");
 
-    // Create JSON-RPC transport over stdin/stdout. The transport handles:
-    // - Reading the initial host request
-    // - Sending outbound requests to the host and awaiting responses
-    // - Writing the final response back to the host
-    let reader = std::io::BufReader::new(::std::io::stdin());
-    let writer = std::io::stdout();
-    let transport = JsonRpcTransport::new(reader, writer);
-    let transport = Arc::new(transport);
-
     // Register method handlers. The transport will route the initial host request
     // to the corresponding handler function.
-    let plugin = ServerBuilder::new(transport.clone())
+    PluginServer::new_with_transport()
         .with_method(plugin::Init, init)
         .with_method(global::Ping, ping)
         .with_method(vault::GetAssets, get_assets)
@@ -430,14 +420,5 @@ fn main() {
         .with_method(vault::OnDeposit, on_deposit)
         .with_method(page::OnLoad, on_load)
         .with_method(page::OnUpdate, on_update)
-        .finish();
-    let plugin = Arc::new(plugin);
-
-    // Start single-threaded async runtime and process the initial request
-    // from host.
-    let rt = Builder::new_current_thread().enable_time().build().unwrap();
-    let local = tokio::task::LocalSet::new();
-    rt.block_on(local.run_until(async move {
-        let _ = transport.process_next_line(Some(plugin)).await;
-    }));
+        .run();
 }

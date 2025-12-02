@@ -10,7 +10,6 @@ members = [
     "plugins/eoa-vault",
     "plugins/vault-page",
     "plugins/eth-provider",
-    "plugins/uniswap-plugin",
     "wasmi/runtime",
     "wasmi/wasmi-async",
     "wasmi/wasmi-pdk",
