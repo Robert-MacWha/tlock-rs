@@ -5,6 +5,7 @@ let
     ];
   };
   unstable = import <nixpkgs-unstable> { };
+  wasm-bindgen-cli_0_2_106 = pkgs.callPackage ./flakes/wasm-bindgen-cli.nix { };
 in
 pkgs.mkShell {
   packages = with pkgs; [
@@ -33,6 +34,9 @@ pkgs.mkShell {
     xdotool
     openssl
     binaryen
-    wasm-bindgen-cli_0_2_104
+    wasm-bindgen-cli_0_2_106
+
+    # TEMP: For testing
+    nodejs
   ];
 }

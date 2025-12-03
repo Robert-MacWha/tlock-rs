@@ -1,3 +1,4 @@
+use rand::Rng;
 use serde_json::{self, Value};
 use std::{io::stderr, sync::Arc};
 use wasmi_pdk::{
@@ -8,14 +9,27 @@ use wasmi_pdk::{
     transport::{JsonRpcTransport, Transport},
 };
 
-async fn prime_sieve(_transport: Arc<JsonRpcTransport>, limit: u64) -> Result<Value, RpcError> {
-    let limit = limit as usize;
-    let primes = sieve_of_eratosthenes(limit);
-    info!("Generated {} primes up to {}", primes.len(), limit);
-    Ok(serde_json::json!({
-        "count": primes.len(),
-        "limit": limit
-    }))
+async fn get_random_number(_: Arc<JsonRpcTransport>, _: ()) -> Result<Value, RpcError> {
+    let mut rng = rand::rng();
+    let random_number: u64 = rng.random();
+    Ok(Value::Number(random_number.into()))
+}
+
+async fn get_time(_: Arc<JsonRpcTransport>, _: ()) -> Result<Value, RpcError> {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|e| {
+            error!("System time before UNIX EPOCH: {}", e);
+            RpcError::InternalError
+        })?;
+    Ok(Value::Number(now.as_secs().into()))
+}
+
+async fn sleep(_: Arc<JsonRpcTransport>, duration_ms: u64) -> Result<(), RpcError> {
+    info!("Sleeping for {} milliseconds", duration_ms);
+    tokio::time::sleep(std::time::Duration::from_millis(duration_ms)).await;
+    info!("Woke up after sleeping for {} milliseconds", duration_ms);
+    Ok(())
 }
 
 async fn many_echo(transport: Arc<JsonRpcTransport>, limit: u64) -> Result<(), RpcError> {
@@ -34,6 +48,16 @@ async fn many_echo(transport: Arc<JsonRpcTransport>, limit: u64) -> Result<(), R
     }
 
     Ok(())
+}
+
+async fn prime_sieve(_transport: Arc<JsonRpcTransport>, limit: u64) -> Result<Value, RpcError> {
+    let limit = limit as usize;
+    let primes = sieve_of_eratosthenes(limit);
+    info!("Generated {} primes up to {}", primes.len(), limit);
+    Ok(serde_json::json!({
+        "count": primes.len(),
+        "limit": limit
+    }))
 }
 
 fn sieve_of_eratosthenes(limit: usize) -> Vec<usize> {
@@ -71,7 +95,10 @@ fn main() {
             info!("Received ping request, sending pong response");
             Ok("pong".to_string())
         })
-        .with_method("prime_sieve", prime_sieve)
+        .with_method("get_random_number", get_random_number)
+        .with_method("get_time", get_time)
+        .with_method("sleep", sleep)
         .with_method("many_echo", many_echo)
+        .with_method("prime_sieve", prime_sieve)
         .run();
 }
