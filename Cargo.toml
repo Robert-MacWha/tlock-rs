@@ -31,3 +31,6 @@ inherits = "dev"
 
 [profile.android-dev]
 inherits = "dev"
+
+[patch.crates-io]
+alloy = { git = "https://github.com/Robert-MacWha/alloy", branch = "wasm32-wasip-support" }

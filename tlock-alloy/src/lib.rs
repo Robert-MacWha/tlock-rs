@@ -1,9 +1,12 @@
 use alloy::{
     eips::BlockId,
-    rpc::{client::RpcClient, types::BlockTransactionsKind},
+    rpc::{
+        client::RpcClient,
+        json_rpc::{RequestPacket, Response, ResponsePacket, ResponsePayload, SerializedRequest},
+        types::BlockTransactionsKind,
+    },
     transports::{TransportError, TransportErrorKind, TransportFut},
 };
-use alloy_json_rpc::{RequestPacket, Response, ResponsePacket, SerializedRequest};
 use serde::Deserialize;
 use serde_json::value::to_raw_value;
 use std::{sync::Arc, task::Poll};
@@ -65,8 +68,7 @@ impl Service<RequestPacket> for AlloyBridge {
             let mut responses = Vec::with_capacity(reqs.len());
 
             for req in reqs {
-                let response: Result<Response, alloy_json_rpc::RpcError<TransportErrorKind>> =
-                    call_req(&req, transport.clone(), provider_id).await;
+                let response = call_req(&req, transport.clone(), provider_id).await;
                 let response = match response {
                     Ok(resp) => resp,
                     Err(e) => {
@@ -248,11 +250,9 @@ async fn call_req(
         }
     };
 
-    let response = alloy_json_rpc::Response {
+    let response = Response {
         id,
-        payload: alloy_json_rpc::ResponsePayload::Success(
-            to_raw_value(&resp).map_err(TransportError::ser_err)?,
-        ),
+        payload: ResponsePayload::Success(to_raw_value(&resp).map_err(TransportError::ser_err)?),
     };
 
     Ok(response)

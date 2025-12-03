@@ -1,3 +1,6 @@
+use crate::serde_helpers::{
+    common::deserialize_number, empty_params, lenient_block_number, sequence,
+};
 /// https://github.com/foundry-rs/foundry/blob/a27da27d61dfedfed9c975cac001a48b0f398a55/crates/anvil/core/src/eth/mod.rs
 /// Licensed under Apache-2.0 OR MIT.  Copyright (c) 2021 Georgios Konstantopoulos
 /// Copied and adapter for tlock-rs.
@@ -7,22 +10,16 @@
 /// present in the original file). I also updated some types to modern import paths from alloy so
 /// I could use the same version as elsewhere.
 use alloy::{
+    dyn_abi::TypedData,
     eips::{BlockId, BlockNumberOrTag},
     primitives::{Address, B64, B256, Bytes, TxHash, U256},
     rpc::types::{
-        BlockOverrides, Filter, Index, TransactionRequest, simulate::SimulatePayload,
+        BlockOverrides, Filter, Index, TransactionRequest,
+        simulate::SimulatePayload,
         state::StateOverride,
+        trace::{filter::TraceFilter, geth::GethDebugTracingCallOptions},
     },
     serde::WithOtherFields,
-};
-use alloy_dyn_abi::TypedData;
-use alloy_rpc_types_trace::{
-    filter::TraceFilter,
-    geth::{GethDebugTracingCallOptions, GethDebugTracingOptions},
-};
-
-use crate::serde_helpers::{
-    common::deserialize_number, empty_params, lenient_block_number, sequence,
 };
 
 /// Wrapper type that ensures the type is named `params`
@@ -305,7 +302,7 @@ pub enum EthRequest {
 
     /// geth's `debug_traceTransaction`  endpoint
     #[serde(rename = "debug_traceTransaction")]
-    DebugTraceTransaction(B256, #[serde(default)] GethDebugTracingOptions),
+    DebugTraceTransaction(B256, #[serde(default)] GethDebugTracingCallOptions),
 
     /// geth's `debug_traceCall`  endpoint
     #[serde(rename = "debug_traceCall")]

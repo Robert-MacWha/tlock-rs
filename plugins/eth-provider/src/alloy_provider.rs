@@ -1,9 +1,11 @@
 use alloy::{
     providers::ProviderBuilder,
-    rpc::client::RpcClient,
+    rpc::{
+        client::RpcClient,
+        json_rpc::{RequestPacket, ResponsePacket},
+    },
     transports::{TransportError, TransportErrorKind, TransportFut},
 };
-use alloy_json_rpc::{RequestPacket, ResponsePacket};
 use std::{sync::Arc, task::Poll};
 use tlock_pdk::{
     tlock_api::{RpcMethod, host},
@@ -24,7 +26,7 @@ pub fn create_alloy_provider(
 }
 
 #[derive(Clone)]
-pub struct HostTransportService {
+struct HostTransportService {
     transport: Arc<JsonRpcTransport>,
     rpc_url: String,
 }

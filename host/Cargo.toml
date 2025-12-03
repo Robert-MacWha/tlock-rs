@@ -6,7 +6,7 @@ edition = "2024"
 [dependencies]
 tlock-hdk = { path = "../tlock-hdk" }
 wasmi-async = { path = "../wasmi/wasmi-async" }
-alloy = { path = "../../alloy/crates/alloy" }
+alloy = "1.1.2"
 simple_logger = "5.0.0"
 thiserror = "2.0.12"
 serde = { version = "1.0.219", features = ["derive"] }

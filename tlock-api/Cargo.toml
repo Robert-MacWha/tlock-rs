@@ -8,5 +8,5 @@ wasmi-pdk = { path="../wasmi/wasmi-pdk" }
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.143"
 async-trait = "0.1.89"
-alloy = { path = "../../alloy/crates/alloy" }
+alloy = "1.1.2"
 uuid = { version = "1.18.1", features = [ "v4", "serde", "js" ] } 
