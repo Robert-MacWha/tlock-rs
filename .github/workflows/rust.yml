@@ -15,33 +15,17 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
-
-    - name: Cache cargo registry + index
-      uses: actions/cache@v4
+    - uses: dtolnay/rust-toolchain@stable
       with:
-        path: |
-          ~/.cargo/registry
-          ~/.cargo/git
-        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-        restore-keys: |
-          ${{ runner.os }}-cargo-
+        targets: wasm32-wasip1
 
-    - name: Cache target directory
-      uses: actions/cache@v4
-      with:
-        path: target
-        key: ${{ runner.os }}-cargo-target-${{ hashFiles('**/Cargo.lock') }}
-        restore-keys: |
-          ${{ runner.os }}-cargo-target-
-
-    - name: Add wasm32-wasip1 target
-      run: rustup target add wasm32-wasip1
+    - uses: Swatinem/rust-cache@v2
 
     - name: Build
-      run: cargo build --verbose
+      run: cargo build
 
     - name: Build plugin
       run: cargo build --target wasm32-wasip1 -p test-plugin --release
 
     - name: Run tests
-      run: cargo test --verbose
+      run: cargo test
