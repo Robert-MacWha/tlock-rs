@@ -4,14 +4,35 @@ use serde::{Deserialize, Serialize};
 /// and other UI custom elements.
 #[derive(PartialEq, Clone, Serialize, Deserialize, Debug)]
 pub enum Component {
-    Container { children: Vec<Component> },
-    Heading { text: String },
-    Text { text: String },
-    ButtonInput { text: String, id: String },
-    Form { fields: Vec<Component>, id: String },
-    TextInput { placeholder: String, id: String },
-    SubmitInput { text: String },
-    Dropdown { id: String, options: Vec<String>, selected: Option<String> },
+    Container {
+        children: Vec<Component>,
+    },
+    Heading {
+        text: String,
+    },
+    Text {
+        text: String,
+    },
+    ButtonInput {
+        text: String,
+        id: String,
+    },
+    Form {
+        fields: Vec<Component>,
+        id: String,
+    },
+    TextInput {
+        placeholder: String,
+        id: String,
+    },
+    SubmitInput {
+        text: String,
+    },
+    Dropdown {
+        id: String,
+        options: Vec<String>,
+        selected: Option<String>,
+    },
 }
 
 impl Component {
@@ -57,7 +78,11 @@ pub fn submit_input(text: impl Into<String>) -> Component {
     Component::SubmitInput { text: text.into() }
 }
 
-pub fn dropdown(id: impl Into<String>, options: Vec<String>, selected: Option<String>) -> Component {
+pub fn dropdown(
+    id: impl Into<String>,
+    options: Vec<String>,
+    selected: Option<String>,
+) -> Component {
     Component::Dropdown {
         id: id.into(),
         options,
