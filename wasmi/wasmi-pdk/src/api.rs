@@ -1,16 +1,14 @@
-use async_trait::async_trait;
 use serde_json::Value;
 
-use crate::rpc_message::RpcErrorCode;
+use crate::{rpc_message::RpcError, server::BoxFuture};
 
-pub trait ApiError: From<RpcErrorCode> + Send + Sync {}
-impl<T> ApiError for T where T: From<RpcErrorCode> + Send + Sync {}
+pub trait ApiError: From<RpcError> + Send + Sync {}
+impl<T> ApiError for T where T: From<RpcError> + Send + Sync {}
 
 /// JSON-RPC request handler.
-///  
-/// The error type `E` must implement `From<RpcErrorCode>`, since the transport layer
+///
+/// The error type `E` must implement `From<RpcError>`, since the transport layer
 /// may need to post errors of this type.
-#[async_trait]
-pub trait RequestHandler<E: ApiError>: Send + Sync {
-    async fn handle(&self, method: &str, params: Value) -> Result<Value, E>;
+pub trait RequestHandler<E>: Send + Sync {
+    fn handle<'a>(&'a self, method: &'a str, params: Value) -> BoxFuture<'a, Result<Value, E>>;
 }

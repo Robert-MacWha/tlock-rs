@@ -5,6 +5,10 @@
 # HTML title tag content
 title = "frontend"
 
+[bundle]
+identifier = "com.mycompany"
+publisher = "testCompany"
+
 # include `assets` in web platform
 [web.resource]
 

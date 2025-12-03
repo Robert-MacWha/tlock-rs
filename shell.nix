@@ -1,22 +1,38 @@
-{
-  pkgs ? import <nixpkgs> { },
-  unstable ? import <nixpkgs-unstable> { },
-}:
-
+let
+  pkgs = import <nixpkgs> {
+    overlays = [
+      (import (builtins.fetchTarball "https://github.com/oxalica/rust-overlay/archive/master.tar.gz"))
+    ];
+  };
+  unstable = import <nixpkgs-unstable> { };
+in
 pkgs.mkShell {
   packages = with pkgs; [
+    # Rust toolchain with WASI target
+    (rust-bin.stable.latest.default.override {
+      extensions = [ "rust-src" ];
+      targets = [
+        "wasm32-wasip1"
+        "wasm32-unknown-unknown"
+      ];
+    })
+
     cargo
-    rustc
     rustfmt
-    dioxus-cli
-    lld # Required for dioxus
-    pkg-config # Required for dioxus
-    gtk3 # Required for dioxus
-    cairo # Required for dioxus
-    glib # Required for dioxus
-    webkitgtk_4_1 # Required for dioxus
-    libsoup_3 # Required for dioxus
-    xdotool # Required for dioxus
-    unstable.wasm-bindgen-cli_0_2_104 # Required for dioxus
+    rust-bin.stable.latest.rust-analyzer
+    unstable.dioxus-cli
+
+    # For dioxus-cli
+    lld
+    pkg-config
+    gtk3
+    cairo
+    glib
+    webkitgtk_4_1
+    libsoup_3
+    xdotool
+    openssl
+    binaryen
+    wasm-bindgen-cli_0_2_104
   ];
 }

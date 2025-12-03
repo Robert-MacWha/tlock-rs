@@ -5,7 +5,9 @@ edition = "2024"
 
 [dependencies]
 tlock-api = { path = "../tlock-api" }
+tlock-pdk = { path = "../tlock-pdk" }
 wasmi-hdk = { path = "../wasmi/wasmi-hdk" }
 wasmi-pdk = { path = "../wasmi/wasmi-pdk" }
 async-trait = "0.1.89"
 serde_json = "1.0.142"
+tracing = "0.1.41"

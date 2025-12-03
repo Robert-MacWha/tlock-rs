@@ -1,47 +1,38 @@
-#[cfg(target_arch = "wasm32")]
-pub async fn yield_now() {
-    use std::future::Future;
-    use std::pin::Pin;
-    use std::task::{Context, Poll};
+use std::time::Duration;
+pub use web_time;
 
-    struct Yield {
-        yielded: bool,
+pub fn yield_now() -> impl std::future::Future<Output = ()> {
+    #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+    {
+        use gloo_timers::future::TimeoutFuture;
+        TimeoutFuture::new(0)
     }
 
-    impl Future for Yield {
-        type Output = ();
-
-        fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<()> {
-            if self.yielded {
-                Poll::Ready(())
-            } else {
-                self.yielded = true;
-                cx.waker().wake_by_ref();
-                Poll::Pending
-            }
-        }
+    #[cfg(all(target_arch = "wasm32", target_os = "wasi"))]
+    {
+        async {} // noop
     }
 
-    Yield { yielded: false }.await
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        tokio::task::yield_now()
+    }
 }
 
-#[cfg(not(target_arch = "wasm32"))]
-pub async fn yield_now() {
-    tokio::task::yield_now().await;
+pub fn now() -> web_time::Instant {
+    web_time::Instant::now()
 }
 
-#[cfg(target_arch = "wasm32")]
-pub fn spawn_local<F>(future: F)
-where
-    F: std::future::Future<Output = ()> + 'static,
-{
-    wasm_bindgen_futures::spawn_local(future);
-}
+pub async fn sleep(dur: Duration) {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        tokio::time::sleep(dur).await;
+    }
 
-#[cfg(not(target_arch = "wasm32"))]
-pub fn spawn_local<F>(future: F) -> tokio::task::JoinHandle<()>
-where
-    F: std::future::Future<Output = ()> + Send + 'static,
-{
-    tokio::task::spawn(future)
+    // TODO: Add tokio here for wasm32-wasip1
+
+    #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+    {
+        gloo_timers::future::TimeoutFuture::new(dur.as_millis() as u32).await;
+    }
 }

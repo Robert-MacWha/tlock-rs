@@ -2,13 +2,13 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use serde::{Serialize, de::DeserializeOwned};
-use wasmi_pdk::{api::ApiError, rpc_message::RpcErrorCode, transport::Transport};
+use wasmi_pdk::{api::ApiError, rpc_message::RpcError, transport::Transport};
 
 pub mod caip;
+pub mod component;
+pub mod domains;
 pub mod entities;
-pub use alloy_dyn_abi;
-pub use alloy_primitives;
-pub use alloy_rpc_types;
+pub use alloy;
 
 // TODO: Consider adding a `mod sealed::Sealed {}` to prevent external impl, forcing
 // plugins to only use provided methods.
@@ -19,7 +19,8 @@ pub use alloy_rpc_types;
 // it should work fine for any RPC system.
 // TODO: Also consider forwards compatibility with associated types, maybe wrap
 // them as named structs to allow adding fields later without introducing breaking changes.
-#[async_trait]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 pub trait RpcMethod: Send + Sync {
     type Params: DeserializeOwned + Serialize + Send + Sync;
     type Output: DeserializeOwned + Serialize + Send + Sync;
@@ -32,132 +33,270 @@ pub trait RpcMethod: Send + Sync {
         E: ApiError,
         T: Transport<E> + Send + Sync + 'static,
     {
-        let raw_params =
-            serde_json::to_value(params).map_err(|_| RpcErrorCode::InvalidParams.into())?;
+        let raw_params = serde_json::to_value(params).map_err(|_| RpcError::InvalidParams)?;
         let resp = transport.call(Self::NAME, raw_params).await?;
-        let result =
-            serde_json::from_value(resp.result).map_err(|_| RpcErrorCode::InternalError.into())?;
+        let result = serde_json::from_value(resp.result).map_err(|_| RpcError::InternalError)?;
         Ok(result)
     }
+}
+
+macro_rules! rpc_method {
+    (
+        $(#[$meta:meta])*
+        $name:ident, $struct_name:ident, $params:ty, $output:ty
+    ) => {
+        $(#[$meta])*
+        ///
+        #[doc = concat!("**Params:** `", stringify!($params), "`")]
+        #[doc = concat!("**Output:** `", stringify!($output), "`")]
+        pub struct $struct_name;
+
+        impl $crate::RpcMethod for $struct_name {
+            type Params = $params;
+            type Output = $output;
+            const NAME: &'static str = stringify!($name);
+        }
+    };
 }
 
 /// The global namespace contains methods that are not specific to any particular
 /// domain.
 pub mod global {
-    use super::RpcMethod;
-
-    /// Simple health check
-    pub struct Ping;
-    impl RpcMethod for Ping {
-        type Params = ();
-        type Output = String;
-
-        const NAME: &'static str = "tlock_ping";
-    }
+    rpc_method!(
+        /// Simple health check
+        tlock_ping, Ping, (), String
+    );
 }
 
 /// The host namespace contains methods for interacting with the host and
 /// performing privileged operations.
 pub mod host {
-    use crate::{RpcMethod, entities::EntityId};
+    use crate::{
+        caip::ChainId,
+        component::Component,
+        domains::Domain,
+        entities::{EntityId, EthProviderId, PageId, VaultId},
+    };
+    use serde::{Deserialize, Serialize};
 
-    /// Request the host registers a new entity with the given ID and this
-    /// plugin as its owner.
-    pub struct RegisterEntity;
-
-    impl RpcMethod for RegisterEntity {
-        type Params = EntityId;
-        type Output = ();
-
-        const NAME: &'static str = "host_register_entity";
+    #[derive(Serialize, Deserialize, Clone, Debug)]
+    pub struct Request {
+        pub url: String,
+        pub method: String,
+        pub headers: Vec<(String, Vec<u8>)>,
+        pub body: Option<Vec<u8>>,
     }
 
-    /// Get the plugin's persistent state from the host.
-    ///
-    /// Returns `None` if no state has been stored.
-    pub struct GetState;
-    impl RpcMethod for GetState {
-        type Params = ();
-        type Output = Option<Vec<u8>>;
+    rpc_method!(
+        /// Request the host registers a new entity with the given ID and this
+        /// plugin as its owner.
+        host_register_entity, RegisterEntity, Domain, EntityId
+    );
 
-        const NAME: &'static str = "host_get_state";
-    }
+    // TODO: Consider better approaches for these getters. Ultimately we'll want
+    // to have one for each domain, and perhaps a more general function / standard
+    // identification schema for entities would be better.
+    //
+    // For now this is quick and dirty and works.
+    rpc_method!(
+        /// Request
+        host_request_eth_provider,
+        RequestEthProvider,
+        ChainId,
+        Option<EthProviderId>
+    );
 
-    /// Sets the plugin's persistent state to the host.
-    pub struct SetState;
-    impl RpcMethod for SetState {
-        type Params = Vec<u8>;
-        type Output = ();
+    rpc_method!(
+        /// Request the host to provide a vault entity for the plugin to interact with
+        host_request_vault, RequestVault, (), Option<VaultId>
+    );
 
-        const NAME: &'static str = "host_set_state";
-    }
+    rpc_method!(
+        /// Make a network request
+        host_fetch, Fetch, Request, Result<Vec<u8>, String>
+    );
+
+    rpc_method!(
+        /// Gets the plugin's persistent state from the host.
+        ///
+        /// Returns `None` if no state has been stored.
+        host_get_state, GetState, (), Option<Vec<u8>>
+    );
+
+    rpc_method!(
+        /// Sets the plugin's persistent state to the host.
+        host_set_state, SetState, Vec<u8>, ()
+    );
+
+    rpc_method!(
+        /// Sets a specific page to the given component.
+        host_set_page, SetPage, (PageId, Component), ()
+    );
 }
 
 /// The plugin namespace contains methods implemented by plugins, generally
 /// used by the host for lifecycle management.
 pub mod plugin {
-    /// Initialize the plugin, called by the host the first time a new plugin
-    /// is registered.
-    pub struct Init;
-    impl super::RpcMethod for Init {
-        type Params = ();
-        type Output = ();
+    rpc_method!(
+        /// Initialize the plugin, called by the host the first time a new plugin
+        /// is registered.
+        plugin_init, Init, (), ()
+    );
+}
 
-        const NAME: &'static str = "plugin_init";
-    }
+/// The eth namespace contains methods for interacting with EVM chains.
+/// It aims to be fully compatible with standard Ethereum JSON-RPC methods.
+pub mod eth {
+    use alloy::{
+        eips::BlockId,
+        primitives::{Address, Bytes, TxHash, U256},
+        rpc::types::{
+            Block, BlockOverrides, BlockTransactionsKind, Filter, Log, Transaction,
+            TransactionReceipt, TransactionRequest, state::StateOverride,
+        },
+    };
+
+    use crate::entities::EthProviderId;
+
+    rpc_method!(eth_chainId, ChainId, EthProviderId, U256);
+
+    rpc_method!(
+        /// Get the current block number.
+        eth_blockNumber, BlockNumber, EthProviderId, u64
+    );
+
+    rpc_method!(
+        /// Executes a new message call immediately without creating a transaction on the block chain.
+        eth_call, Call, (EthProviderId, TransactionRequest, BlockId, Option<StateOverride>, Option<BlockOverrides>), Bytes
+    );
+
+    rpc_method!(
+        /// Gets the current gas price.
+        eth_gasPrice, GasPrice, EthProviderId, u128
+    );
+
+    rpc_method!(
+        /// Gets the balance of an address at a given block.
+        eth_getBalance, GetBalance, (EthProviderId, alloy::primitives::Address, BlockId), alloy::primitives::U256
+    );
+
+    rpc_method!(
+        /// Gets a block by its hash or number.
+        eth_getBlock, GetBlock, (EthProviderId, BlockId, BlockTransactionsKind), Block
+    );
+
+    rpc_method!(
+        /// Gets a block receipt by its hash or number.
+        eth_getBlockReceipts, GetBlockReceipts, (EthProviderId, BlockId), Vec<TransactionReceipt>
+    );
+
+    rpc_method!(
+        // Gets logs matching the given filter object.
+        eth_getLogs,
+        GetLogs,
+        (EthProviderId, Filter),
+        Vec<Log>
+    );
+    rpc_method!(
+        /// Gets the compiled bytecode of a smart contract.
+        eth_getCode, GetCode, (EthProviderId, Address, BlockId), Bytes
+    );
+
+    rpc_method!(
+        /// Gets a transaction by its hash
+        eth_getTransactionByHash, GetTransactionByHash, (EthProviderId, TxHash), Transaction
+    );
+
+    rpc_method!(
+        /// Gets a transaction receipt by its hash
+        eth_getTransactionReceipt, GetTransactionReceipt, (EthProviderId, TxHash), TransactionReceipt
+    );
+
+    rpc_method!(
+        /// Gets the transaction count (AKA "nonce") for an address at a given block.
+        eth_getTransactionCount, GetTransactionCount, (EthProviderId, Address, BlockId), u64
+    );
+
+    rpc_method!(
+        /// Estimates the gas necessary to complete a transaction.
+        eth_estimateGas, EstimateGas, (EthProviderId, TransactionRequest, BlockId, Option<StateOverride>, Option<BlockOverrides>), u64
+    );
+
+    // TODO: Consider making this a different domain and having a distinction between "eth-read" and "eth-write"
+    // methods. Would also make it easier to add custom send methods (IE to private pool, or forwarding to devp2p, etc).
+    rpc_method!(
+        /// Sends a raw transaction to the network.
+        eth_sendRawTransaction, SendRawTransaction, (EthProviderId, Bytes), TxHash
+    );
 }
 
 /// The vault namespace contains methods for interacting with vaults, transferring
 /// funds between different accounts.
 pub mod vault {
-    use alloy_primitives::U256;
-
     use crate::{
-        RpcMethod,
         caip::{AccountId, AssetId},
         entities::VaultId,
     };
+    use alloy::primitives::U256;
 
-    /// Get the balance for all assets in a given account.
-    pub struct BalanceOf;
-    impl RpcMethod for BalanceOf {
-        type Params = VaultId;
-        type Output = Vec<(AssetId, U256)>;
+    rpc_method!(
+        /// Get the balance for all assets in a given account.
+        ///
+        /// Plugins MAY return zero balances for unsupported assets.
+        ///
+        /// The list of supported assets MAY change over time.
+        vault_get_assets, GetAssets, VaultId, Vec<(AssetId, U256)>
+    );
 
-        const NAME: &'static str = "vault_balance_of";
+    rpc_method!(
+        /// Withdraw an amount of some asset from this vault to another account.
+        vault_withdraw, Withdraw, (VaultId, AccountId, AssetId, U256), ()
+    );
+
+    rpc_method!(
+        /// Gets the deposit address for a particular account and asset. Accounts can
+        /// also use this to block deposits from unsupported assets or asset classes.
+        ///
+        /// Plugins MUST return an address if the asset is supported, or an error
+        /// if the asset is not supported.
+        ///
+        /// Because vault implementations are black boxes, any plugin sending an asset
+        /// to a vault MUST first call this method to ensure the asset is supported and
+        /// the destination address is correct. Destination addresses may change over time,
+        /// as might the supported assets.
+        vault_get_deposit_address, GetDepositAddress, (VaultId, AssetId), AccountId
+    );
+
+    rpc_method!(
+        /// Callback for when an amount is deposited in an account.
+        /// TODO: Also strongly consider calling this automatically. Perhaps keep track
+        /// of all the times `GetDepositAddress` is called during the execution of a
+        /// plugin, and once complete call `OnDeposit` for each `GetDepositAddress` call.
+        vault_on_deposit, OnDeposit, (VaultId, AssetId), ()
+    );
+}
+
+pub mod page {
+    use serde::{Deserialize, Serialize};
+    use std::collections::HashMap;
+
+    use crate::entities::PageId;
+
+    #[derive(Serialize, Deserialize, Debug)]
+    pub enum PageEvent {
+        ButtonClicked(String),                          // (button_id)
+        FormSubmitted(String, HashMap<String, String>), // (form_id, form_values)
     }
 
-    /// Transfer an amount from one account to another.
-    pub struct Transfer;
-    impl RpcMethod for Transfer {
-        type Params = (VaultId, AccountId, AssetId, U256); // (from, to, asset, amount)
-        type Output = Result<(), String>;
+    rpc_method!(
+        /// Called by the host when a registered page is loaded in the frontend. The
+        /// plugin should setup any necessary interfaces with `host::SetInterface` here,
+        /// dependant on the plugin's internal state.
+        page_on_load, OnLoad, PageId, ()
+    );
 
-        const NAME: &'static str = "vault_transfer";
-    }
-
-    /// Gets the receipt address for a particular account and asset. Accounts can
-    /// also use this to block deposits from unsupported assets or asset classes.
-    ///  
-    /// Because vault implementations are black boxes, any plugin sending an asset
-    /// to a vault MUST first call this method to ensure the asset is supported and
-    /// the destination address is correct. Destination addresses may change over time,
-    /// as might the supported assets.
-    pub struct GetReceiptAddress;
-    impl RpcMethod for GetReceiptAddress {
-        type Params = (VaultId, AssetId); // (to, asset)
-        type Output = Result<AccountId, String>;
-
-        const NAME: &'static str = "vault_get_receipt_address";
-    }
-
-    /// Receive an amount in an account. It is called by the host after a transfer
-    /// has been confirmed.
-    pub struct OnReceive;
-    impl RpcMethod for OnReceive {
-        type Params = (VaultId, AssetId); // (to, amount)
-        type Output = ();
-
-        const NAME: &'static str = "vault_receive";
-    }
+    rpc_method!(
+        /// Called by the host when a registered page is updated in the frontend.
+        page_on_update, OnUpdate, (PageId, PageEvent), ()
+    );
 }

@@ -1,0 +1,116 @@
+use dioxus::prelude::*;
+use tlock_hdk::tlock_api::{component::Component, page::PageEvent};
+
+#[derive(PartialEq, Clone, Props)]
+pub struct ComponentProps {
+    component: Component,
+    on_event: Callback<PageEvent, ()>,
+}
+
+/// Render a UI component recursively.
+#[component]
+pub fn RenderComponent(props: ComponentProps) -> Element {
+    let component = props.component;
+    match component {
+        Component::Container { children } => {
+            rsx! {
+                div {
+                    class: "container",
+                    {
+                        children
+                            .iter()
+                            .map(|child| rsx!(RenderComponent { component: child.clone(), on_event: props.on_event }))
+                    }
+                }
+            }
+        }
+        Component::Heading { text } => {
+            rsx! {
+                h1 { "{text}" }
+            }
+        }
+        Component::Text { text } => {
+            rsx! {
+                p { "{text}" }
+            }
+        }
+        Component::ButtonInput { text, id } => {
+            rsx! {
+                button {
+                    class: "btn btn-primary",
+                    onclick: move |_| {
+                        props.on_event.call(PageEvent::ButtonClicked(id.clone()));
+                    },
+                    "{text}"
+                }
+            }
+        }
+        Component::TextInput { placeholder, id } => {
+            rsx! {
+                input {
+                    class: "form-control",
+                    r#type: "text",
+                    name: "{id}",
+                    placeholder: "{placeholder}",
+                }
+            }
+        }
+        Component::Form { fields, id } => {
+            rsx! {
+                form {
+                    class: "form",
+                    onsubmit: move |e| {
+                        e.prevent_default();
+                        let data = e.data().clone().values();
+                        let data = data.iter().filter_map(|(k, v)| match v {
+                            FormValue::Text(v) => Some((k.clone(), v.clone())),
+                            _ => None,
+                        })
+                        .collect();
+                        props.on_event.call(PageEvent::FormSubmitted(id.clone(), data));
+                    },
+                    {
+                        fields
+                            .iter()
+                            .map(|field| rsx!(RenderComponent { component: field.clone(), on_event: props.on_event }))
+                    }
+                }
+            }
+        }
+        Component::SubmitInput { text } => {
+            rsx! {
+                button {
+                    class: "btn btn-primary",
+                    r#type: "submit",
+                    "{text}",
+                }
+            }
+        }
+        Component::Dropdown {
+            id,
+            options,
+            selected,
+        } => {
+            rsx! {
+                select {
+                    class: "form-select",
+                    name: "{id}",
+                    {
+                        options
+                            .iter()
+                            .map(|option| {
+                                let is_selected = selected.as_ref() == Some(option);
+                                rsx! {
+                                    option {
+                                        value: "{option}",
+                                        selected: is_selected,
+                                        "{option}"
+                                    }
+                                }
+                            })
+                    }
+                }
+            }
+        }
+    }
+}

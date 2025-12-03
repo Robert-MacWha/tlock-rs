@@ -5,8 +5,11 @@ members = [
     "tlock-pdk",
     "tlock-hdk",
     "tlock-api",
+    "tlock-alloy",
     "plugins/plugin-template",
-    "plugins/example-vault",
+    "plugins/eoa-vault",
+    "plugins/vault-page",
+    "plugins/eth-provider",
     "wasmi/runtime",
     "wasmi/wasmi-async",
     "wasmi/wasmi-pdk",
@@ -15,6 +18,9 @@ members = [
 ]
 
 resolver = "2"
+
+[profile.release]
+lto = true
 
 [profile.wasm-dev]
 inherits = "dev"
@@ -25,3 +31,6 @@ inherits = "dev"
 
 [profile.android-dev]
 inherits = "dev"
+
+[patch.crates-io]
+alloy = { git = "https://github.com/Robert-MacWha/alloy", branch = "wasm32-wasip-support" }
