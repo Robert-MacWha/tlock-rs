@@ -1,4 +1,3 @@
-// TODO: Merge this + the integration test version to avoid duplication & inconsistency
 use criterion::{Criterion, criterion_group, criterion_main};
 use serde_json::Value;
 use std::{fs, path::PathBuf, sync::Arc};

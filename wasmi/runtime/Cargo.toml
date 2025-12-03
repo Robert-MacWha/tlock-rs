@@ -5,7 +5,7 @@ edition = "2024"
 
 [dependencies]
 futures = "0.3.31"
-wasm-bindgen-futures = "0.4.50"
+wasm-bindgen-futures = "0.4"
 web-time = "1.1.0"
 gloo-timers = { version = "0.3.0", features = ["futures"] }
 
