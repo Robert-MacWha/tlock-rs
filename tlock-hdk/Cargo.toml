@@ -4,10 +4,10 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-tlock-api = { workspace = true }
-tlock-pdk = { workspace = true }
-wasmi-hdk = { workspace = true }
-wasmi-pdk = { workspace = true }
 async-trait = { workspace = true }
 serde_json = { workspace = true }
+tlock-api = { workspace = true }
+tlock-pdk = { workspace = true }
 tracing = { workspace = true }
+wasmi-hdk = { workspace = true }
+wasmi-pdk = { workspace = true }

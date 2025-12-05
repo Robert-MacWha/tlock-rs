@@ -3,21 +3,21 @@ name = "frontend"
 version = "0.1.0"
 edition = "2024"
 
-[dependencies]
-host = { workspace = true }
-tlock-hdk = { workspace = true }
-dioxus = { workspace = true }
-tracing-log = { workspace = true }
-futures = { workspace = true }
-reqwest = { workspace = true }
-serde = { workspace = true }
-serde_json = { workspace = true }
-gloo-timers = { workspace = true }
-getrandom = { workspace = true }
-uuid = { workspace = true }
-
 [features]
 default = ["web"]
 web = ["dioxus/web"]
 desktop = ["dioxus/desktop"]
 mobile = ["dioxus/mobile"]
+
+[dependencies]
+dioxus = { workspace = true }
+futures = { workspace = true }
+getrandom = { workspace = true }
+gloo-timers = { workspace = true }
+host = { workspace = true }
+reqwest = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tlock-hdk = { workspace = true }
+tracing-log = { workspace = true }
+uuid = { workspace = true }

@@ -4,10 +4,10 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-tlock-pdk = { workspace = true }
+alloy = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-alloy = { workspace = true }
+tlock-pdk = { workspace = true }
 tower-service = { workspace = true }
 
 [build]
