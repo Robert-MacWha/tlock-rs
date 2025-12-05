@@ -6,10 +6,7 @@ edition = "2024"
 [dependencies]
 futures = { workspace = true }
 getrandom = { workspace = true }
-gloo-timers = { workspace = true }
 runtime = { workspace = true }
 thiserror = { workspace = true }
-tokio = { workspace = true }
 tracing = { workspace = true }
-wasm-bindgen-futures = { workspace = true }
 wasmi = { workspace = true }

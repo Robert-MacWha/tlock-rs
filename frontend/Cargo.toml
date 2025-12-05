@@ -12,12 +12,6 @@ mobile = ["dioxus/mobile"]
 [dependencies]
 dioxus = { workspace = true }
 futures = { workspace = true }
-getrandom = { workspace = true }
 gloo-timers = { workspace = true }
 host = { workspace = true }
-reqwest = { workspace = true }
-serde = { workspace = true }
-serde_json = { workspace = true }
 tlock-hdk = { workspace = true }
-tracing-log = { workspace = true }
-uuid = { workspace = true }
