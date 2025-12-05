@@ -4,12 +4,9 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-runtime = { path = "../runtime" }
-wasmi = "0.51.0"
-tokio = "1.48.0"
-wasm-bindgen-futures = "0.4"
-thiserror = "2.0.12"
-tracing = "0.1.41"
-futures = "0.3.31"
-getrandom = { version = "0.2", features = ["js"] }
-gloo-timers = { version = "0.3.0", features = ["futures"] }
+futures = { workspace = true }
+getrandom = { workspace = true }
+runtime = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+wasmi = { workspace = true }

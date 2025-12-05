@@ -19,6 +19,8 @@ pkgs.mkShell {
     })
 
     cargo
+    cargo-sort
+    cargo-machete
     rustfmt
     rust-bin.stable.latest.rust-analyzer
     unstable.dioxus-cli

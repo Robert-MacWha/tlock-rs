@@ -4,12 +4,12 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-runtime = { path = "../runtime" }
-thiserror = "2.0.12"
-serde = {version = "1.0.219", features = ["derive"] }
-serde_json = "1.0.142"
-tracing = "0.1.41"
-tracing-subscriber = "0.3.20"
-futures = "0.3.31"
-async-trait = "0.1.89"
-tokio = { version = "1", features = ["rt", "time", "sync", "macros"] }
+async-trait = { workspace = true }
+futures = { workspace = true }
+runtime = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }

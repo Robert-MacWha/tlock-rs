@@ -4,9 +4,9 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+alloy = "1.1.2"
 serde = { version = "1.0.219", features = ["derive"] }
 tlock-pdk = { path = "../../tlock-pdk" }
-alloy = "1.1.2"
 
 [build]
 target = "wasm32-wasip1"

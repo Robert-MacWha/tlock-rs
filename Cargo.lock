@@ -26,7 +26,7 @@ checksum = "683d7910e743518b0e34f1186f92494becacb047c7b6bf616c96772180fef923"
 [[package]]
 name = "alloy"
 version = "1.1.2"
-source = "git+https://github.com/Robert-MacWha/alloy?branch=wasm32-wasip-support#f0dacd0e6a877bf8a62a524acfad556b63bca288"
+source = "git+https://github.com/Robert-MacWha/alloy?branch=wasm32-wasip-support#ce58beab844064cb39354e45c0d4ef45e734adef"
 dependencies = [
  "alloy-consensus",
  "alloy-contract",
@@ -64,7 +64,7 @@ dependencies = [
 [[package]]
 name = "alloy-consensus"
 version = "1.1.2"
-source = "git+https://github.com/Robert-MacWha/alloy?branch=wasm32-wasip-support#f0dacd0e6a877bf8a62a524acfad556b63bca288"
+source = "git+https://github.com/Robert-MacWha/alloy?branch=wasm32-wasip-support#ce58beab844064cb39354e45c0d4ef45e734adef"
 dependencies = [
  "alloy-eips",
  "alloy-primitives",
@@ -90,7 +90,7 @@ dependencies = [
 [[package]]
 name = "alloy-consensus-any"
 version = "1.1.2"
-source = "git+https://github.com/Robert-MacWha/alloy?branch=wasm32-wasip-support#f0dacd0e6a877bf8a62a524acfad556b63bca288"
+source = "git+https://github.com/Robert-MacWha/alloy?branch=wasm32-wasip-support#ce58beab844064cb39354e45c0d4ef45e734adef"
 dependencies = [
  "alloy-consensus",
  "alloy-eips",
@@ -103,7 +103,7 @@ dependencies = [
 [[package]]
 name = "alloy-contract"
 version = "1.1.2"
-source = "git+https://github.com/Robert-MacWha/alloy?branch=wasm32-wasip-support#f0dacd0e6a877bf8a62a524acfad556b63bca288"
+source = "git+https://github.com/Robert-MacWha/alloy?branch=wasm32-wasip-support#ce58beab844064cb39354e45c0d4ef45e734adef"
 dependencies = [
  "alloy-consensus",
  "alloy-dyn-abi",
@@ -192,7 +192,7 @@ dependencies = [
 [[package]]
 name = "alloy-eips"
 version = "1.1.2"
-source = "git+https://github.com/Robert-MacWha/alloy?branch=wasm32-wasip-support#f0dacd0e6a877bf8a62a524acfad556b63bca288"
+source = "git+https://github.com/Robert-MacWha/alloy?branch=wasm32-wasip-support#ce58beab844064cb39354e45c0d4ef45e734adef"
 dependencies = [
  "alloy-eip2124",
  "alloy-eip2930",
@@ -214,7 +214,7 @@ dependencies = [
 [[package]]
 name = "alloy-genesis"
 version = "1.1.2"
-source = "git+https://github.com/Robert-MacWha/alloy?branch=wasm32-wasip-support#f0dacd0e6a877bf8a62a524acfad556b63bca288"
+source = "git+https://github.com/Robert-MacWha/alloy?branch=wasm32-wasip-support#ce58beab844064cb39354e45c0d4ef45e734adef"
 dependencies = [
  "alloy-eips",
  "alloy-primitives",
@@ -240,7 +240,7 @@ dependencies = [
 [[package]]
 name = "alloy-json-rpc"
 version = "1.1.2"
-source = "git+https://github.com/Robert-MacWha/alloy?branch=wasm32-wasip-support#f0dacd0e6a877bf8a62a524acfad556b63bca288"
+source = "git+https://github.com/Robert-MacWha/alloy?branch=wasm32-wasip-support#ce58beab844064cb39354e45c0d4ef45e734adef"
 dependencies = [
  "alloy-primitives",
  "alloy-sol-types",
@@ -254,7 +254,7 @@ dependencies = [
 [[package]]
 name = "alloy-network"
 version = "1.1.2"
-source = "git+https://github.com/Robert-MacWha/alloy?branch=wasm32-wasip-support#f0dacd0e6a877bf8a62a524acfad556b63bca288"
+source = "git+https://github.com/Robert-MacWha/alloy?branch=wasm32-wasip-support#ce58beab844064cb39354e45c0d4ef45e734adef"
 dependencies = [
  "alloy-consensus",
  "alloy-consensus-any",
@@ -279,7 +279,7 @@ dependencies = [
 [[package]]
 name = "alloy-network-primitives"
 version = "1.1.2"
-source = "git+https://github.com/Robert-MacWha/alloy?branch=wasm32-wasip-support#f0dacd0e6a877bf8a62a524acfad556b63bca288"
+source = "git+https://github.com/Robert-MacWha/alloy?branch=wasm32-wasip-support#ce58beab844064cb39354e45c0d4ef45e734adef"
 dependencies = [
  "alloy-consensus",
  "alloy-eips",
@@ -318,7 +318,7 @@ dependencies = [
 [[package]]
 name = "alloy-provider"
 version = "1.1.2"
-source = "git+https://github.com/Robert-MacWha/alloy?branch=wasm32-wasip-support#f0dacd0e6a877bf8a62a524acfad556b63bca288"
+source = "git+https://github.com/Robert-MacWha/alloy?branch=wasm32-wasip-support#ce58beab844064cb39354e45c0d4ef45e734adef"
 dependencies = [
  "alloy-chains",
  "alloy-consensus",
@@ -379,7 +379,7 @@ dependencies = [
 [[package]]
 name = "alloy-rpc-client"
 version = "1.1.2"
-source = "git+https://github.com/Robert-MacWha/alloy?branch=wasm32-wasip-support#f0dacd0e6a877bf8a62a524acfad556b63bca288"
+source = "git+https://github.com/Robert-MacWha/alloy?branch=wasm32-wasip-support#ce58beab844064cb39354e45c0d4ef45e734adef"
 dependencies = [
  "alloy-json-rpc",
  "alloy-primitives",
@@ -401,7 +401,7 @@ dependencies = [
 [[package]]
 name = "alloy-rpc-types"
 version = "1.1.2"
-source = "git+https://github.com/Robert-MacWha/alloy?branch=wasm32-wasip-support#f0dacd0e6a877bf8a62a524acfad556b63bca288"
+source = "git+https://github.com/Robert-MacWha/alloy?branch=wasm32-wasip-support#ce58beab844064cb39354e45c0d4ef45e734adef"
 dependencies = [
  "alloy-primitives",
  "alloy-rpc-types-eth",
@@ -413,7 +413,7 @@ dependencies = [
 [[package]]
 name = "alloy-rpc-types-any"
 version = "1.1.2"
-source = "git+https://github.com/Robert-MacWha/alloy?branch=wasm32-wasip-support#f0dacd0e6a877bf8a62a524acfad556b63bca288"
+source = "git+https://github.com/Robert-MacWha/alloy?branch=wasm32-wasip-support#ce58beab844064cb39354e45c0d4ef45e734adef"
 dependencies = [
  "alloy-consensus-any",
  "alloy-rpc-types-eth",
@@ -423,7 +423,7 @@ dependencies = [
 [[package]]
 name = "alloy-rpc-types-eth"
 version = "1.1.2"
-source = "git+https://github.com/Robert-MacWha/alloy?branch=wasm32-wasip-support#f0dacd0e6a877bf8a62a524acfad556b63bca288"
+source = "git+https://github.com/Robert-MacWha/alloy?branch=wasm32-wasip-support#ce58beab844064cb39354e45c0d4ef45e734adef"
 dependencies = [
  "alloy-consensus",
  "alloy-consensus-any",
@@ -443,7 +443,7 @@ dependencies = [
 [[package]]
 name = "alloy-rpc-types-trace"
 version = "1.1.2"
-source = "git+https://github.com/Robert-MacWha/alloy?branch=wasm32-wasip-support#f0dacd0e6a877bf8a62a524acfad556b63bca288"
+source = "git+https://github.com/Robert-MacWha/alloy?branch=wasm32-wasip-support#ce58beab844064cb39354e45c0d4ef45e734adef"
 dependencies = [
  "alloy-primitives",
  "alloy-rpc-types-eth",
@@ -456,7 +456,7 @@ dependencies = [
 [[package]]
 name = "alloy-serde"
 version = "1.1.2"
-source = "git+https://github.com/Robert-MacWha/alloy?branch=wasm32-wasip-support#f0dacd0e6a877bf8a62a524acfad556b63bca288"
+source = "git+https://github.com/Robert-MacWha/alloy?branch=wasm32-wasip-support#ce58beab844064cb39354e45c0d4ef45e734adef"
 dependencies = [
  "alloy-primitives",
  "serde",
@@ -466,7 +466,7 @@ dependencies = [
 [[package]]
 name = "alloy-signer"
 version = "1.1.2"
-source = "git+https://github.com/Robert-MacWha/alloy?branch=wasm32-wasip-support#f0dacd0e6a877bf8a62a524acfad556b63bca288"
+source = "git+https://github.com/Robert-MacWha/alloy?branch=wasm32-wasip-support#ce58beab844064cb39354e45c0d4ef45e734adef"
 dependencies = [
  "alloy-dyn-abi",
  "alloy-primitives",
@@ -482,7 +482,7 @@ dependencies = [
 [[package]]
 name = "alloy-signer-aws"
 version = "1.1.2"
-source = "git+https://github.com/Robert-MacWha/alloy?branch=wasm32-wasip-support#f0dacd0e6a877bf8a62a524acfad556b63bca288"
+source = "git+https://github.com/Robert-MacWha/alloy?branch=wasm32-wasip-support#ce58beab844064cb39354e45c0d4ef45e734adef"
 dependencies = [
  "alloy-consensus",
  "alloy-network",
@@ -500,7 +500,7 @@ dependencies = [
 [[package]]
 name = "alloy-signer-gcp"
 version = "1.1.2"
-source = "git+https://github.com/Robert-MacWha/alloy?branch=wasm32-wasip-support#f0dacd0e6a877bf8a62a524acfad556b63bca288"
+source = "git+https://github.com/Robert-MacWha/alloy?branch=wasm32-wasip-support#ce58beab844064cb39354e45c0d4ef45e734adef"
 dependencies = [
  "alloy-consensus",
  "alloy-network",
@@ -517,7 +517,7 @@ dependencies = [
 [[package]]
 name = "alloy-signer-ledger"
 version = "1.1.2"
-source = "git+https://github.com/Robert-MacWha/alloy?branch=wasm32-wasip-support#f0dacd0e6a877bf8a62a524acfad556b63bca288"
+source = "git+https://github.com/Robert-MacWha/alloy?branch=wasm32-wasip-support#ce58beab844064cb39354e45c0d4ef45e734adef"
 dependencies = [
  "alloy-consensus",
  "alloy-dyn-abi",
@@ -536,7 +536,7 @@ dependencies = [
 [[package]]
 name = "alloy-signer-local"
 version = "1.1.2"
-source = "git+https://github.com/Robert-MacWha/alloy?branch=wasm32-wasip-support#f0dacd0e6a877bf8a62a524acfad556b63bca288"
+source = "git+https://github.com/Robert-MacWha/alloy?branch=wasm32-wasip-support#ce58beab844064cb39354e45c0d4ef45e734adef"
 dependencies = [
  "alloy-consensus",
  "alloy-network",
@@ -551,7 +551,7 @@ dependencies = [
 [[package]]
 name = "alloy-signer-turnkey"
 version = "1.1.2"
-source = "git+https://github.com/Robert-MacWha/alloy?branch=wasm32-wasip-support#f0dacd0e6a877bf8a62a524acfad556b63bca288"
+source = "git+https://github.com/Robert-MacWha/alloy?branch=wasm32-wasip-support#ce58beab844064cb39354e45c0d4ef45e734adef"
 dependencies = [
  "alloy-consensus",
  "alloy-network",
@@ -639,7 +639,7 @@ dependencies = [
 [[package]]
 name = "alloy-transport"
 version = "1.1.2"
-source = "git+https://github.com/Robert-MacWha/alloy?branch=wasm32-wasip-support#f0dacd0e6a877bf8a62a524acfad556b63bca288"
+source = "git+https://github.com/Robert-MacWha/alloy?branch=wasm32-wasip-support#ce58beab844064cb39354e45c0d4ef45e734adef"
 dependencies = [
  "alloy-json-rpc",
  "auto_impl",
@@ -655,13 +655,14 @@ dependencies = [
  "tower",
  "tracing",
  "url",
+ "wasm-bindgen-futures",
  "wasmtimer",
 ]
 
 [[package]]
 name = "alloy-transport-http"
 version = "1.1.2"
-source = "git+https://github.com/Robert-MacWha/alloy?branch=wasm32-wasip-support#f0dacd0e6a877bf8a62a524acfad556b63bca288"
+source = "git+https://github.com/Robert-MacWha/alloy?branch=wasm32-wasip-support#ce58beab844064cb39354e45c0d4ef45e734adef"
 dependencies = [
  "alloy-json-rpc",
  "alloy-transport",
@@ -691,7 +692,7 @@ dependencies = [
 [[package]]
 name = "alloy-tx-macros"
 version = "1.1.2"
-source = "git+https://github.com/Robert-MacWha/alloy?branch=wasm32-wasip-support#f0dacd0e6a877bf8a62a524acfad556b63bca288"
+source = "git+https://github.com/Robert-MacWha/alloy?branch=wasm32-wasip-support#ce58beab844064cb39354e45c0d4ef45e734adef"
 dependencies = [
  "darling",
  "proc-macro2",
@@ -1799,15 +1800,6 @@ dependencies = [
  "tracing",
  "wasm-bindgen",
  "wasm-bindgen-futures",
-]
-
-[[package]]
-name = "colored"
-version = "3.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fde0e0ec90c9dfb3b4b1a0891a7dcd0e2bffde2f7efed5fe7c9bb00e5bfb915e"
-dependencies = [
- "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -3093,12 +3085,9 @@ name = "eoa-vault"
 version = "0.1.0"
 dependencies = [
  "alloy",
- "k256",
  "serde",
- "serde_json",
  "tlock-alloy",
  "tlock-pdk",
- "tokio",
 ]
 
 [[package]]
@@ -3318,18 +3307,10 @@ name = "frontend"
 version = "0.1.0"
 dependencies = [
  "dioxus",
- "dioxus-html",
- "dioxus-logger",
  "futures",
- "getrandom 0.2.16",
  "gloo-timers",
  "host",
- "reqwest",
- "serde",
- "serde_json",
  "tlock-hdk",
- "tracing-log",
- "uuid",
 ]
 
 [[package]]
@@ -4017,17 +3998,9 @@ version = "0.1.0"
 dependencies = [
  "alloy",
  "futures",
- "gloo-timers",
- "serde",
- "serde_json",
- "simple_logger",
- "thiserror 2.0.17",
  "tlock-hdk",
- "tokio",
  "tracing",
- "tracing-subscriber",
  "uuid",
- "wasmi-async",
 ]
 
 [[package]]
@@ -4164,22 +4137,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "hyper-tls"
-version = "0.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "70206fc6890eaca9fde8a0bf71caa2ddfc9fe045ac9e5c70df101a7dbde866e0"
-dependencies = [
- "bytes",
- "http-body-util",
- "hyper",
- "hyper-util",
- "native-tls",
- "tokio",
- "tokio-native-tls",
- "tower-service",
-]
-
-[[package]]
 name = "hyper-util"
 version = "0.1.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4198,11 +4155,9 @@ dependencies = [
  "percent-encoding",
  "pin-project-lite",
  "socket2 0.6.1",
- "system-configuration",
  "tokio",
  "tower-service",
  "tracing",
- "windows-registry",
 ]
 
 [[package]]
@@ -4529,7 +4484,6 @@ dependencies = [
  "once_cell",
  "serdect",
  "sha2",
- "signature",
 ]
 
 [[package]]
@@ -5138,15 +5092,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.111",
-]
-
-[[package]]
-name = "num_threads"
-version = "0.1.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5c7398b9c8b70908f6371f47ed36737907c87c52af34c268fed0bf0ceb92ead9"
-dependencies = [
- "libc",
 ]
 
 [[package]]
@@ -6347,7 +6292,6 @@ dependencies = [
  "bytes",
  "cookie",
  "cookie_store",
- "encoding_rs",
  "futures-core",
  "futures-util",
  "h2",
@@ -6356,13 +6300,10 @@ dependencies = [
  "http-body-util",
  "hyper",
  "hyper-rustls",
- "hyper-tls",
  "hyper-util",
  "js-sys",
  "log",
- "mime",
  "mime_guess",
- "native-tls",
  "percent-encoding",
  "pin-project-lite",
  "quinn",
@@ -6374,7 +6315,6 @@ dependencies = [
  "serde_urlencoded",
  "sync_wrapper",
  "tokio",
- "tokio-native-tls",
  "tokio-rustls",
  "tokio-util",
  "tower",
@@ -6484,10 +6424,8 @@ checksum = "48fd7bd8a6377e15ad9d42a8ec25371b94ddc67abe7c8b9127bec79bebaaae18"
 name = "runtime"
 version = "0.1.0"
 dependencies = [
- "futures",
  "gloo-timers",
  "tokio",
- "wasm-bindgen-futures",
  "web-time",
 ]
 
@@ -7076,18 +7014,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "simple_logger"
-version = "5.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "291bee647ce7310b0ea721bfd7e0525517b4468eb7c7e15eb8bd774343179702"
-dependencies = [
- "colored",
- "log",
- "time",
- "windows-sys 0.61.2",
-]
-
-[[package]]
 name = "siphasher"
 version = "0.3.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7378,27 +7304,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "system-configuration"
-version = "0.6.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3c879d448e9d986b661742763247d3693ed13609438cf3d006f51f5368a5ba6b"
-dependencies = [
- "bitflags 2.10.0",
- "core-foundation 0.9.4",
- "system-configuration-sys",
-]
-
-[[package]]
-name = "system-configuration-sys"
-version = "0.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8e1d1b10ced5ca923a1fcb8d03e96b8d3268065d724548c0211415ff6ac6bac4"
-dependencies = [
- "core-foundation-sys",
- "libc",
-]
-
-[[package]]
 name = "system-deps"
 version = "6.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7504,7 +7409,6 @@ name = "test-plugin"
 version = "0.1.0"
 dependencies = [
  "rand 0.9.2",
- "serde",
  "serde_json",
  "tokio",
  "wasmi-pdk",
@@ -7576,9 +7480,7 @@ checksum = "91e7d9e3bb61134e77bde20dd4825b97c010155709965fedf0f49bb138e52a9d"
 dependencies = [
  "deranged",
  "itoa",
- "libc",
  "num-conv",
- "num_threads",
  "powerfmt",
  "serde",
  "time-core",
@@ -7672,7 +7574,6 @@ dependencies = [
 name = "tlock-hdk"
 version = "0.1.0"
 dependencies = [
- "async-trait",
  "serde_json",
  "tlock-api",
  "tlock-pdk",
@@ -7719,16 +7620,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.111",
-]
-
-[[package]]
-name = "tokio-native-tls"
-version = "0.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bbae76ab933c85776efabc971569dd6119c580d8f5d448769dec1764bf796ef2"
-dependencies = [
- "native-tls",
- "tokio",
 ]
 
 [[package]]
@@ -8469,12 +8360,9 @@ version = "0.1.0"
 dependencies = [
  "futures",
  "getrandom 0.2.16",
- "gloo-timers",
  "runtime",
  "thiserror 2.0.17",
- "tokio",
  "tracing",
- "wasm-bindgen-futures",
  "wasmi",
 ]
 
@@ -8484,7 +8372,6 @@ version = "0.1.0"
 dependencies = [
  "criterion",
  "futures",
- "runtime",
  "serde",
  "serde_json",
  "thiserror 2.0.17",
@@ -8914,17 +8801,6 @@ checksum = "9150af68066c4c5c07ddc0ce30421554771e528bde427614c61038bc2c92c2b1"
 dependencies = [
  "windows-core 0.61.2",
  "windows-link 0.1.3",
-]
-
-[[package]]
-name = "windows-registry"
-version = "0.6.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "02752bf7fbdcce7f2a27a742f798510f3e5ad88dbe84871e5168e2120c3d5720"
-dependencies = [
- "windows-link 0.2.1",
- "windows-result 0.4.1",
- "windows-strings 0.5.1",
 ]
 
 [[package]]

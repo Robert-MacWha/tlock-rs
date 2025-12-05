@@ -1,23 +1,53 @@
 [workspace]
 members = [
-    "host",
     "frontend",
-    "tlock-pdk",
-    "tlock-hdk",
-    "tlock-api",
-    "tlock-alloy",
-    "plugins/plugin-template",
+    "host",
     "plugins/eoa-vault",
-    "plugins/vault-page",
     "plugins/eth-provider",
+    "plugins/plugin-template",
+    "plugins/vault-page",
+    "tlock-alloy",
+    "tlock-api",
+    "tlock-hdk",
+    "tlock-pdk",
     "wasmi/runtime",
-    "wasmi/wasmi-async",
-    "wasmi/wasmi-pdk",
-    "wasmi/wasmi-hdk",
     "wasmi/test-plugin",
+    "wasmi/wasmi-async",
+    "wasmi/wasmi-hdk",
+    "wasmi/wasmi-pdk",
 ]
 
 resolver = "2"
+
+[workspace.dependencies]
+alloy = { version = "1.1.2", features = ["wasm-bindgen", "json-rpc", "rpc-types-trace", "eip712"] }
+async-trait = "0.1"
+dioxus = { version = "0.7.1" }
+futures = "0.3.31"
+getrandom = { version = "0.2", features = ["js"] }
+gloo-timers = { version = "0.3.0", features = ["futures"] }
+host = { path = "./host" }
+rand = "0.9.2"
+reqwest = "0.12.23"
+runtime = { path = "./wasmi/runtime" }
+serde = { version = "1.0.219", features = ["derive"] }
+serde_json = "1.0.143"
+thiserror = "2.0.12"
+tlock-alloy = { path = "./tlock-alloy" }
+tlock-api = { path = "./tlock-api" }
+tlock-hdk = { path = "./tlock-hdk" }
+tlock-pdk = { path = "./tlock-pdk" }
+tokio = { version = "1", features = ["rt", "time", "sync", "macros"] }
+tower-service = "0.3.3"
+tracing = "0.1.41"
+tracing-subscriber = "0.3.20"
+uuid = { version = "1", features = [ "v4", "serde", "js" ] } 
+wasm-bindgen-futures = "0.4"
+wasmi = "0.51.0"
+wasmi-async = { path = "./wasmi/wasmi-async" }
+wasmi-hdk = { path = "./wasmi/wasmi-hdk" }
+wasmi-pdk = { path = "./wasmi/wasmi-pdk" }
+web-time = "1.1.0"
 
 [profile.release]
 lto = true
@@ -34,3 +64,4 @@ inherits = "dev"
 
 [patch.crates-io]
 alloy = { git = "https://github.com/Robert-MacWha/alloy", branch = "wasm32-wasip-support" }
+# alloy = { path = "../alloy/crates/alloy" }

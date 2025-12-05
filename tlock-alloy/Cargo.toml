@@ -4,11 +4,11 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-tlock-pdk = { path = "../tlock-pdk" }
-serde = {version = "1.0.219", features = ["derive"] }
-serde_json = "1.0.142"
-alloy = {version = "1.1.2", features = ["json-rpc", "rpc-types-trace", "eip712"] }
-tower-service = "0.3.3"
+alloy = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tlock-pdk = { workspace = true }
+tower-service = { workspace = true }
 
 [build]
 target = "wasm32-wasip1"
