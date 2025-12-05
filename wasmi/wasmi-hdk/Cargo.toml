@@ -18,6 +18,7 @@ wasmi = { workspace = true }
 wasmi-async = { workspace = true }
 wasmi-pdk = { workspace = true }
 web-time = { workspace = true }
+uuid = { workspace = true }
 
 [dev-dependencies]
 tokio = { version = "1.0", features = ["rt", "macros", "time"] }

@@ -31,6 +31,7 @@ impl PluginInstance {
     /// Spawns the wasi plugin in a new thread
     pub fn new(
         compiled: CompiledPlugin,
+        max_fuel: Option<u64>,
     ) -> Result<
         (
             Self,
@@ -54,6 +55,7 @@ impl PluginInstance {
             stdin_reader,
             stdout_writer,
             stderr_writer,
+            max_fuel,
         )?;
 
         Ok((
@@ -82,6 +84,7 @@ fn start_plugin<R, W1, W2>(
     stdin_reader: R,
     stdout_writer: W1,
     stderr_writer: W2,
+    max_fuel: Option<u64>,
 ) -> Result<impl Future<Output = ()>, SpawnError>
 where
     R: Read + Send + Sync + 'static,
@@ -93,9 +96,9 @@ where
 
     let mut linker = Linker::new(&engine);
     let wasi = WasiCtx::new()
-        .set_stdin(Box::new(stdin_reader))
-        .set_stdout(Box::new(stdout_writer))
-        .set_stderr(Box::new(stderr_writer));
+        .set_stdin(stdin_reader)
+        .set_stdout(stdout_writer)
+        .set_stderr(stderr_writer);
 
     let mut store = Store::new(&engine, wasi);
     add_to_linker(&mut linker)?;
@@ -105,7 +108,7 @@ where
         .get_func(&store, "_start")
         .ok_or(SpawnError::StartNotFound)?;
 
-    let fut = spawn_wasm(store, start_func, is_running.clone(), None);
+    let fut = spawn_wasm(store, start_func, is_running.clone(), max_fuel);
 
     Ok(fut)
 }

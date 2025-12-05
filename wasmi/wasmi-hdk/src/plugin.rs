@@ -4,6 +4,7 @@ use futures::{AsyncBufReadExt, FutureExt};
 use serde_json::Value;
 use thiserror::Error;
 use tracing::info;
+use uuid::Uuid;
 use wasmi_pdk::{
     api::RequestHandler,
     async_trait::async_trait,
@@ -18,25 +19,18 @@ use crate::{
     plugin_instance::{PluginInstance, SpawnError},
 };
 
-/// TODO: Adjust this so it's a UUID and copyable
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct PluginId(String);
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct PluginId(Uuid);
+
+impl PluginId {
+    pub fn new() -> Self {
+        PluginId(Uuid::new_v4())
+    }
+}
 
 impl From<PluginId> for String {
     fn from(plugin_id: PluginId) -> Self {
-        plugin_id.0
-    }
-}
-
-impl From<&str> for PluginId {
-    fn from(s: &str) -> Self {
-        PluginId(s.to_owned())
-    }
-}
-
-impl From<String> for PluginId {
-    fn from(s: String) -> Self {
-        PluginId(s)
+        plugin_id.0.to_string()
     }
 }
 
@@ -52,6 +46,7 @@ pub struct Plugin {
     id: PluginId,
     handler: Arc<dyn HostHandler>,
     compiled: CompiledPlugin,
+    max_fuel: Option<u64>,
 }
 
 #[derive(Debug, Error)]
@@ -78,7 +73,13 @@ impl Plugin {
             id: id.clone(),
             handler,
             compiled,
+            max_fuel: None,
         })
+    }
+
+    pub fn with_max_fuel(mut self, max_fuel: u64) -> Self {
+        self.max_fuel = Some(max_fuel);
+        self
     }
 
     pub fn name(&self) -> &str {
@@ -113,7 +114,7 @@ impl From<PluginError> for RpcError {
 impl Transport<PluginError> for Plugin {
     async fn call(&self, method: &str, params: Value) -> Result<RpcResponse, PluginError> {
         let (instance, stdin_writer, stdout_reader, stderr_reader, instance_task) =
-            PluginInstance::new(self.compiled.clone())?;
+            PluginInstance::new(self.compiled.clone(), self.max_fuel)?;
 
         let name = self.name.clone();
         let stderr_task = async move {

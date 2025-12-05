@@ -8378,6 +8378,7 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-test",
+ "uuid",
  "wasm-bindgen-futures",
  "wasm-bindgen-test",
  "wasmi",

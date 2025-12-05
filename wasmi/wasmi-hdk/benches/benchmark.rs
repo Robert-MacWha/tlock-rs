@@ -29,7 +29,7 @@ pub fn bench_prime_sieve_small(c: &mut Criterion) {
     let wasm_bytes = load_plugin_wasm();
     let handler = Arc::new(get_host_server());
 
-    let id = "0001".into();
+    let id = PluginId::new();
     let plugin = Plugin::new("test_plugin", &id, wasm_bytes.clone(), handler).unwrap();
 
     c.bench_function("prime_sieve_small", |b| {
@@ -54,7 +54,7 @@ pub fn bench_prime_sieve_large(c: &mut Criterion) {
     let wasm_bytes = load_plugin_wasm();
     let handler = Arc::new(get_host_server());
 
-    let id = "0001".into();
+    let id = PluginId::new();
     let plugin = Plugin::new("test_plugin", &id, wasm_bytes.clone(), handler).unwrap();
 
     c.bench_function("prime_sieve_large", |b| {
@@ -78,7 +78,7 @@ pub fn bench_echo_many(c: &mut Criterion) {
     let wasm_bytes = load_plugin_wasm();
     let handler = Arc::new(get_host_server());
 
-    let id = "0001".into();
+    let id = PluginId::new();
     let plugin = Plugin::new("test_plugin", &id, wasm_bytes.clone(), handler).unwrap();
 
     c.bench_function("many_echo", |b| {
