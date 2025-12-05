@@ -4,16 +4,8 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-tlock-hdk = { path = "../tlock-hdk" }
-wasmi-async = { path = "../wasmi/wasmi-async" }
-alloy = "1.1.2"
-simple_logger = "5.0.0"
-thiserror = "2.0.12"
-serde = { version = "1.0.219", features = ["derive"] }
-serde_json = "1.0.143"
-tokio = { version = "1.47.1", features = ["rt", "macros"] }
-tracing = "0.1.41"
-tracing-subscriber = "0.3.20"
-gloo-timers = { version = "0.3.0", features = ["futures"] }
-futures = "0.3"
-uuid = { version = "1.18.1", features = ["v4"] }
+alloy = { workspace = true }
+futures = { workspace = true }
+tlock-hdk = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true }
