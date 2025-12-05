@@ -1,4 +1,4 @@
-mod compiled_plugin;
+mod compile;
 pub mod plugin;
 mod plugin_instance;
 pub use wasmi_pdk;

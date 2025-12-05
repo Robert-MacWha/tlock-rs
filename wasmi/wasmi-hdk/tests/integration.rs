@@ -1,10 +1,7 @@
 use serde_json::Value;
 use std::sync::Arc;
 use tracing::info;
-use wasmi_hdk::{
-    plugin::{Plugin, PluginId},
-    server::HostServer,
-};
+use wasmi_hdk::{plugin::Plugin, server::HostServer};
 use wasmi_pdk::transport::Transport;
 use web_time::{Instant, SystemTime};
 
@@ -41,8 +38,7 @@ async fn test_plugin() {
     let wasm_bytes = load_plugin_wasm();
     let handler = Arc::new(get_host_server());
 
-    let id = PluginId::new();
-    let plugin = Plugin::new("test_plugin", &id, wasm_bytes, handler).unwrap();
+    let plugin = Plugin::new("test_plugin", wasm_bytes, handler).unwrap();
     plugin.call("ping", Value::Null).await.unwrap();
 }
 
@@ -55,8 +51,7 @@ async fn test_get_random_number() {
     let wasm_bytes = load_plugin_wasm();
     let handler = Arc::new(get_host_server());
 
-    let id = PluginId::new();
-    let plugin = Plugin::new("test_plugin", &id, wasm_bytes, handler).unwrap();
+    let plugin = Plugin::new("test_plugin", wasm_bytes, handler).unwrap();
     let response = plugin.call("get_random_number", Value::Null).await.unwrap();
 
     info!("Random number response: {:?}", response);
@@ -73,8 +68,7 @@ async fn test_get_time() {
     let wasm_bytes = load_plugin_wasm();
     let handler = Arc::new(get_host_server());
 
-    let id = PluginId::new();
-    let plugin = Plugin::new("test_plugin", &id, wasm_bytes, handler).unwrap();
+    let plugin = Plugin::new("test_plugin", wasm_bytes, handler).unwrap();
     let response = plugin.call("get_time", Value::Null).await.unwrap();
 
     info!("Get time response: {:?}", response);
@@ -98,8 +92,7 @@ async fn test_sleep() {
     let wasm_bytes = load_plugin_wasm();
     let handler = Arc::new(get_host_server());
 
-    let id = PluginId::new();
-    let plugin = Plugin::new("test_plugin", &id, wasm_bytes, handler).unwrap();
+    let plugin = Plugin::new("test_plugin", wasm_bytes, handler).unwrap();
 
     let sleep_duration = 1500; // milliseconds
     let start = Instant::now();
@@ -125,8 +118,7 @@ async fn test_many_echo() {
     let wasm_bytes = load_plugin_wasm();
     let handler = Arc::new(get_host_server());
 
-    let id = PluginId::new();
-    let plugin = Plugin::new("test_plugin", &id, wasm_bytes, handler).unwrap();
+    let plugin = Plugin::new("test_plugin", wasm_bytes, handler).unwrap();
     plugin
         .call("many_echo", Value::Number(200.into()))
         .await
@@ -142,8 +134,7 @@ async fn test_prime_sieve() {
     let wasm_bytes = load_plugin_wasm();
     let handler = Arc::new(get_host_server());
 
-    let id = PluginId::new();
-    let plugin = Plugin::new("test_plugin", &id, wasm_bytes, handler).unwrap();
+    let plugin = Plugin::new("test_plugin", wasm_bytes, handler).unwrap();
 
     let response = plugin
         .call("prime_sieve", Value::Number(1000.into()))

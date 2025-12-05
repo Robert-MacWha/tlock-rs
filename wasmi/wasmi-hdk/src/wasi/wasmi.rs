@@ -1,7 +1,7 @@
 use std::sync::{Arc, atomic::AtomicBool};
 
 use thiserror::Error;
-use tracing::{error, info, trace};
+use tracing::{error, trace};
 use wasmi::{Func, Store};
 
 use crate::wasi::wasi::WasiCtx;

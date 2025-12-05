@@ -15,7 +15,7 @@ use wasmi_pdk::{
 };
 
 use crate::{
-    compiled_plugin::compile_plugin,
+    compile::compile_plugin,
     host_handler::HostHandler,
     plugin_instance::{SpawnError, spawn_plugin},
 };
@@ -54,6 +54,7 @@ pub struct Plugin {
     handler: Arc<dyn HostHandler>,
     engine: Engine,
     module: Module,
+    logger: Box<dyn Fn(&str, &str) + Send + Sync>,
     max_fuel: Option<u64>,
 }
 
@@ -70,7 +71,6 @@ pub enum PluginError {
 impl Plugin {
     pub fn new(
         name: &str,
-        id: &PluginId,
         wasm_bytes: Vec<u8>,
         handler: Arc<dyn HostHandler>,
     ) -> Result<Self, wasmi::Error> {
@@ -78,14 +78,43 @@ impl Plugin {
 
         Ok(Plugin {
             name: name.to_string(),
-            id: id.clone(),
+            id: PluginId::new(),
             handler,
             engine,
             module,
             max_fuel: None,
+            logger: Box::new(default_plugin_logger),
         })
     }
 
+    /// Sets the plugin ID for this instance. If no ID is provided a random
+    /// UUID is generated.
+    pub fn with_id(mut self, id: PluginId) -> Self {
+        self.id = id;
+        self
+    }
+
+    /// Sets a custom logger for the plugin instance. Plugins log messages to
+    /// stderr, which are captured and passed to this logger function. If
+    /// no logger is provided a default logger is used.
+    pub fn with_logger<F>(mut self, logger: F) -> Self
+    where
+        F: Fn(&str, &str) + Send + Sync + 'static,
+    {
+        self.logger = Box::new(logger);
+        self
+    }
+
+    /// Sets the maximum fuel for the plugin instance.
+    ///
+    /// The fuel limit controls how frequently the plugin is interrupted to
+    /// check for cancellation and yield to other tasks. Lower fuel limits
+    /// result in more frequent interruptions, which can improve responsiveness
+    /// for long-running compute-intensive tasks, but will also incur more overhead.
+    ///
+    /// Generally a fuel between 10_000 and 1_000_000 is a good starting point.
+    ///
+    /// Leave as None to use the default fuel limit, a sensible default of 100_000.
     pub fn with_max_fuel(mut self, max_fuel: u64) -> Self {
         self.max_fuel = Some(max_fuel);
         self
@@ -130,7 +159,7 @@ impl Transport<PluginError> for Plugin {
             let mut buf_reader = futures::io::BufReader::new(stderr_reader);
             let mut line = String::new();
             while buf_reader.read_line(&mut line).await.is_ok_and(|n| n > 0) {
-                info!(target: "plugin", "[plugin] [{}] {}", name, line.trim_end());
+                (self.logger)(&name, line.trim_end());
                 line.clear();
             }
         }
@@ -171,4 +200,8 @@ impl RequestHandler<RpcError> for PluginCallback {
     ) -> BoxFuture<'a, Result<Value, RpcError>> {
         Box::pin(async move { self.handler.handle(self.uuid.clone(), method, params).await })
     }
+}
+
+fn default_plugin_logger(name: &str, msg: &str) {
+    info!(target: "plugin", "[plugin] [{}] {}", name, msg);
 }

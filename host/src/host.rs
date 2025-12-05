@@ -98,8 +98,9 @@ impl Host {
         wasm_bytes.hash(&mut s);
         let id: u128 = s.finish().into();
         let id = PluginId::from(id);
-        let plugin = Plugin::new(name, &id, wasm_bytes.to_vec(), server)
-            .map_err(|e| PluginError::SpawnError(e.into()))?;
+        let plugin = Plugin::new(name, wasm_bytes.to_vec(), server)
+            .map_err(|e| PluginError::SpawnError(e.into()))?
+            .with_id(id);
 
         info!("Registering plugin '{}' with id {}", name, id);
         self.register_plugin(plugin).await?;

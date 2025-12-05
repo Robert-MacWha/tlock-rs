@@ -21,7 +21,7 @@ pub enum SpawnError {
     WasmiError(#[from] wasmi::Error),
 }
 
-/// Spawns the wasi plugin in a new thread
+/// Creates the plugin pipes and task.
 pub fn spawn_plugin(
     engine: Engine,
     module: Module,
