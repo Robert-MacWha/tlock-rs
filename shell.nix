@@ -18,7 +18,9 @@ pkgs.mkShell {
       ];
     })
 
+    pre-commit
     cargo
+    cargo-sort
     rustfmt
     rust-bin.stable.latest.rust-analyzer
     unstable.dioxus-cli
