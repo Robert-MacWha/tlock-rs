@@ -1,4 +1,4 @@
-.PHONY: test bench samply clean
+.PHONY: test bench profile clean
 
 # Build the WASM plugin first
 build-wasm:
@@ -10,11 +10,13 @@ test: build-wasm
 bench: build-wasm
 	cargo bench
 
-samply: build-wasm
-	cargo build --release --bin profile_prime_sieve
-	samply record target/release/profile_prime_sieve
+profile: build-wasm
+	samply record cargo bench --bench benchmark -- prime_sieve_large --profile-time=20
 
-# Build an arbitrary plugin: `make plugin PLUGIN=plugin_name`
+profile-all: build-wasm
+	samply record cargo bench --bench benchmark
+
+# Build an arbitrary plugin: `PLUGIN=plugin_name make plugin`
 plugin:
 	cargo build --target wasm32-wasip1 -p $(PLUGIN) --release
 
