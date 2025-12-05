@@ -8355,23 +8355,13 @@ dependencies = [
 ]
 
 [[package]]
-name = "wasmi-async"
-version = "0.1.0"
-dependencies = [
- "futures",
- "getrandom 0.2.16",
- "runtime",
- "thiserror 2.0.17",
- "tracing",
- "wasmi",
-]
-
-[[package]]
 name = "wasmi-hdk"
 version = "0.1.0"
 dependencies = [
  "criterion",
  "futures",
+ "getrandom 0.2.16",
+ "runtime",
  "serde",
  "serde_json",
  "thiserror 2.0.17",
@@ -8382,7 +8372,6 @@ dependencies = [
  "wasm-bindgen-futures",
  "wasm-bindgen-test",
  "wasmi",
- "wasmi-async",
  "wasmi-pdk",
  "web-time",
 ]

@@ -4,7 +4,7 @@ use thiserror::Error;
 use tracing::{error, info, trace};
 use wasmi::{Func, Store};
 
-use crate::wasmi_wasi::WasiCtx;
+use crate::wasi::wasi::WasiCtx;
 
 #[derive(Error, Debug)]
 pub enum RunError {

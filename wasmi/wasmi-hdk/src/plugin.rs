@@ -16,7 +16,7 @@ use wasmi_pdk::{
 use crate::{
     compiled_plugin::CompiledPlugin,
     host_handler::HostHandler,
-    plugin_instance::{PluginInstance, SpawnError},
+    plugin_instance::{SpawnError, spawn_plugin},
 };
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
@@ -31,6 +31,12 @@ impl PluginId {
 impl From<PluginId> for String {
     fn from(plugin_id: PluginId) -> Self {
         plugin_id.0.to_string()
+    }
+}
+
+impl From<u128> for PluginId {
+    fn from(value: u128) -> Self {
+        PluginId(Uuid::from_u128(value))
     }
 }
 
@@ -113,8 +119,8 @@ impl From<PluginError> for RpcError {
 #[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl Transport<PluginError> for Plugin {
     async fn call(&self, method: &str, params: Value) -> Result<RpcResponse, PluginError> {
-        let (instance, stdin_writer, stdout_reader, stderr_reader, instance_task) =
-            PluginInstance::new(self.compiled.clone(), self.max_fuel)?;
+        let (stdin_writer, stdout_reader, stderr_reader, instance_task) =
+            spawn_plugin(self.compiled.clone(), self.max_fuel)?;
 
         let name = self.name.clone();
         let stderr_task = async move {
@@ -140,9 +146,10 @@ impl Transport<PluginError> for Plugin {
 
         let instance_task = instance_task.fuse();
         futures::pin_mut!(rpc_task, instance_task, stderr_task);
+
+        //? Run the transport, plugin, and stderr logger until one of them completes
         let (res, _, _) = futures::join!(rpc_task, instance_task, stderr_task);
 
-        instance.kill();
         let res = res?;
         Ok(res)
     }

@@ -12,7 +12,6 @@ members = [
     "tlock-pdk",
     "wasmi/runtime",
     "wasmi/test-plugin",
-    "wasmi/wasmi-async",
     "wasmi/wasmi-hdk",
     "wasmi/wasmi-pdk",
 ]
@@ -44,7 +43,6 @@ tracing-subscriber = "0.3.20"
 uuid = { version = "1", features = [ "v4", "serde", "js" ] } 
 wasm-bindgen-futures = "0.4"
 wasmi = "0.51.0"
-wasmi-async = { path = "./wasmi/wasmi-async" }
 wasmi-hdk = { path = "./wasmi/wasmi-hdk" }
 wasmi-pdk = { path = "./wasmi/wasmi-pdk" }
 web-time = "1.1.0"

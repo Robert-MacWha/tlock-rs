@@ -96,7 +96,8 @@ impl Host {
         info!("Loading plugin '{}'...", name);
         let mut s = DefaultHasher::new();
         wasm_bytes.hash(&mut s);
-        let id = s.finish().to_string().into();
+        let id: u128 = s.finish().into();
+        let id = PluginId::from(id);
         let plugin = Plugin::new(name, &id, wasm_bytes.to_vec(), server)
             .map_err(|e| PluginError::SpawnError(e.into()))?;
 

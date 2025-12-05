@@ -1,69 +1,49 @@
 # Wasmi Plugin Framework
 
-A plugin framework built on the [Wasmi](https://github.com/wasmi-labs/wasmi) WebAssembly interpreter. Wasmi Plugin Framework is designed to run wasm plugins across many architectures, including natively, on mobile, and web browsers (running wasm within wasm).
+A plugin framework built on the [Wasmi](https://github.com/wasmi-labs/wasmi) WebAssembly interpreter. The Wasmi Plugin Framework is designed to run wasm plugins across many architectures, including natively, on mobile, and web browsers (running guest wasm32-wasip1 instances within wasm32-unknown-unknown!).
 
 **Features**
 
--   JSON-rpc based host <> plugin communication
--   Uses STDIO for communication with host, making implementing plugins in other languages straightforward
-    -   STDIN / STDOUT for JSON-rpc communication
-    -   STDERR for logs
--   Async compatible
+-   Uses JSON-RPC over stdio for communication with host
+    -   stdin / stdout for bidirectional JSON-RPC communication
+    -   stderr for logs
+-   Async compatible host & guest
 -   Single-threaded compatible
 -   Interpreter-based (works on IOS, thanks to wasmi)
 
 **Limitations**
 
--   Plugins are single-use. Each host request made to a plugin is made to a new instance of that plugin, meaning by default there is no data persistence.
+-   Plugins are stateless. Each host call made to a plugin is made to a new instance of that plugin. Data persistence must be handle by the host.
+-   No multi-threading support for guests (wasi-wasip1 limitation)
+-   No filesystem or network access access for guests
 
 ## Architecture
 
-## Example
+```mermaid
+graph TB
+    subgraph Host["Host Process (wasmi-hdk)"]
+        App["Your Application"]
+        Executor[WASM Executor]
+        HostMethods["Host Methods"]
+    end
 
-Check the `wasmi/test-plugin` and `wasmi/wasmi-hdk/tests` files for reference host / plugin implementations.
+    subgraph Plugin["Guest Process (wasmi-pdk)"]
+        PluginMethods["Plugin Methods"]
+        Code["Your Plugin Code"]
+    end
 
-### Basic Host
-
-```rust
-struct MyHostHandler {}
-
-#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
-#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
-impl RequestHandler<RpcError> for MyHostHandler {
-    async fn handle(&self, method: &str, _params: Value) -> Result<Value, RpcError> {
-        match method {
-            "echo" => Ok(Value::String("echo".to_string())),
-            _ => Err(RpcError::MethodNotFound),
-        }
-    }
-}
+    App -->|call| Executor
+    Executor -->|via JSON-RPC| PluginMethods
+    PluginMethods --> Code
+    Code -->|via JSON-RPC| HostMethods
+    HostMethods --> Executor
 ```
 
-### Basic Plugin
+### How it works
+- **Bidirectional RPC**: Host and plugin can call methods on each other via JSON-RPC over stdin/stdout
+- **Cooperative execution**: Fuel-based yielding enables async operation in single-threaded environments
+- **WASI subset**: Provides subset of wasi syscalls (stdio, time, random, yield, poll_oneoff) for plugin execution
 
-```rust
-struct MyPlugin {}
+## Examples
 
-impl PluginFactory for MyPlugin {
-    fn new(_: Arc<JsonRpcTransport>) -> Self {
-        Self {}
-    }
-}
-
-#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
-#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
-impl RequestHandler<RpcError> for MyPlugin {
-    async fn handle(
-        &self,
-        method: &str,
-        _params: serde_json::Value,
-    ) -> Result<serde_json::Value, RpcError> {
-        match method {
-            "hello" => Ok(serde_json::json!({"message": "Hello from MyPlugin!"})),
-            _ => Err(RpcError::MethodNotFound),
-        }
-    }
-}
-
-register_plugin!(MyPlugin);
-```
+See the [host tests](./wasmi-hdk/tests/) and [test-plugin](./test-plugin/) for example usage.

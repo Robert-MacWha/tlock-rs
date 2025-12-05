@@ -4,13 +4,13 @@ use std::{
 };
 
 use crate::compiled_plugin::CompiledPlugin;
+use crate::wasi::{
+    non_blocking_pipe::{NonBlockingPipeReader, NonBlockingPipeWriter, non_blocking_pipe},
+    wasi::{WasiCtx, add_to_linker},
+    wasmi::spawn_wasm,
+};
 use thiserror::Error;
 use wasmi::{Linker, Store};
-use wasmi_async::{
-    non_blocking_pipe::{NonBlockingPipeReader, NonBlockingPipeWriter, non_blocking_pipe},
-    wasmi::spawn_wasm,
-    wasmi_wasi::{WasiCtx, add_to_linker},
-};
 
 #[derive(Error, Debug)]
 pub enum SpawnError {
@@ -22,60 +22,36 @@ pub enum SpawnError {
     WasmiError(#[from] wasmi::Error),
 }
 
-/// PluginInstance is a single static running instance of a plugin
-pub struct PluginInstance {
-    is_running: Arc<AtomicBool>,
-}
+/// Spawns the wasi plugin in a new thread
+pub fn spawn_plugin(
+    compiled: CompiledPlugin,
+    max_fuel: Option<u64>,
+) -> Result<
+    (
+        NonBlockingPipeWriter,
+        NonBlockingPipeReader,
+        NonBlockingPipeReader,
+        impl Future<Output = ()>,
+    ),
+    SpawnError,
+> {
+    let is_running = Arc::new(AtomicBool::new(true));
 
-impl PluginInstance {
-    /// Spawns the wasi plugin in a new thread
-    pub fn new(
-        compiled: CompiledPlugin,
-        max_fuel: Option<u64>,
-    ) -> Result<
-        (
-            Self,
-            NonBlockingPipeWriter,
-            NonBlockingPipeReader,
-            NonBlockingPipeReader,
-            impl Future<Output = ()>,
-        ),
-        SpawnError,
-    > {
-        let is_running = Arc::new(AtomicBool::new(true));
+    // Setup pipes
+    let (stdin_reader, stdin_writer) = non_blocking_pipe();
+    let (stdout_reader, stdout_writer) = non_blocking_pipe();
+    let (stderr_reader, stderr_writer) = non_blocking_pipe();
 
-        // Setup pipes
-        let (stdin_reader, stdin_writer) = non_blocking_pipe();
-        let (stdout_reader, stdout_writer) = non_blocking_pipe();
-        let (stderr_reader, stderr_writer) = non_blocking_pipe();
+    let fut = start_plugin(
+        compiled,
+        is_running.clone(),
+        stdin_reader,
+        stdout_writer,
+        stderr_writer,
+        max_fuel,
+    )?;
 
-        let fut = start_plugin(
-            compiled,
-            is_running.clone(),
-            stdin_reader,
-            stdout_writer,
-            stderr_writer,
-            max_fuel,
-        )?;
-
-        Ok((
-            PluginInstance { is_running },
-            stdin_writer,
-            stdout_reader,
-            stderr_reader,
-            fut,
-        ))
-    }
-
-    #[allow(unused)]
-    pub fn is_running(&self) -> bool {
-        self.is_running.load(std::sync::atomic::Ordering::SeqCst)
-    }
-
-    pub fn kill(&self) {
-        self.is_running
-            .store(false, std::sync::atomic::Ordering::SeqCst);
-    }
+    Ok((stdin_writer, stdout_reader, stderr_reader, fut))
 }
 
 fn start_plugin<R, W1, W2>(
