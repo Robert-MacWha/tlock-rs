@@ -93,12 +93,8 @@ pub fn add_to_linker(linker: &mut wasmi::Linker<WasiCtx>) -> Result<(), wasmi::E
     linker.func_wrap("wasi_snapshot_preview1", "fd_close", fd_close)?;
     linker.func_wrap("wasi_snapshot_preview1", "random_get", random_get)?;
     linker.func_wrap("wasi_snapshot_preview1", "proc_exit", proc_exit)?;
-    // TODO: Implement actual yielding once I figure out how
-    // We can't use the "run out of fuel" trick since wasmi will just trap on that indefinitely.
-    linker.func_wrap("wasi_snapshot_preview1", "sched_yield", || -> i32 { 0 })?;
+    linker.func_wrap("wasi_snapshot_preview1", "sched_yield", sched_yield)?;
     linker.func_wrap("wasi_snapshot_preview1", "poll_oneoff", poll_oneoff)?;
-    // TODO: Implement poll_oneoff for timers, etc.
-    // https://docs.wasmtime.dev/api/src/wasi_common/snapshots/preview_1.rs.html#28-36
 
     Ok(())
 }
@@ -272,13 +268,10 @@ fn fd_read(
                     Ok(n) => n,
                     Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
                         trace!("fd_read: WouldBlock, yielding to host");
-                        // TODO: Would probably better to yield here instead of setting fuel to 0.
-                        // I haven't tested, but I expect interrupting & restarting execution like this
-                        // is somewhat expensive.
-                        // TODO: And also possibly setting some early-return check?  Since
+                        // TODO: Consider setting an early-return check.
                         // I notice we're polling this *a lot* while waiting for the host to
-                        // respond.
-                        caller.set_fuel(0).unwrap(); // Stops execution, yielding to the host and allowing other tasks to run.
+                        // respond, and I can't imagine that's efficient.
+                        let _ = sched_yield(caller);
                         return Errno::Again as i32;
                     }
                     Err(_) => return Errno::Fault as i32,
@@ -513,8 +506,18 @@ fn random_get(mut caller: wasmi::Caller<'_, WasiCtx>, buf_ptr: i32, buf_len: i32
 
 fn proc_exit(_caller: wasmi::Caller<'_, WasiCtx>, status: i32) -> Result<(), wasmi::Error> {
     info!("wasi proc_exit({})", status);
-
     Err(wasmi::Error::i32_exit(status))
+}
+
+fn sched_yield(mut caller: wasmi::Caller<'_, WasiCtx>) -> i32 {
+    trace!("wasi sched_yield()");
+
+    // TODO: Would probably better to yield here instead of setting fuel to 0.
+    // I can't test this, but I expect interrupting & restarting execution isn't very
+    // effective, expecially for repeated calls like from `fd_read` loops.
+    caller.set_fuel(0).unwrap();
+
+    Errno::Success as i32
 }
 
 const CLOCK_EVENT_TYPE: u8 = 0;
@@ -637,7 +640,7 @@ fn poll_oneoff(
     let (earliest_userdata, _earliest_clock_id, earliest_deadline_ns, _) =
         clock_subscriptions.iter().min_by_key(|sub| sub.2).unwrap();
 
-    // Super Jank Time:
+    // Jank Time:
     //
     // Basically, poll_oneoff MUST block from the guest's perspective until 1+
     // events are ready. If we try to return immediately with no events (either)
@@ -648,10 +651,10 @@ fn poll_oneoff(
     // threaded-context. SO instead we instantly return a successful result for the
     // earliest timer, and if the deadline hasn't been reached yet we set the fuel
     // to zero to yield execution back to the host. The host can then notice that
-    // `resume_time` is Some(time in the future) and will wait until that time before
+    // `resume_time` is Some(time in the future) and will that time before
     // resuming execution of the guest.
     //
-    // TODO: Oh gods fix this please someone.
+    // TODO: Fix this mess
 
     //? Future deadline trap
     if earliest_deadline_ns > &now_ns {
