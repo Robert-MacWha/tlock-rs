@@ -1,3 +1,9 @@
+//! Non-blocking in-memory pipe implementation for WASI environment.
+//!  
+//! The pipe allows asynchronous and synchronous reads and writes,
+//! avoiding deadlocks by returning the `WouldBlock` error when no data
+//! is available for reading.
+
 use std::collections::VecDeque;
 use std::io::{self, Read, Write};
 use std::pin::Pin;

@@ -24,13 +24,15 @@ pub enum RunError {
 /// - takes ~550 ms when MAX_FUEL is 100_000 (83 refuels needed, each one taking ~6.6 ms)
 /// - takes ~575 ms when MAX_FUEL is 10_000 (836 refuels needed, each one taking ~600 us)
 ///
-/// So it seems like significantly lower fuel does not significantly lower performance.
+/// Significantly lower fuel does not significantly lower performance.
 /// For this reason, I figure it's fine to keep MAX_FUEL very low and to build in
 /// async yielding into the `run_wasm` function so it works better in single-thread
 /// environments (like within wasm when building to target the web).  If this later
 /// becomes a performance issue we can test it properly.
-const MAX_FUEL: u64 = 100_000;
+pub const MAX_FUEL: u64 = 100_000;
 
+/// Spawns a new async task to run the given wasm start function. `is_running`
+/// is an atomic signal that can be used to forcefully exit the plugin early.
 pub fn spawn_wasm(
     store: Store<WasiCtx>,
     start_func: Func,
@@ -47,11 +49,12 @@ pub fn spawn_wasm(
     }
 }
 
-/// run_wasm manages the plugin's lifecycle. Essentially - because
-/// wasmi doesn't support any plugin intercept, halting, or async execution, we
+/// run_wasm manages the plugin's lifecycle. Because
+/// wasmi doesn't support plugin intercepts or async execution, we
 /// need some manual way of interrupting the plugin every so often to check if
-/// it's been killed and yield. Here I do that by setting a low fuel limit,
-/// catching the out-of-fuel condition and resuming the plugin when it's not killed.
+/// it's been killed and yield to other cooperative tasks. Here I do that by setting
+/// a low fuel limit, catching the out-of-fuel condition and resuming the plugin
+/// when it's not been killed.
 async fn run_wasm(
     mut store: Store<WasiCtx>,
     start_func: Func,
@@ -61,7 +64,7 @@ async fn run_wasm(
     trace!("Plugin task started");
     let max_fuel = max_fuel.unwrap_or(MAX_FUEL);
 
-    //? Starts with zero fuel so we fall into the resumable loop that yields
+    //? Starts with zero fuel so we fall into the resumable loop
     store.set_fuel(0).unwrap();
     let mut resumable = start_func.call_resumable(&mut store, &[], &mut [])?;
 
@@ -80,7 +83,7 @@ async fn run_wasm(
                 let top_up = required.max(max_fuel);
                 store.set_fuel(top_up).unwrap();
 
-                // Super Jank Time:
+                // Jank Time:
                 //
                 // Continuation from `wasmi_wasi::poll_oneoff` that sets
                 // a resume time in the future if the guest requested,
@@ -89,7 +92,7 @@ async fn run_wasm(
                 if let Some(resume_time) = store.data().resume_time {
                     let now = runtime::now();
                     if resume_time > now {
-                        info!(
+                        trace!(
                             "Plugin requested sleep until {:?}, sleeping...",
                             resume_time
                         );

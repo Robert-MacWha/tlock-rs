@@ -3,14 +3,13 @@ use std::{
     sync::{Arc, atomic::AtomicBool},
 };
 
-use crate::compiled_plugin::CompiledPlugin;
 use crate::wasi::{
     non_blocking_pipe::{NonBlockingPipeReader, NonBlockingPipeWriter, non_blocking_pipe},
     wasi::{WasiCtx, add_to_linker},
     wasmi::spawn_wasm,
 };
 use thiserror::Error;
-use wasmi::{Linker, Store};
+use wasmi::{Engine, Linker, Module, Store};
 
 #[derive(Error, Debug)]
 pub enum SpawnError {
@@ -24,7 +23,8 @@ pub enum SpawnError {
 
 /// Spawns the wasi plugin in a new thread
 pub fn spawn_plugin(
-    compiled: CompiledPlugin,
+    engine: Engine,
+    module: Module,
     max_fuel: Option<u64>,
 ) -> Result<
     (
@@ -43,7 +43,8 @@ pub fn spawn_plugin(
     let (stderr_reader, stderr_writer) = non_blocking_pipe();
 
     let fut = start_plugin(
-        compiled,
+        engine,
+        module,
         is_running.clone(),
         stdin_reader,
         stdout_writer,
@@ -55,7 +56,8 @@ pub fn spawn_plugin(
 }
 
 fn start_plugin<R, W1, W2>(
-    compiled: CompiledPlugin,
+    engine: Engine,
+    module: Module,
     is_running: Arc<AtomicBool>,
     stdin_reader: R,
     stdout_writer: W1,
@@ -67,9 +69,6 @@ where
     W1: Write + Send + Sync + 'static,
     W2: Write + Send + Sync + 'static,
 {
-    let module = compiled.module;
-    let engine = compiled.engine;
-
     let mut linker = Linker::new(&engine);
     let wasi = WasiCtx::new()
         .set_stdin(stdin_reader)

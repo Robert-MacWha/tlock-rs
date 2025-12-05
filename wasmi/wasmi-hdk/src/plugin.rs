@@ -5,6 +5,7 @@ use serde_json::Value;
 use thiserror::Error;
 use tracing::info;
 use uuid::Uuid;
+use wasmi::{Engine, Module};
 use wasmi_pdk::{
     api::RequestHandler,
     async_trait::async_trait,
@@ -14,7 +15,7 @@ use wasmi_pdk::{
 };
 
 use crate::{
-    compiled_plugin::CompiledPlugin,
+    compiled_plugin::compile_plugin,
     host_handler::HostHandler,
     plugin_instance::{SpawnError, spawn_plugin},
 };
@@ -51,7 +52,8 @@ pub struct Plugin {
     name: String,
     id: PluginId,
     handler: Arc<dyn HostHandler>,
-    compiled: CompiledPlugin,
+    engine: Engine,
+    module: Module,
     max_fuel: Option<u64>,
 }
 
@@ -72,13 +74,14 @@ impl Plugin {
         wasm_bytes: Vec<u8>,
         handler: Arc<dyn HostHandler>,
     ) -> Result<Self, wasmi::Error> {
-        let compiled = CompiledPlugin::new(wasm_bytes.clone())?;
+        let (engine, module) = compile_plugin(wasm_bytes.clone())?;
 
         Ok(Plugin {
             name: name.to_string(),
             id: id.clone(),
             handler,
-            compiled,
+            engine,
+            module,
             max_fuel: None,
         })
     }
@@ -120,7 +123,7 @@ impl From<PluginError> for RpcError {
 impl Transport<PluginError> for Plugin {
     async fn call(&self, method: &str, params: Value) -> Result<RpcResponse, PluginError> {
         let (stdin_writer, stdout_reader, stderr_reader, instance_task) =
-            spawn_plugin(self.compiled.clone(), self.max_fuel)?;
+            spawn_plugin(self.engine.clone(), self.module.clone(), self.max_fuel)?;
 
         let name = self.name.clone();
         let stderr_task = async move {

@@ -9,6 +9,10 @@ use tracing::{error, info, trace, warn};
 /// a subset of WASI syscalls to the instance, allowing it to
 /// get args, env vars, read/write to stdin/stdout/stderr, get time, and
 /// get random bytes.
+///  
+/// Intentionally excludes filesystem (except for stdin/stdout/stderr) and network
+/// access for improved security and compatibility.
+///
 /// https://github.com/WebAssembly/WASI/blob/main/legacy/preview1/docs.md
 pub struct WasiCtx {
     args: Vec<String>,
@@ -54,11 +58,13 @@ impl WasiCtx {
         }
     }
 
+    #[allow(dead_code)]
     pub fn add_arg(mut self, arg: &str) -> Self {
         self.args.push(arg.to_string());
         self
     }
 
+    #[allow(dead_code)]
     pub fn add_env(mut self, key: &str, value: &str) -> Self {
         self.env.push(format!("{}={}", key, value));
         self
