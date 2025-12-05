@@ -98,9 +98,10 @@ pub fn add_to_linker(linker: &mut wasmi::Linker<WasiCtx>) -> Result<(), wasmi::E
     linker.func_wrap("wasi_snapshot_preview1", "clock_time_get", clock_time_get)?;
     linker.func_wrap("wasi_snapshot_preview1", "fd_close", fd_close)?;
     linker.func_wrap("wasi_snapshot_preview1", "random_get", random_get)?;
-    linker.func_wrap("wasi_snapshot_preview1", "proc_exit", proc_exit)?;
     linker.func_wrap("wasi_snapshot_preview1", "sched_yield", sched_yield)?;
     linker.func_wrap("wasi_snapshot_preview1", "poll_oneoff", poll_oneoff)?;
+    linker.func_wrap("wasi_snapshot_preview1", "proc_raise", proc_raise)?;
+    linker.func_wrap("wasi_snapshot_preview1", "proc_exit", proc_exit)?;
 
     Ok(())
 }
@@ -510,11 +511,6 @@ fn random_get(mut caller: wasmi::Caller<'_, WasiCtx>, buf_ptr: i32, buf_len: i32
     Errno::Success as i32
 }
 
-fn proc_exit(_caller: wasmi::Caller<'_, WasiCtx>, status: i32) -> Result<(), wasmi::Error> {
-    info!("wasi proc_exit({})", status);
-    Err(wasmi::Error::i32_exit(status))
-}
-
 fn sched_yield(mut caller: wasmi::Caller<'_, WasiCtx>) -> i32 {
     trace!("wasi sched_yield()");
 
@@ -704,6 +700,27 @@ fn poll_oneoff(
         .unwrap();
 
     Errno::Success as i32
+}
+
+fn proc_raise(_caller: wasmi::Caller<'_, WasiCtx>, sig: i32) -> Result<(), wasmi::Error> {
+    info!("wasi proc_raise({})", sig);
+
+    // https://github.com/WebAssembly/WASI/blob/main/legacy/preview1/docs.md#signal
+    match sig {
+        0 | 13 | 16 | 17 | 22 | 27 => {
+            // Ignored signals
+            Ok(())
+        }
+        _ => {
+            // Termination signals
+            Err(wasmi::Error::i32_exit(128 + sig))
+        }
+    }
+}
+
+fn proc_exit(_caller: wasmi::Caller<'_, WasiCtx>, status: i32) -> Result<(), wasmi::Error> {
+    info!("wasi proc_exit({})", status);
+    Err(wasmi::Error::i32_exit(status))
 }
 
 /// Write a pointer to a string into a table, and the string itself into a buffer,
