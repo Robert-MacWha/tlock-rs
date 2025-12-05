@@ -1,5 +1,4 @@
 use dioxus::prelude::*;
-use dioxus_logger::tracing::info;
 use tlock_hdk::tlock_api::{entities::PageId, page::PageEvent};
 
 use crate::{components::component::RenderComponent, contexts::host::HostContext};

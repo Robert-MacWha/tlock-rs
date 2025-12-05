@@ -13,16 +13,16 @@ path = "src/bin/profile_prime_sieve.rs"
 required-features = ["tokio-runtime"]
 
 [dependencies]
-runtime = { path = "../runtime" }
-wasmi-pdk = { path = "../wasmi-pdk" }
-wasmi-async = { path = "../wasmi-async" }
-wasmi = "0.51.0"
-serde = {version = "1.0.219", features = ["derive"] }
-serde_json = "1.0.142"
-thiserror = "2.0.12"
-tracing = "0.1.41"
-futures = "0.3.31"
-web-time = "1.1.0"
+runtime = { workspace = true }
+wasmi-pdk = { workspace = true }
+wasmi-async = { workspace = true }
+wasmi = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+futures = { workspace = true }
+web-time = { workspace = true }
 
 # Disables criterion for wasm targets since it's not compatible
 [target.'cfg(not(target_family = "wasm"))'.dev-dependencies]

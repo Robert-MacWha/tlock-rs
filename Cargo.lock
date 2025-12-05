@@ -26,7 +26,6 @@ checksum = "683d7910e743518b0e34f1186f92494becacb047c7b6bf616c96772180fef923"
 [[package]]
 name = "alloy"
 version = "1.1.2"
-source = "git+https://github.com/Robert-MacWha/alloy?branch=wasm32-wasip-support#f0dacd0e6a877bf8a62a524acfad556b63bca288"
 dependencies = [
  "alloy-consensus",
  "alloy-contract",
@@ -64,7 +63,6 @@ dependencies = [
 [[package]]
 name = "alloy-consensus"
 version = "1.1.2"
-source = "git+https://github.com/Robert-MacWha/alloy?branch=wasm32-wasip-support#f0dacd0e6a877bf8a62a524acfad556b63bca288"
 dependencies = [
  "alloy-eips",
  "alloy-primitives",
@@ -90,7 +88,6 @@ dependencies = [
 [[package]]
 name = "alloy-consensus-any"
 version = "1.1.2"
-source = "git+https://github.com/Robert-MacWha/alloy?branch=wasm32-wasip-support#f0dacd0e6a877bf8a62a524acfad556b63bca288"
 dependencies = [
  "alloy-consensus",
  "alloy-eips",
@@ -103,7 +100,6 @@ dependencies = [
 [[package]]
 name = "alloy-contract"
 version = "1.1.2"
-source = "git+https://github.com/Robert-MacWha/alloy?branch=wasm32-wasip-support#f0dacd0e6a877bf8a62a524acfad556b63bca288"
 dependencies = [
  "alloy-consensus",
  "alloy-dyn-abi",
@@ -192,7 +188,6 @@ dependencies = [
 [[package]]
 name = "alloy-eips"
 version = "1.1.2"
-source = "git+https://github.com/Robert-MacWha/alloy?branch=wasm32-wasip-support#f0dacd0e6a877bf8a62a524acfad556b63bca288"
 dependencies = [
  "alloy-eip2124",
  "alloy-eip2930",
@@ -214,7 +209,6 @@ dependencies = [
 [[package]]
 name = "alloy-genesis"
 version = "1.1.2"
-source = "git+https://github.com/Robert-MacWha/alloy?branch=wasm32-wasip-support#f0dacd0e6a877bf8a62a524acfad556b63bca288"
 dependencies = [
  "alloy-eips",
  "alloy-primitives",
@@ -240,7 +234,6 @@ dependencies = [
 [[package]]
 name = "alloy-json-rpc"
 version = "1.1.2"
-source = "git+https://github.com/Robert-MacWha/alloy?branch=wasm32-wasip-support#f0dacd0e6a877bf8a62a524acfad556b63bca288"
 dependencies = [
  "alloy-primitives",
  "alloy-sol-types",
@@ -254,7 +247,6 @@ dependencies = [
 [[package]]
 name = "alloy-network"
 version = "1.1.2"
-source = "git+https://github.com/Robert-MacWha/alloy?branch=wasm32-wasip-support#f0dacd0e6a877bf8a62a524acfad556b63bca288"
 dependencies = [
  "alloy-consensus",
  "alloy-consensus-any",
@@ -279,7 +271,6 @@ dependencies = [
 [[package]]
 name = "alloy-network-primitives"
 version = "1.1.2"
-source = "git+https://github.com/Robert-MacWha/alloy?branch=wasm32-wasip-support#f0dacd0e6a877bf8a62a524acfad556b63bca288"
 dependencies = [
  "alloy-consensus",
  "alloy-eips",
@@ -318,7 +309,6 @@ dependencies = [
 [[package]]
 name = "alloy-provider"
 version = "1.1.2"
-source = "git+https://github.com/Robert-MacWha/alloy?branch=wasm32-wasip-support#f0dacd0e6a877bf8a62a524acfad556b63bca288"
 dependencies = [
  "alloy-chains",
  "alloy-consensus",
@@ -379,7 +369,6 @@ dependencies = [
 [[package]]
 name = "alloy-rpc-client"
 version = "1.1.2"
-source = "git+https://github.com/Robert-MacWha/alloy?branch=wasm32-wasip-support#f0dacd0e6a877bf8a62a524acfad556b63bca288"
 dependencies = [
  "alloy-json-rpc",
  "alloy-primitives",
@@ -401,7 +390,6 @@ dependencies = [
 [[package]]
 name = "alloy-rpc-types"
 version = "1.1.2"
-source = "git+https://github.com/Robert-MacWha/alloy?branch=wasm32-wasip-support#f0dacd0e6a877bf8a62a524acfad556b63bca288"
 dependencies = [
  "alloy-primitives",
  "alloy-rpc-types-eth",
@@ -413,7 +401,6 @@ dependencies = [
 [[package]]
 name = "alloy-rpc-types-any"
 version = "1.1.2"
-source = "git+https://github.com/Robert-MacWha/alloy?branch=wasm32-wasip-support#f0dacd0e6a877bf8a62a524acfad556b63bca288"
 dependencies = [
  "alloy-consensus-any",
  "alloy-rpc-types-eth",
@@ -423,7 +410,6 @@ dependencies = [
 [[package]]
 name = "alloy-rpc-types-eth"
 version = "1.1.2"
-source = "git+https://github.com/Robert-MacWha/alloy?branch=wasm32-wasip-support#f0dacd0e6a877bf8a62a524acfad556b63bca288"
 dependencies = [
  "alloy-consensus",
  "alloy-consensus-any",
@@ -433,7 +419,7 @@ dependencies = [
  "alloy-rlp",
  "alloy-serde",
  "alloy-sol-types",
- "itertools 0.14.0",
+ "itertools 0.13.0",
  "serde",
  "serde_json",
  "serde_with",
@@ -443,7 +429,6 @@ dependencies = [
 [[package]]
 name = "alloy-rpc-types-trace"
 version = "1.1.2"
-source = "git+https://github.com/Robert-MacWha/alloy?branch=wasm32-wasip-support#f0dacd0e6a877bf8a62a524acfad556b63bca288"
 dependencies = [
  "alloy-primitives",
  "alloy-rpc-types-eth",
@@ -456,7 +441,6 @@ dependencies = [
 [[package]]
 name = "alloy-serde"
 version = "1.1.2"
-source = "git+https://github.com/Robert-MacWha/alloy?branch=wasm32-wasip-support#f0dacd0e6a877bf8a62a524acfad556b63bca288"
 dependencies = [
  "alloy-primitives",
  "serde",
@@ -466,7 +450,6 @@ dependencies = [
 [[package]]
 name = "alloy-signer"
 version = "1.1.2"
-source = "git+https://github.com/Robert-MacWha/alloy?branch=wasm32-wasip-support#f0dacd0e6a877bf8a62a524acfad556b63bca288"
 dependencies = [
  "alloy-dyn-abi",
  "alloy-primitives",
@@ -482,7 +465,6 @@ dependencies = [
 [[package]]
 name = "alloy-signer-aws"
 version = "1.1.2"
-source = "git+https://github.com/Robert-MacWha/alloy?branch=wasm32-wasip-support#f0dacd0e6a877bf8a62a524acfad556b63bca288"
 dependencies = [
  "alloy-consensus",
  "alloy-network",
@@ -500,7 +482,6 @@ dependencies = [
 [[package]]
 name = "alloy-signer-gcp"
 version = "1.1.2"
-source = "git+https://github.com/Robert-MacWha/alloy?branch=wasm32-wasip-support#f0dacd0e6a877bf8a62a524acfad556b63bca288"
 dependencies = [
  "alloy-consensus",
  "alloy-network",
@@ -517,7 +498,6 @@ dependencies = [
 [[package]]
 name = "alloy-signer-ledger"
 version = "1.1.2"
-source = "git+https://github.com/Robert-MacWha/alloy?branch=wasm32-wasip-support#f0dacd0e6a877bf8a62a524acfad556b63bca288"
 dependencies = [
  "alloy-consensus",
  "alloy-dyn-abi",
@@ -536,7 +516,6 @@ dependencies = [
 [[package]]
 name = "alloy-signer-local"
 version = "1.1.2"
-source = "git+https://github.com/Robert-MacWha/alloy?branch=wasm32-wasip-support#f0dacd0e6a877bf8a62a524acfad556b63bca288"
 dependencies = [
  "alloy-consensus",
  "alloy-network",
@@ -551,7 +530,6 @@ dependencies = [
 [[package]]
 name = "alloy-signer-turnkey"
 version = "1.1.2"
-source = "git+https://github.com/Robert-MacWha/alloy?branch=wasm32-wasip-support#f0dacd0e6a877bf8a62a524acfad556b63bca288"
 dependencies = [
  "alloy-consensus",
  "alloy-network",
@@ -639,7 +617,6 @@ dependencies = [
 [[package]]
 name = "alloy-transport"
 version = "1.1.2"
-source = "git+https://github.com/Robert-MacWha/alloy?branch=wasm32-wasip-support#f0dacd0e6a877bf8a62a524acfad556b63bca288"
 dependencies = [
  "alloy-json-rpc",
  "auto_impl",
@@ -655,13 +632,13 @@ dependencies = [
  "tower",
  "tracing",
  "url",
+ "wasm-bindgen-futures",
  "wasmtimer",
 ]
 
 [[package]]
 name = "alloy-transport-http"
 version = "1.1.2"
-source = "git+https://github.com/Robert-MacWha/alloy?branch=wasm32-wasip-support#f0dacd0e6a877bf8a62a524acfad556b63bca288"
 dependencies = [
  "alloy-json-rpc",
  "alloy-transport",
@@ -691,7 +668,6 @@ dependencies = [
 [[package]]
 name = "alloy-tx-macros"
 version = "1.1.2"
-source = "git+https://github.com/Robert-MacWha/alloy?branch=wasm32-wasip-support#f0dacd0e6a877bf8a62a524acfad556b63bca288"
 dependencies = [
  "darling",
  "proc-macro2",
@@ -3318,8 +3294,6 @@ name = "frontend"
 version = "0.1.0"
 dependencies = [
  "dioxus",
- "dioxus-html",
- "dioxus-logger",
  "futures",
  "getrandom 0.2.16",
  "gloo-timers",
