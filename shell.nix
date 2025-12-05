@@ -18,7 +18,6 @@ pkgs.mkShell {
       ];
     })
 
-    pre-commit
     cargo
     cargo-sort
     rustfmt
