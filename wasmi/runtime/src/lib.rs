@@ -8,12 +8,7 @@ pub fn yield_now() -> impl std::future::Future<Output = ()> {
         TimeoutFuture::new(0)
     }
 
-    #[cfg(all(target_arch = "wasm32", target_os = "wasi"))]
-    {
-        async {} // noop
-    }
-
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
     {
         tokio::task::yield_now()
     }
@@ -24,15 +19,13 @@ pub fn now() -> web_time::Instant {
 }
 
 pub async fn sleep(dur: Duration) {
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        tokio::time::sleep(dur).await;
-    }
-
-    // TODO: Add tokio here for wasm32-wasip1
-
     #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
     {
         gloo_timers::future::TimeoutFuture::new(dur.as_millis() as u32).await;
+    }
+
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+    {
+        tokio::time::sleep(dur).await;
     }
 }
