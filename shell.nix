@@ -24,7 +24,7 @@ pkgs.mkShell {
     samply
     rustfmt
     rust-bin.stable.latest.rust-analyzer
-    unstable.dioxus-cli
+    dioxus-cli
 
     # For dioxus-cli
     lld

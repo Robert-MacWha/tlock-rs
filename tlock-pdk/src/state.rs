@@ -3,9 +3,8 @@ use std::{fmt::Debug, sync::Arc};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use tlock_api::{RpcMethod, host};
-use wasmi_plugin_pdk::{
-    api::ApiError, rpc_message::RpcError, tracing::error, transport::Transport,
-};
+use tracing::error;
+use wasmi_plugin_pdk::{api::ApiError, rpc_message::RpcError, transport::Transport};
 
 pub async fn get_state<T, R, E>(transport: Arc<T>) -> R
 where

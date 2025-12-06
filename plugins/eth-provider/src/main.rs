@@ -20,13 +20,10 @@ use tlock_pdk::{
         entities::{EthProviderId, PageId},
         eth, global, host, page, plugin,
     },
-    wasmi_plugin_pdk::{
-        rpc_message::RpcError,
-        tracing::{error, info},
-        tracing_subscriber::fmt,
-        transport::JsonRpcTransport,
-    },
+    wasmi_plugin_pdk::{rpc_message::RpcError, transport::JsonRpcTransport},
 };
+use tracing::{error, info};
+use tracing_subscriber::fmt;
 
 mod alloy_provider;
 
