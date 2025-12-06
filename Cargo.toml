@@ -1,15 +1,15 @@
 [workspace]
 members = [
     "frontend",
-    "host",
+    "crates/host",
     "plugins/eoa-vault",
     "plugins/eth-provider",
     "plugins/plugin-template",
     "plugins/vault-page",
-    "tlock-alloy",
-    "tlock-api",
-    "tlock-hdk",
-    "tlock-pdk",
+    "crates/tlock-alloy",
+    "crates/tlock-api",
+    "crates/tlock-hdk",
+    "crates/tlock-pdk",
 ]
 
 resolver = "2"
@@ -20,16 +20,16 @@ async-trait = "0.1"
 dioxus = { version = "=0.7.1" }
 futures = "0.3"
 gloo-timers = { version = "0.3", features = ["futures"] }
-host = { path = "./host" }
+host = { path = "./crates/host" }
 rand = "0.9"
 reqwest = "0.12"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
-tlock-alloy = { path = "./tlock-alloy" }
-tlock-api = { path = "./tlock-api" }
-tlock-hdk = { path = "./tlock-hdk" }
-tlock-pdk = { path = "./tlock-pdk" }
+tlock-alloy = { path = "./crates/tlock-alloy" }
+tlock-api = { path = "./crates/tlock-api" }
+tlock-hdk = { path = "./crates/tlock-hdk" }
+tlock-pdk = { path = "./crates/tlock-pdk" }
 tokio = { version = "1", features = ["rt", "time", "sync", "macros"] }
 tower-service = "0.3"
 tracing = "0.1"

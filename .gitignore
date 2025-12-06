@@ -2,3 +2,5 @@ target
 profile.json.gz
 .envrc
 .direnv
+.claude
+.vscode
