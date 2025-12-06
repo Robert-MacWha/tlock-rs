@@ -2222,9 +2222,9 @@ dependencies = [
 
 [[package]]
 name = "dioxus"
-version = "0.7.2"
+version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3a115f9dbe5900c6044ee6a791e1b160c29989c6a8721eec099e01a964e5dae4"
+checksum = "f76e820919058a685a1fdbb2ef4888c73ac77d623c39a7dfde2aa812947246be"
 dependencies = [
  "dioxus-asset-resolver",
  "dioxus-cli-config",

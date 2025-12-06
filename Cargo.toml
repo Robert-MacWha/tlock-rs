@@ -15,29 +15,26 @@ members = [
 resolver = "2"
 
 [workspace.dependencies]
-alloy = { version = "1.1.2", features = ["wasm-bindgen", "json-rpc", "rpc-types-trace", "eip712"] }
+alloy = { version = "1.1", features = ["wasm-bindgen", "json-rpc", "rpc-types-trace", "eip712"] }
 async-trait = "0.1"
-dioxus = { version = "0.7.1" }
-futures = "0.3.31"
-getrandom = { version = "0.2", features = ["js"] }
-gloo-timers = { version = "0.3.0", features = ["futures"] }
+dioxus = { version = "=0.7.1" }
+futures = "0.3"
+gloo-timers = { version = "0.3", features = ["futures"] }
 host = { path = "./host" }
-rand = "0.9.2"
-reqwest = "0.12.23"
-serde = { version = "1.0.219", features = ["derive"] }
-serde_json = "1.0.143"
-thiserror = "2.0.12"
+rand = "0.9"
+reqwest = "0.12"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
 tlock-alloy = { path = "./tlock-alloy" }
 tlock-api = { path = "./tlock-api" }
 tlock-hdk = { path = "./tlock-hdk" }
 tlock-pdk = { path = "./tlock-pdk" }
 tokio = { version = "1", features = ["rt", "time", "sync", "macros"] }
-tower-service = "0.3.3"
-tracing = "0.1.41"
-tracing-subscriber = "0.3.20"
+tower-service = "0.3"
+tracing = "0.1"
+tracing-subscriber = "0.3"
 uuid = { version = "1", features = [ "v4", "serde", "js" ] } 
-wasm-bindgen-futures = "0.4"
-wasmi = "1"
 wasmi-plugin-hdk = { version = "0.1" }
 wasmi-plugin-pdk = { version = "0.1" }
 
