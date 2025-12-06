@@ -46,4 +46,4 @@ jobs:
     - uses: jetli/wasm-bindgen-action@v0.2.0
 
     - name: Run WASM Tests
-      run: cargo test -p wasmi-hdk --target wasm32-unknown-unknown
+      run: cargo test --target wasm32-unknown-unknown
