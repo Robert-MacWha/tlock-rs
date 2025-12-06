@@ -9,4 +9,4 @@ async-trait = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 uuid = { workspace = true }
-wasmi-pdk = { workspace = true }
+wasmi-plugin-pdk = { workspace = true }

@@ -11,7 +11,7 @@ use tlock_hdk::{
         component::Component,
         entities::{EntityId, PageId},
     },
-    wasmi_hdk::plugin::PluginId,
+    wasmi_plugin_hdk::plugin::PluginId,
 };
 
 #[derive(Clone)]

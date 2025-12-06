@@ -8,5 +8,5 @@ serde_json = { workspace = true }
 tlock-api = { workspace = true }
 tlock-pdk = { workspace = true }
 tracing = { workspace = true }
-wasmi-hdk = { workspace = true }
-wasmi-pdk = { workspace = true }
+wasmi-plugin-hdk = { workspace = true }
+wasmi-plugin-pdk = { workspace = true }

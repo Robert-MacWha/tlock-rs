@@ -19,8 +19,8 @@ use tlock_hdk::{
         eth, global, host, page, plugin,
         vault::{self},
     },
-    wasmi_hdk::plugin::{Plugin, PluginError, PluginId},
-    wasmi_pdk::rpc_message::RpcError,
+    wasmi_plugin_hdk::plugin::{Plugin, PluginError, PluginId},
+    wasmi_plugin_pdk::rpc_message::RpcError,
 };
 use tracing::{info, warn};
 
@@ -110,7 +110,7 @@ impl Host {
 
     pub fn get_server(self: &Arc<Host>) -> HostServer<Weak<Host>> {
         let weak_host = Arc::downgrade(self);
-        HostServer::new(Arc::new(weak_host))
+        HostServer::new(weak_host)
             .with_method(global::Ping, ping)
             .with_method(host::RegisterEntity, register_entity)
             .with_method(host::RequestEthProvider, request_eth_provider)

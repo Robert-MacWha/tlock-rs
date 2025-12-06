@@ -10,10 +10,6 @@ members = [
     "tlock-api",
     "tlock-hdk",
     "tlock-pdk",
-    "wasmi/runtime",
-    "wasmi/test-plugin",
-    "wasmi/wasmi-hdk",
-    "wasmi/wasmi-pdk",
 ]
 
 resolver = "2"
@@ -28,7 +24,6 @@ gloo-timers = { version = "0.3.0", features = ["futures"] }
 host = { path = "./host" }
 rand = "0.9.2"
 reqwest = "0.12.23"
-runtime = { path = "./wasmi/runtime" }
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.143"
 thiserror = "2.0.12"
@@ -43,9 +38,8 @@ tracing-subscriber = "0.3.20"
 uuid = { version = "1", features = [ "v4", "serde", "js" ] } 
 wasm-bindgen-futures = "0.4"
 wasmi = "1"
-wasmi-hdk = { path = "./wasmi/wasmi-hdk" }
-wasmi-pdk = { path = "./wasmi/wasmi-pdk" }
-web-time = "1.1.0"
+wasmi-plugin-pdk = { version = "0.1" }
+wasmi-plugin-hdk = { version = "0.1" }
 
 [profile.release]
 lto = true
@@ -62,4 +56,6 @@ inherits = "dev"
 
 [patch.crates-io]
 alloy = { git = "https://github.com/Robert-MacWha/alloy", branch = "wasm32-wasip-support" }
+wasmi-plugin-pdk = { path = "../wasmi-plugin-framework/crates/wasmi-plugin-pdk" }
+wasmi-plugin-hdk = { path = "../wasmi-plugin-framework/crates/wasmi-plugin-hdk" }
 # alloy = { path = "../alloy/crates/alloy" }

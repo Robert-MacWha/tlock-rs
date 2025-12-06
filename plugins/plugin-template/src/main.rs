@@ -3,7 +3,7 @@ use std::{io::stderr, sync::Arc};
 use tlock_pdk::{
     server::PluginServer,
     tlock_api::{RpcMethod, global},
-    wasmi_pdk::{
+    wasmi_plugin_pdk::{
         rpc_message::RpcError, tracing::info, tracing_subscriber::fmt, transport::JsonRpcTransport,
     },
 };

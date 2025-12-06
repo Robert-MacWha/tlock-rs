@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use serde::{Serialize, de::DeserializeOwned};
-use wasmi_pdk::{api::ApiError, rpc_message::RpcError, transport::Transport};
+use wasmi_plugin_pdk::{api::ApiError, rpc_message::RpcError, transport::Transport};
 
 pub mod caip;
 pub mod component;
@@ -15,7 +15,7 @@ pub use alloy;
 //
 // That's already somewhat enforced since the host will only call / recognize
 // these methods, but could be nice to make it explicit.
-// TODO: Or alternatively, perhaps move it into the `wasmi_pdk` crate, since
+// TODO: Or alternatively, perhaps move it into the `wasmi_plugin_pdk` crate, since
 // it should work fine for any RPC system.
 // TODO: Also consider forwards compatibility with associated types, maybe wrap
 // them as named structs to allow adding fields later without introducing breaking changes.

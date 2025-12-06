@@ -20,7 +20,7 @@ use tlock_pdk::{
         entities::{EthProviderId, PageId},
         eth, global, host, page, plugin,
     },
-    wasmi_pdk::{
+    wasmi_plugin_pdk::{
         rpc_message::RpcError,
         tracing::{error, info},
         tracing_subscriber::fmt,
