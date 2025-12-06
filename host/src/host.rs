@@ -9,7 +9,8 @@ use uuid::Uuid;
 
 use alloy::{primitives::U256, transports::http::reqwest};
 use tlock_hdk::{
-    HostServer, impl_host_rpc, impl_host_rpc_no_id,
+    impl_host_rpc, impl_host_rpc_no_id,
+    server::HostServer,
     tlock_api::{
         RpcMethod,
         caip::{self, AccountId, AssetId},
