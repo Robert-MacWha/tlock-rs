@@ -12,12 +12,10 @@ use serde_json::value::to_raw_value;
 use std::{sync::Arc, task::Poll};
 use tlock_pdk::{
     tlock_api::{RpcMethod, entities::EthProviderId, eth},
-    wasmi_pdk::{
-        tracing::{error, info},
-        transport::JsonRpcTransport,
-    },
+    wasmi_plugin_pdk::transport::JsonRpcTransport,
 };
 use tower_service::Service;
+use tracing::{error, info};
 
 use crate::eth_request::EthRequest;
 

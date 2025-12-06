@@ -21,9 +21,6 @@ jobs:
 
     - uses: Swatinem/rust-cache@v2
 
-    - name: Build plugin
-      run: cargo build --target wasm32-wasip1 -p test-plugin --release
-
     - name: Build
       run: cargo build
 
@@ -41,9 +38,6 @@ jobs:
 
     - uses: Swatinem/rust-cache@v2
 
-    - name: Build plugin
-      run: cargo build --target wasm32-wasip1 -p test-plugin --release
-
     - name: Setup Node.js
       uses: actions/setup-node@v4
       with:
@@ -52,4 +46,4 @@ jobs:
     - uses: jetli/wasm-bindgen-action@v0.2.0
 
     - name: Run WASM Tests
-      run: cargo test -p wasmi-hdk --target wasm32-unknown-unknown
+      run: cargo test --target wasm32-unknown-unknown

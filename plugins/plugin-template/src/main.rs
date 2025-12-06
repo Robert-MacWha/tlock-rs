@@ -3,10 +3,11 @@ use std::{io::stderr, sync::Arc};
 use tlock_pdk::{
     server::PluginServer,
     tlock_api::{RpcMethod, global},
-    wasmi_pdk::{
-        rpc_message::RpcError, tracing::info, tracing_subscriber::fmt, transport::JsonRpcTransport,
-    },
+    wasmi_plugin_pdk::{rpc_message::RpcError, transport::JsonRpcTransport},
 };
+
+use tracing::info;
+use tracing_subscriber::fmt;
 
 async fn ping(transport: Arc<JsonRpcTransport>, _: ()) -> Result<String, RpcError> {
     global::Ping.call(transport, ()).await?;

@@ -16,13 +16,10 @@ use tlock_pdk::{
         global, host, page, plugin,
         vault::{self},
     },
-    wasmi_pdk::{
-        rpc_message::RpcError,
-        tracing::{info, warn},
-        tracing_subscriber::fmt,
-        transport::JsonRpcTransport,
-    },
+    wasmi_plugin_pdk::{rpc_message::RpcError, transport::JsonRpcTransport},
 };
+use tracing::{info, warn};
+use tracing_subscriber::fmt;
 
 #[derive(Serialize, Deserialize, Default, Debug)]
 struct PluginState {

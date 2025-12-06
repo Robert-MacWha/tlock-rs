@@ -21,9 +21,10 @@ pkgs.mkShell {
     cargo
     cargo-sort
     cargo-machete
+    samply
     rustfmt
     rust-bin.stable.latest.rust-analyzer
-    unstable.dioxus-cli
+    dioxus-cli
 
     # For dioxus-cli
     lld
@@ -37,8 +38,5 @@ pkgs.mkShell {
     openssl
     binaryen
     wasm-bindgen-cli_0_2_106
-
-    # TEMP: For testing
-    nodejs
   ];
 }

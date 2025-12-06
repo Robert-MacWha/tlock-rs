@@ -9,6 +9,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 tlock-pdk = { workspace = true }
 tower-service = { workspace = true }
+tracing = { workspace = true }
 
 [build]
 target = "wasm32-wasip1"

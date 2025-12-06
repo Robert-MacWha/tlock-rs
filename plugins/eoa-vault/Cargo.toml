@@ -4,10 +4,12 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-alloy = "1.1.2"
-serde = { version = "1.0.219", features = ["derive"] }
-tlock-alloy = { path = "../../tlock-alloy" }
-tlock-pdk = { path = "../../tlock-pdk" }
+alloy = { workspace = true }
+serde = { workspace = true }
+tlock-alloy = { workspace = true }
+tlock-pdk = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
 
 [build]
 target = "wasm32-wasip1"

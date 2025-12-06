@@ -9,7 +9,7 @@ use alloy::{
 use std::{sync::Arc, task::Poll};
 use tlock_pdk::{
     tlock_api::{RpcMethod, host},
-    wasmi_pdk::transport::JsonRpcTransport,
+    wasmi_plugin_pdk::transport::JsonRpcTransport,
 };
 use tower_service::Service;
 

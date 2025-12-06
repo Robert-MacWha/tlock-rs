@@ -30,13 +30,13 @@ use tlock_pdk::{
         eth::{self},
         global, host, page, plugin, vault,
     },
-    wasmi_pdk::{
+    wasmi_plugin_pdk::{
         rpc_message::{RpcError, to_rpc_err},
-        tracing::{info, warn},
-        tracing_subscriber::fmt,
         transport::JsonRpcTransport,
     },
 };
+use tracing::{info, warn};
+use tracing_subscriber::fmt;
 
 #[derive(Serialize, Deserialize, Default, Debug)]
 struct PluginState {

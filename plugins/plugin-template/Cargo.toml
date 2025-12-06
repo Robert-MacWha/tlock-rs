@@ -4,7 +4,9 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-tlock-pdk = { path = "../../tlock-pdk" }
+tlock-pdk = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
 
 [build]
 target = "wasm32-wasip1"

@@ -9,4 +9,5 @@ futures = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tlock-api = { workspace = true }
-wasmi-pdk = { workspace = true }
+tracing = { workspace = true }
+wasmi-plugin-pdk = { workspace = true }
