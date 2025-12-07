@@ -250,9 +250,11 @@ pub mod vault {
 
     rpc_method!(
         /// Withdraw an amount of some asset from this vault to another account.
+        ///
         /// Vaults MAY reject withdrawals for unsupported assets, insufficient funds,
-        /// or for any other reason. Plugins MUST reject requests if they cannot
-        /// fufill them.
+        /// or for any other reason.
+        ///
+        /// Vaults MUST reject requests if they cannot fufill them.
         vault_withdraw, Withdraw, (VaultId, AccountId, AssetId, U256), ()
     );
 
@@ -270,12 +272,58 @@ pub mod vault {
         vault_get_deposit_address, GetDepositAddress, (VaultId, AssetId), AccountId
     );
 
+    // TODO: Consider removing this method.  We can't guarantee it will be called
+    // on every deposit, so vaults will need to reconcile deposits themselves anyway.
+    // It may be better to add callbacks vaults can register for when deposits are made
+    // rather than trusting depositors to call this method.
     rpc_method!(
         /// Callback for when an amount is deposited in an account.
-        /// TODO: Also strongly consider calling this automatically. Perhaps keep track
-        /// of all the times `GetDepositAddress` is called during the execution of a
-        /// plugin, and once complete call `OnDeposit` for each `GetDepositAddress` call.
-        vault_on_deposit, OnDeposit, (VaultId, AssetId), ()
+        ///
+        /// Acts as a hint to the vault plugin that it should handle the deposit
+        /// and update its internal state accordingly. The vault cannot assume
+        /// that this method will always be called for every deposit.
+        vault_on_deposit, OnDeposit, (VaultId, AccountId, AssetId), ()
+    );
+}
+
+pub mod coordinator {
+    use alloy::primitives::{Address, U256};
+
+    use crate::{caip::AccountId, entities::CoordinatorId};
+
+    #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+    pub struct EvmOperation {
+        pub to: Address,
+        pub value: U256,
+        pub data: Vec<u8>,
+    }
+
+    rpc_method!(
+        /// Requests the coordinator to start a new session.
+        ///
+        /// If Some(accountID) AND the coordinator has previously used
+        /// that account for a session, it MUST either resume that session or return
+        /// an error.
+        ///
+        /// If None(accountID) the coordinator may start a new session with any account.
+        coordinator_request_session, RequestSession, (CoordinatorId, Option<AccountId>), AccountId
+    );
+
+    rpc_method!(
+        /// Propose a set of EVM operations to be executed by the coordinator from
+        /// an account.
+        ///
+        /// A session MUST have been requested with `RequestSession` prior to calling
+        /// this method.
+        ///
+        /// The coordinator MAY accept or reject the proposal
+        ///
+        /// After calling this method, the session is considered closed and a new
+        /// session MUST be requested for future operations.
+        coordinator_propose_evm,
+        Propose,
+        (CoordinatorId, AccountId, Vec<EvmOperation>),
+        ()
     );
 }
 

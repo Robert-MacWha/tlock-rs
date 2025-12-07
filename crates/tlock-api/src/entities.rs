@@ -7,17 +7,22 @@ use uuid::Uuid;
 
 #[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct VaultId(Uuid);
+
 #[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct PageId(Uuid);
 
 #[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct EthProviderId(Uuid);
 
+#[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub struct CoordinatorId(Uuid);
+
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum EntityId {
     Vault(VaultId),
     Page(PageId),
     EthProvider(EthProviderId),
+    Coordinator(CoordinatorId),
 }
 
 impl Display for EntityId {
@@ -26,6 +31,7 @@ impl Display for EntityId {
             EntityId::Vault(vault_id) => write!(f, "{}", vault_id),
             EntityId::Page(page_id) => write!(f, "{}", page_id),
             EntityId::EthProvider(eth_provider_id) => write!(f, "{}", eth_provider_id),
+            EntityId::Coordinator(coordinator_id) => write!(f, "{}", coordinator_id),
         }
     }
 }
@@ -54,6 +60,9 @@ impl<'de> Deserialize<'de> for EntityId {
         }
         if let Ok(provider_id) = EthProviderId::from_str(&s) {
             return Ok(EntityId::EthProvider(provider_id));
+        }
+        if let Ok(coordinator_id) = CoordinatorId::from_str(&s) {
+            return Ok(EntityId::Coordinator(coordinator_id));
         }
 
         Err(serde::de::Error::custom(format!(
@@ -144,5 +153,33 @@ impl FromStr for EthProviderId {
 impl From<EthProviderId> for EntityId {
     fn from(eth_provider_id: EthProviderId) -> Self {
         EntityId::EthProvider(eth_provider_id)
+    }
+}
+
+impl CoordinatorId {
+    pub fn new() -> Self {
+        CoordinatorId(Uuid::new_v4())
+    }
+}
+
+impl Display for CoordinatorId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "coordinator:{}", self.0)
+    }
+}
+
+impl FromStr for CoordinatorId {
+    type Err = uuid::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let s = s.strip_prefix("coordinator:").unwrap_or(s);
+        let uuid = Uuid::from_str(s)?;
+        Ok(CoordinatorId(uuid))
+    }
+}
+
+impl From<CoordinatorId> for EntityId {
+    fn from(coordinator_id: CoordinatorId) -> Self {
+        EntityId::Coordinator(coordinator_id)
     }
 }

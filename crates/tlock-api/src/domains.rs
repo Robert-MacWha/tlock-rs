@@ -13,6 +13,8 @@ pub enum Domain {
     Page,
     /// EthProviders can provide Ethereum-style RPC access.
     EthProvider,
+    /// Coordinator domain for coordinating on-chain actions securely.
+    Coordinator,
 }
 
 impl Display for Domain {
@@ -21,6 +23,7 @@ impl Display for Domain {
             Domain::Vault => write!(f, "vault"),
             Domain::Page => write!(f, "page"),
             Domain::EthProvider => write!(f, "ethprovider"),
+            Domain::Coordinator => write!(f, "coordinator"),
         }
     }
 }
