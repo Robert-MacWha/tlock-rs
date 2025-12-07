@@ -250,6 +250,9 @@ pub mod vault {
 
     rpc_method!(
         /// Withdraw an amount of some asset from this vault to another account.
+        /// Vaults MAY reject withdrawals for unsupported assets, insufficient funds,
+        /// or for any other reason. Plugins MUST reject requests if they cannot
+        /// fufill them.
         vault_withdraw, Withdraw, (VaultId, AccountId, AssetId, U256), ()
     );
 
