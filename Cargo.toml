@@ -6,6 +6,7 @@ members = [
     "plugins/eth-provider",
     "plugins/plugin-template",
     "plugins/vault-page",
+    "plugins/eoa-coordinator",
     "crates/tlock-alloy",
     "crates/tlock-api",
     "crates/tlock-hdk",

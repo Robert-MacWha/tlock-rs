@@ -276,24 +276,33 @@ pub mod vault {
         vault_get_deposit_address, GetDepositAddress, (VaultId, AssetId), AccountId
     );
 
-    // TODO: Whether this method makes sense. We can't guarantee it will be called
-    // on every deposit, so vaults will need to reconcile deposits themselves
-    // anyway. It may be better to add callbacks vaults can register for when
-    // deposits are made rather than trusting depositors to call this method.
-    // rpc_method!(
+    // TODO: Whether this method makes sense. We can't guarantee it will be
+    // called on every deposit, so vaults will need to reconcile deposits
+    // themselves anyway. It may be better to add callbacks vaults can
+    // register for when deposits are made rather than trusting depositors
+    // to call this method. rpc_method!(
     //     /// Callback for when an amount is deposited in an account.
     //     ///
-    //     /// Acts as a hint to the vault plugin that it should handle the deposit
-    //     /// and update its internal state accordingly. The vault cannot assume
-    //     /// that this method will always be called for every deposit.
-    //     vault_on_deposit, OnDeposit, (VaultId, AccountId, AssetId), ()
-    // );
+    //     /// Acts as a hint to the vault plugin that it should handle the
+    // deposit     /// and update its internal state accordingly. The vault
+    // cannot assume     /// that this method will always be called for
+    // every deposit.     vault_on_deposit, OnDeposit, (VaultId, AccountId,
+    // AssetId), () );
 }
 
 pub mod coordinator {
     use alloy::primitives::{Address, U256};
 
-    use crate::{caip::AccountId, entities::CoordinatorId};
+    use crate::{
+        caip::{AccountId, AssetId},
+        entities::CoordinatorId,
+    };
+
+    #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+    pub struct EvmBundle {
+        pub assets: Vec<(AccountId, U256)>,
+        pub operations: Vec<EvmOperation>,
+    }
 
     #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
     pub struct EvmOperation {
@@ -303,14 +312,24 @@ pub mod coordinator {
     }
 
     rpc_method!(
-        /// Requests the coordinator to start a new session.
+        /// Gets the coordinator to start a new session.
         ///
         /// If Some(accountID) AND the coordinator has previously used
-        /// that account for a session, it MUST either resume that session or return
-        /// an error.
+        /// that account for a session, it MUST either resume that session or
+        /// return an error.
         ///
         /// If None(accountID) the coordinator may start a new session with any account.
-        coordinator_request_session, RequestSession, (CoordinatorId, Option<AccountId>), AccountId
+        coordinator_get_session, GetSession, (CoordinatorId, Option<AccountId>), AccountId
+    );
+
+    rpc_method!(
+        /// Get the assets available in the coordinator for a particular account.
+        ///
+        /// Only valid for accounts that have an active session.
+        ///
+        /// The coordinator SHOULD only return assets it can guarantee are
+        /// available for use in the proposed account.
+        coordinator_get_assets, GetAssets, (CoordinatorId, AccountId), Vec<(AssetId, U256)>
     );
 
     rpc_method!(
@@ -326,7 +345,7 @@ pub mod coordinator {
         /// session MUST be requested for future operations.
         coordinator_propose_evm,
         Propose,
-        (CoordinatorId, AccountId, Vec<EvmOperation>),
+        (CoordinatorId, AccountId, EvmBundle),
         ()
     );
 }

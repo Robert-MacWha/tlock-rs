@@ -2985,6 +2985,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "eoa-coordinator"
+version = "0.1.0"
+dependencies = [
+ "tlock-pdk",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "eoa-vault"
 version = "0.1.0"
 dependencies = [
