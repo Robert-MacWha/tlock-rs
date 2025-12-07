@@ -3,12 +3,13 @@ use crate::serde_helpers::{
 };
 
 /// https://github.com/foundry-rs/foundry/blob/a27da27d61dfedfed9c975cac001a48b0f398a55/crates/anvil/core/src/eth/mod.rs
-/// Licensed under Apache-2.0 OR MIT.  Copyright (c) 2021 Georgios Konstantopoulos
-/// Copied and adapter for tlock-rs.
+/// Licensed under Apache-2.0 OR MIT.  Copyright (c) 2021 Georgios
+/// Konstantopoulos Copied and adapter for tlock-rs.
 ///
-/// Modifications were required to allow compilation to wasm32-unknown-unknown target. This is mostly
-/// a direct copy, removing dependencies (which were irrelevant to the deserialization function but
-/// present in the original file). I also updated some types to modern import paths from alloy so
+/// Modifications were required to allow compilation to wasm32-unknown-unknown
+/// target. This is mostly a direct copy, removing dependencies (which were
+/// irrelevant to the deserialization function but present in the original
+/// file). I also updated some types to modern import paths from alloy so
 /// I could use the same version as elsewhere.
 use alloy::{
     dyn_abi::TypedData,
@@ -128,8 +129,9 @@ pub enum EthRequest {
     #[serde(rename = "eth_getCode")]
     EthGetCodeAt(Address, Option<BlockId>),
 
-    /// Returns the account and storage values of the specified account including the Merkle-proof.
-    /// This call can be used to verify that the data you are pulling from is not tampered with.
+    /// Returns the account and storage values of the specified account
+    /// including the Merkle-proof. This call can be used to verify that the
+    /// data you are pulling from is not tampered with.
     #[serde(rename = "eth_getProof")]
     EthGetProof(Address, Vec<B256>, Option<BlockId>),
 
@@ -137,8 +139,8 @@ pub enum EthRequest {
     #[serde(rename = "eth_sign")]
     EthSign(Address, Bytes),
 
-    /// The sign method calculates an Ethereum specific signature, equivalent to eth_sign:
-    /// <https://docs.metamask.io/wallet/reference/personal_sign/>
+    /// The sign method calculates an Ethereum specific signature, equivalent to
+    /// eth_sign: <https://docs.metamask.io/wallet/reference/personal_sign/>
     #[serde(rename = "personal_sign")]
     PersonalSign(Bytes, Address),
 
@@ -249,11 +251,13 @@ pub enum EthRequest {
     #[serde(rename = "eth_getLogs", with = "sequence")]
     EthGetLogs(Filter),
 
-    /// Creates a filter object, based on filter options, to notify when the state changes (logs).
+    /// Creates a filter object, based on filter options, to notify when the
+    /// state changes (logs).
     #[serde(rename = "eth_newFilter", with = "sequence")]
     EthNewFilter(Filter),
 
-    /// Polling method for a filter, which returns an array of logs which occurred since last poll.
+    /// Polling method for a filter, which returns an array of logs which
+    /// occurred since last poll.
     #[serde(rename = "eth_getFilterChanges", with = "sequence")]
     EthGetFilterChanges(String),
 
@@ -262,8 +266,9 @@ pub enum EthRequest {
     #[serde(rename = "eth_newBlockFilter", with = "empty_params")]
     EthNewBlockFilter(()),
 
-    /// Creates a filter in the node, to notify when new pending transactions arrive.
-    /// To check if the state has changed, call `eth_getFilterChanges`.
+    /// Creates a filter in the node, to notify when new pending transactions
+    /// arrive. To check if the state has changed, call
+    /// `eth_getFilterChanges`.
     #[serde(rename = "eth_newPendingTransactionFilter", with = "empty_params")]
     EthNewPendingTransactionFilter(()),
 

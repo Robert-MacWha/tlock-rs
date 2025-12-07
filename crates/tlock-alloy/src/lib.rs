@@ -22,10 +22,11 @@ use crate::eth_request::EthRequest;
 mod eth_request;
 mod serde_helpers;
 
-/// An Alloy RPC bridge that routes requests through the Tlock JSON-RPC transport.
+/// An Alloy RPC bridge that routes requests through the Tlock JSON-RPC
+/// transport.
 ///
-/// Allows alloy's provider to work with the Tlock eth-provider system, making it
-/// much easier to integrate alloy-based functionality in tlock plugins.
+/// Allows alloy's provider to work with the Tlock eth-provider system, making
+/// it much easier to integrate alloy-based functionality in tlock plugins.
 ///
 /// # Example
 /// ```rust,ignore

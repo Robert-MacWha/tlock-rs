@@ -10,15 +10,16 @@ pub mod domains;
 pub mod entities;
 pub use alloy;
 
-// TODO: Consider adding a `mod sealed::Sealed {}` to prevent external impl, forcing
-// plugins to only use provided methods.
+// TODO: Consider adding a `mod sealed::Sealed {}` to prevent external impl,
+// forcing plugins to only use provided methods.
 //
 // That's already somewhat enforced since the host will only call / recognize
 // these methods, but could be nice to make it explicit.
-// TODO: Or alternatively, perhaps move it into the `wasmi_plugin_pdk` crate, since
-// it should work fine for any RPC system.
+// TODO: Or alternatively, perhaps move it into the `wasmi_plugin_pdk` crate,
+// since it should work fine for any RPC system.
 // TODO: Also consider forwards compatibility with associated types, maybe wrap
-// them as named structs to allow adding fields later without introducing breaking changes.
+// them as named structs to allow adding fields later without introducing
+// breaking changes.
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 #[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 pub trait RpcMethod: Send + Sync {
@@ -59,8 +60,8 @@ macro_rules! rpc_method {
     };
 }
 
-/// The global namespace contains methods that are not specific to any particular
-/// domain.
+/// The global namespace contains methods that are not specific to any
+/// particular domain.
 pub mod global {
     rpc_method!(
         /// Simple health check
@@ -222,16 +223,17 @@ pub mod eth {
         eth_estimateGas, EstimateGas, (EthProviderId, TransactionRequest, BlockId, Option<StateOverride>, Option<BlockOverrides>), u64
     );
 
-    // TODO: Consider making this a different domain and having a distinction between "eth-read" and "eth-write"
-    // methods. Would also make it easier to add custom send methods (IE to private pool, or forwarding to devp2p, etc).
+    // TODO: Consider making this a different domain and having a distinction
+    // between "eth-read" and "eth-write" methods. Would also make it easier to
+    // add custom send methods (IE to private pool, or forwarding to devp2p, etc).
     rpc_method!(
         /// Sends a raw transaction to the network.
         eth_sendRawTransaction, SendRawTransaction, (EthProviderId, Bytes), TxHash
     );
 }
 
-/// The vault namespace contains methods for interacting with vaults, transferring
-/// funds between different accounts.
+/// The vault namespace contains methods for interacting with vaults,
+/// transferring funds between different accounts.
 pub mod vault {
     use crate::{
         caip::{AccountId, AssetId},
@@ -273,9 +275,9 @@ pub mod vault {
     );
 
     // TODO: Consider removing this method.  We can't guarantee it will be called
-    // on every deposit, so vaults will need to reconcile deposits themselves anyway.
-    // It may be better to add callbacks vaults can register for when deposits are made
-    // rather than trusting depositors to call this method.
+    // on every deposit, so vaults will need to reconcile deposits themselves
+    // anyway. It may be better to add callbacks vaults can register for when
+    // deposits are made rather than trusting depositors to call this method.
     rpc_method!(
         /// Callback for when an amount is deposited in an account.
         ///

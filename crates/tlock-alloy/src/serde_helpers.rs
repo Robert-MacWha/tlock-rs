@@ -1,6 +1,6 @@
 /// https://github.com/foundry-rs/foundry/blob/a06340288d45e6c4052efb22765dbeaa65a6f7a0/crates/anvil/core/src/eth/serde_helpers.rs
-/// Licensed under Apache-2.0 OR MIT.  Copyright (c) 2021 Georgios Konstantopoulos
-/// Copied and adapter for tlock-rs.
+/// Licensed under Apache-2.0 OR MIT.  Copyright (c) 2021 Georgios
+/// Konstantopoulos Copied and adapter for tlock-rs.
 ///
 /// Directly copied, also includes the `common` module imported from:
 /// https://github.com/foundry-rs/foundry/blob/a06340288d45e6c4052efb22765dbeaa65a6f7a0/crates/common/src/serde_helpers.rs

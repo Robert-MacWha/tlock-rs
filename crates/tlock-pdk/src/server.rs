@@ -3,8 +3,8 @@ use std::sync::Arc;
 use tlock_api::RpcMethod;
 use wasmi_plugin_pdk::{rpc_message::RpcError, server::MaybeSend, transport::JsonRpcTransport};
 
-/// Lightweight wrapper around wasmi_plugin_pdk::server::PluginServer that provides
-/// a typed interface for registering RPC methods from tlock_api.
+/// Lightweight wrapper around wasmi_plugin_pdk::server::PluginServer that
+/// provides a typed interface for registering RPC methods from tlock_api.
 pub struct PluginServer {
     s: wasmi_plugin_pdk::server::PluginServer,
 }

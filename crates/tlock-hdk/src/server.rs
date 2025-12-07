@@ -6,8 +6,8 @@ use wasmi_plugin_pdk::{
     server::{BoxFuture, MaybeSend},
 };
 
-/// Lightweight wrapper around wasmi_plugin_pdk::server::PluginServer that provides
-/// a typed interface for registering RPC methods from tlock_api.
+/// Lightweight wrapper around wasmi_plugin_pdk::server::PluginServer that
+/// provides a typed interface for registering RPC methods from tlock_api.
 pub struct HostServer<S: Clone + Send + Sync + 'static> {
     s: wasmi_plugin_hdk::server::HostServer<S>,
 }

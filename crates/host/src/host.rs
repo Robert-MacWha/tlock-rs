@@ -725,10 +725,10 @@ impl Host {
 
 // Macro invocations to implement the host RPC methods
 //
-// Because some host methods rely on the entity ID, while others are ID-less, we have
-// two seperate macros. Functionally they do the same thing, it just cleans up
-// the ID-less function signatures for external callers so they don't need to pass
-// a dummy ID.
+// Because some host methods rely on the entity ID, while others are ID-less, we
+// have two seperate macros. Functionally they do the same thing, it just cleans
+// up the ID-less function signatures for external callers so they don't need to
+// pass a dummy ID.
 impl_host_rpc!(Host, global::Ping, ping);
 impl_host_rpc!(Host, host::RegisterEntity, register_entity);
 impl_host_rpc!(Host, host::RequestEthProvider, request_eth_provider);

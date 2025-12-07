@@ -10,20 +10,24 @@ in
 pkgs.mkShell {
   packages = with pkgs; [
     # Rust toolchain with WASI target
-    (rust-bin.stable.latest.default.override {
-      extensions = [ "rust-src" ];
+    (rust-bin.stable.latest.minimal.override {
+      extensions = [
+        "rust-src"
+        "cargo"
+        "rustc"
+      ];
       targets = [
         "wasm32-wasip1"
         "wasm32-unknown-unknown"
       ];
     })
 
-    cargo
+    rust-bin.stable.latest.cargo
+    rust-bin.stable.latest.rust-analyzer
+    rust-bin.nightly.latest.rustfmt
     cargo-sort
     cargo-machete
     samply
-    rustfmt
-    rust-bin.stable.latest.rust-analyzer
     dioxus-cli
 
     # For dioxus-cli
