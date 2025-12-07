@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use dioxus::{
     logger::tracing::{error, info},
     prelude::*,
@@ -7,7 +9,6 @@ use frontend::{
     contexts::host::HostContext,
 };
 use host::host::Host;
-use std::sync::Arc;
 
 fn main() {
     dioxus::launch(app);
@@ -150,7 +151,7 @@ fn entities_list() -> Element {
                 for entity_id in entities.iter() {
                     li {
                         key: "{entity_id}",
-                        Entity { id: entity_id.clone() }
+                        Entity { id: *entity_id }
                      }
                 }
             }

@@ -11,10 +11,10 @@ pub struct PageProps {
 #[component]
 pub fn Page(props: PageProps) -> Element {
     let state = use_context::<HostContext>();
-    let page_id = props.id.clone();
+    let page_id = props.id;
 
     // Initial load, fetch the page via `OnPageLoad`
-    let _ = use_resource({
+    use_resource({
         let state = state.clone();
         move || {
             let state = state.clone();

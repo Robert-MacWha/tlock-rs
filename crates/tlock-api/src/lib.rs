@@ -72,13 +72,14 @@ pub mod global {
 /// The host namespace contains methods for interacting with the host and
 /// performing privileged operations.
 pub mod host {
+    use serde::{Deserialize, Serialize};
+
     use crate::{
         caip::ChainId,
         component::Component,
         domains::Domain,
         entities::{EntityId, EthProviderId, PageId, VaultId},
     };
-    use serde::{Deserialize, Serialize};
 
     #[derive(Serialize, Deserialize, Clone, Debug)]
     pub struct Request {
@@ -235,11 +236,12 @@ pub mod eth {
 /// The vault namespace contains methods for interacting with vaults,
 /// transferring funds between different accounts.
 pub mod vault {
+    use alloy::primitives::U256;
+
     use crate::{
         caip::{AccountId, AssetId},
         entities::VaultId,
     };
-    use alloy::primitives::U256;
 
     rpc_method!(
         /// Get the balance for all assets in a given account.
@@ -330,8 +332,9 @@ pub mod coordinator {
 }
 
 pub mod page {
-    use serde::{Deserialize, Serialize};
     use std::collections::HashMap;
+
+    use serde::{Deserialize, Serialize};
 
     use crate::entities::PageId;
 

@@ -1,4 +1,5 @@
-use crate::alloy_provider::create_alloy_provider;
+use std::{io::stderr, sync::Arc};
+
 use alloy::{
     eips::BlockId,
     primitives::{Address, Bytes, TxHash, U256},
@@ -9,7 +10,6 @@ use alloy::{
     },
 };
 use serde::{Deserialize, Serialize};
-use std::{io::stderr, sync::Arc};
 use tlock_pdk::{
     server::PluginServer,
     state::{get_state, set_state, try_get_state},
@@ -24,6 +24,8 @@ use tlock_pdk::{
 };
 use tracing::{error, info};
 use tracing_subscriber::fmt;
+
+use crate::alloy_provider::create_alloy_provider;
 
 mod alloy_provider;
 

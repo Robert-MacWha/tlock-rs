@@ -4,8 +4,9 @@ pub mod vault;
 use dioxus::prelude::*;
 use host::host::UserRequest;
 
-use crate::components::user_requests::eth_provider::EthProviderSelectionComponent;
-use crate::components::user_requests::vault::VaultSelectionComponent;
+use crate::components::user_requests::{
+    eth_provider::EthProviderSelectionComponent, vault::VaultSelectionComponent,
+};
 
 #[component]
 pub fn UserRequestComponent(request: UserRequest) -> Element {

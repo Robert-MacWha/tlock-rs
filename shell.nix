@@ -15,6 +15,7 @@ pkgs.mkShell {
         "rust-src"
         "cargo"
         "rustc"
+        "clippy"
       ];
       targets = [
         "wasm32-wasip1"
@@ -24,6 +25,7 @@ pkgs.mkShell {
 
     rust-bin.stable.latest.cargo
     rust-bin.stable.latest.rust-analyzer
+    rust-bin.stable.latest.clippy
     rust-bin.nightly.latest.rustfmt
     cargo-sort
     cargo-machete

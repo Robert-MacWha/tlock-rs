@@ -4,7 +4,6 @@
 ///
 /// Directly copied, also includes the `common` module imported from:
 /// https://github.com/foundry-rs/foundry/blob/a06340288d45e6c4052efb22765dbeaa65a6f7a0/crates/common/src/serde_helpers.rs
-
 pub mod common {
     use alloy::primitives::U256;
     use serde::{Deserialize, Deserializer};
@@ -77,11 +76,10 @@ pub mod empty_params {
 
 /// A module that deserializes either a BlockNumberOrTag, or a simple number.
 pub mod lenient_block_number {
-    use alloy::eips::{BlockNumberOrTag, eip1898::LenientBlockNumberOrTag};
-    use serde::{Deserialize, Deserializer};
-
     /// deserializes either a BlockNumberOrTag, or a simple number.
     pub use alloy::eips::eip1898::lenient_block_number_or_tag::deserialize as lenient_block_number;
+    use alloy::eips::{BlockNumberOrTag, eip1898::LenientBlockNumberOrTag};
+    use serde::{Deserialize, Deserializer};
 
     /// Same as `lenient_block_number` but requires to be `[num; 1]`
     pub fn lenient_block_number_seq<'de, D>(deserializer: D) -> Result<BlockNumberOrTag, D::Error>

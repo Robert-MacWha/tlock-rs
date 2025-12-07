@@ -131,7 +131,7 @@ async fn handle_request_vault(transport: &Arc<JsonRpcTransport>) -> Result<(), R
     host::SetPage
         .call(
             transport.clone(),
-            (state.page_id.clone().unwrap(), build_ui(&state)),
+            (state.page_id.unwrap(), build_ui(&state)),
         )
         .await?;
 

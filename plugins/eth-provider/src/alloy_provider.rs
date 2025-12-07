@@ -1,3 +1,5 @@
+use std::{sync::Arc, task::Poll};
+
 use alloy::{
     providers::ProviderBuilder,
     rpc::{
@@ -6,7 +8,6 @@ use alloy::{
     },
     transports::{TransportError, TransportErrorKind, TransportFut},
 };
-use std::{sync::Arc, task::Poll};
 use tlock_pdk::{
     tlock_api::{RpcMethod, host},
     wasmi_plugin_pdk::transport::JsonRpcTransport,
@@ -38,9 +39,9 @@ impl HostTransportService {
 }
 
 impl Service<RequestPacket> for HostTransportService {
-    type Response = ResponsePacket;
     type Error = TransportError;
     type Future = TransportFut<'static>;
+    type Response = ResponsePacket;
 
     fn call(&mut self, req: RequestPacket) -> Self::Future {
         let transport = self.transport.clone();

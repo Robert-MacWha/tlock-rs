@@ -4,10 +4,8 @@ use std::{
     sync::{Arc, Mutex, Weak},
 };
 
-use futures::channel::{mpsc::UnboundedSender, oneshot};
-use uuid::Uuid;
-
 use alloy::{primitives::U256, transports::http::reqwest};
+use futures::channel::{mpsc::UnboundedSender, oneshot};
 use tlock_hdk::{
     impl_host_rpc, impl_host_rpc_no_id,
     server::HostServer,
@@ -16,7 +14,7 @@ use tlock_hdk::{
         caip::{self, AccountId, AssetId},
         component::Component,
         domains::Domain,
-        entities::{EntityId, EthProviderId, PageId, VaultId},
+        entities::{CoordinatorId, EntityId, EthProviderId, PageId, VaultId},
         eth, global, host, page, plugin,
         vault::{self},
     },
@@ -24,6 +22,7 @@ use tlock_hdk::{
     wasmi_plugin_pdk::rpc_message::RpcError,
 };
 use tracing::{info, warn};
+use uuid::Uuid;
 
 pub struct Host {
     plugins: Mutex<HashMap<PluginId, Arc<Plugin>>>,
@@ -225,7 +224,7 @@ impl Host {
             return;
         };
 
-        if let Err(_) = sender.send(UserResponse::EthProvider(provider_id)) {
+        if sender.send(UserResponse::EthProvider(provider_id)).is_err() {
             warn!("Failed to send response for user request {}", request_id);
         }
     }
@@ -241,7 +240,7 @@ impl Host {
             return;
         };
 
-        if let Err(_) = sender.send(UserResponse::Vault(vault_id)) {
+        if sender.send(UserResponse::Vault(vault_id)).is_err() {
             warn!("Failed to send response for vault request {}", request_id);
         }
     }
@@ -254,7 +253,7 @@ impl Host {
             .remove(&request_id);
     }
 
-    ///? Helper to get the plugin or return an RpcError if not found
+    /// ? Helper to get the plugin or return an RpcError if not found
     fn get_entity_plugin_error(
         &self,
         entity_id: impl Into<EntityId>,
@@ -310,10 +309,11 @@ impl Host {
             Domain::EthProvider => EthProviderId::new().into(),
             Domain::Page => PageId::new().into(),
             Domain::Vault => VaultId::new().into(),
+            Domain::Coordinator => CoordinatorId::new().into(),
         };
 
         let mut entities = self.entities.lock().unwrap();
-        entities.insert(entity_id, plugin_id.clone());
+        entities.insert(entity_id, *plugin_id);
 
         self.notify_observers();
         Ok(entity_id)
@@ -334,7 +334,7 @@ impl Host {
 
         let user_request = UserRequest::EthProviderSelection {
             id: request_id,
-            plugin_id: plugin_id.clone(),
+            plugin_id: *plugin_id,
             chain_id,
         };
 
@@ -387,7 +387,7 @@ impl Host {
 
         let user_request = UserRequest::VaultSelection {
             id: request_id,
-            plugin_id: plugin_id.clone(),
+            plugin_id: *plugin_id,
         };
 
         self.user_requests.lock().unwrap().push(user_request);
@@ -477,10 +477,7 @@ impl Host {
         plugin_id: &PluginId,
         state_data: Vec<u8>,
     ) -> Result<(), RpcError> {
-        self.state
-            .lock()
-            .unwrap()
-            .insert(plugin_id.clone(), state_data);
+        self.state.lock().unwrap().insert(*plugin_id, state_data);
         Ok(())
     }
 
@@ -515,14 +512,14 @@ impl Host {
         let (vault_id, to, asset, amount) = params;
         let plugin = self.get_entity_plugin_error(vault_id)?;
 
-        let result = vault::Withdraw
+        vault::Withdraw
             .call(plugin, (vault_id, to, asset, amount))
             .await
             .map_err(|e| {
                 warn!("Error calling Transfer: {:?}", e);
                 e.as_rpc_code()
             })?;
-        Ok(result)
+        Ok(())
     }
 
     pub async fn vault_get_deposit_address(
@@ -542,17 +539,16 @@ impl Host {
         Ok(result)
     }
 
-    pub async fn vault_on_deposit(&self, params: (VaultId, AssetId)) -> Result<(), RpcError> {
-        let (vault_id, asset) = params;
-        let plugin = self.get_entity_plugin_error(vault_id)?;
+    pub async fn vault_on_deposit(
+        &self,
+        params: <vault::OnDeposit as RpcMethod>::Params,
+    ) -> Result<(), RpcError> {
+        let plugin = self.get_entity_plugin_error(params.0)?;
 
-        vault::OnDeposit
-            .call(plugin, (vault_id, asset))
-            .await
-            .map_err(|e| {
-                warn!("Error calling OnReceive: {:?}", e);
-                e.as_rpc_code()
-            })?;
+        vault::OnDeposit.call(plugin, params).await.map_err(|e| {
+            warn!("Error calling OnReceive: {:?}", e);
+            e.as_rpc_code()
+        })?;
         Ok(())
     }
 

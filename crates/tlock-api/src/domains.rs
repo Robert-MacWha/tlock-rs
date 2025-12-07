@@ -1,5 +1,6 @@
-use serde::{Deserialize, Serialize};
 use std::fmt::{self, Display};
+
+use serde::{Deserialize, Serialize};
 
 /// Domains represent the different possible semantic categories of entities.
 /// All entities from a given domain must share a common interface, but may

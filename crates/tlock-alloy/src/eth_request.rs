@@ -1,7 +1,3 @@
-use crate::serde_helpers::{
-    common::deserialize_number, empty_params, lenient_block_number, sequence,
-};
-
 /// https://github.com/foundry-rs/foundry/blob/a27da27d61dfedfed9c975cac001a48b0f398a55/crates/anvil/core/src/eth/mod.rs
 /// Licensed under Apache-2.0 OR MIT.  Copyright (c) 2021 Georgios
 /// Konstantopoulos Copied and adapter for tlock-rs.
@@ -22,6 +18,10 @@ use alloy::{
         trace::{filter::TraceFilter, geth::GethDebugTracingCallOptions},
     },
     serde::WithOtherFields,
+};
+
+use crate::serde_helpers::{
+    common::deserialize_number, empty_params, lenient_block_number, sequence,
 };
 
 /// Wrapper type that ensures the type is named `params`

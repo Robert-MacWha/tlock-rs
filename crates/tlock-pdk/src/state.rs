@@ -1,7 +1,6 @@
 use std::{fmt::Debug, sync::Arc};
 
-use serde::Serialize;
-use serde::de::DeserializeOwned;
+use serde::{Serialize, de::DeserializeOwned};
 use tlock_api::{RpcMethod, host};
 use tracing::error;
 use wasmi_plugin_pdk::{api::ApiError, rpc_message::RpcError, transport::Transport};

@@ -4,6 +4,8 @@
 //! Account (EOA) using a private key provided by the user. It supports
 //! operations for native ETH and a predefined set of ERC20 tokens.
 
+use std::{collections::HashMap, io::stderr, sync::Arc};
+
 use alloy::{
     hex,
     network::TransactionBuilder,
@@ -14,7 +16,6 @@ use alloy::{
     sol,
 };
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, io::stderr, sync::Arc};
 use tlock_alloy::AlloyBridge;
 use tlock_pdk::{
     server::PluginServer,
@@ -161,12 +162,12 @@ async fn get_deposit_address(
 
 async fn on_deposit(
     _transport: Arc<JsonRpcTransport>,
-    params: (VaultId, AssetId),
+    params: (VaultId, AccountId, AssetId),
 ) -> Result<(), RpcError> {
-    let (vault_id, asset_id) = params;
+    let (vault_id, account_id, asset_id) = params;
     info!(
-        "Received OnDeposit notification for vault: {}, asset: {}",
-        vault_id, asset_id
+        "Received OnDeposit notification for vault: {}, account: {}, asset: {}",
+        vault_id, account_id, asset_id
     );
 
     // Since this is an EOA vault, no action is needed on deposit. Other
@@ -288,24 +289,23 @@ async fn on_update(
     let (page_id, event) = params;
     info!("Page updated in Vault Plugin: {:?}", event);
 
-    let private_key_hex;
-    match event {
+    let private_key_hex = match event {
         page::PageEvent::ButtonClicked(button_id) if button_id == "generate_dev_key" => {
             let signer = PrivateKeySigner::random();
             let private_key = signer.to_bytes();
-            private_key_hex = hex::encode(private_key);
+            hex::encode(private_key)
         }
         page::PageEvent::FormSubmitted(_, form_data) => {
             let Some(pk) = form_data.get("dev_private_key") else {
                 return Err(RpcError::Custom("Private key not found in form".into()));
             };
-            private_key_hex = pk.clone();
+            pk.clone()
         }
         _ => {
             warn!("Unhandled page event: {:?}", event);
             return Ok(());
         }
-    }
+    };
 
     let signer: PrivateKeySigner = private_key_hex
         .parse()
@@ -326,7 +326,7 @@ async fn on_update(
     );
     set_state(transport.clone(), &state).await?;
 
-    let component = text(&format!(
+    let component = text(format!(
         "Vault created!\n\nAddress: {}\n\nPrivate Key: {}",
         address, private_key_hex
     ));
@@ -366,7 +366,7 @@ async fn get_vault(transport: &Arc<JsonRpcTransport>, id: VaultId) -> Result<Vau
     let vault = state
         .vaults
         .get(&id.into())
-        .ok_or_else(|| RpcError::Custom(format!("Vault ID not found: {}", id).into()))?;
+        .ok_or_else(|| RpcError::Custom(format!("Vault ID not found: {}", id)))?;
 
     Ok(vault.clone())
 }

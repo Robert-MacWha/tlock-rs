@@ -1,3 +1,5 @@
+use std::{sync::Arc, task::Poll};
+
 use alloy::{
     eips::BlockId,
     rpc::{
@@ -9,7 +11,6 @@ use alloy::{
 };
 use serde::Deserialize;
 use serde_json::value::to_raw_value;
-use std::{sync::Arc, task::Poll};
 use tlock_pdk::{
     tlock_api::{RpcMethod, entities::EthProviderId, eth},
     wasmi_plugin_pdk::transport::JsonRpcTransport,
@@ -40,6 +41,7 @@ pub struct AlloyBridge {
 }
 
 impl AlloyBridge {
+    #[allow(clippy::new_ret_no_self)]
     pub fn new(transport: Arc<JsonRpcTransport>, provider_id: EthProviderId) -> RpcClient {
         let transport = AlloyBridge {
             transport,
@@ -50,9 +52,9 @@ impl AlloyBridge {
 }
 
 impl Service<RequestPacket> for AlloyBridge {
-    type Response = ResponsePacket;
     type Error = TransportError;
     type Future = TransportFut<'static>;
+    type Response = ResponsePacket;
 
     fn call(&mut self, req: RequestPacket) -> Self::Future {
         let transport = self.transport.clone();

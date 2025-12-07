@@ -1,8 +1,9 @@
-use serde::{Deserialize, Serialize};
 use std::{
     fmt::{self, Display},
     str::FromStr,
 };
+
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 #[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq, Hash)]
@@ -72,8 +73,16 @@ impl<'de> Deserialize<'de> for EntityId {
     }
 }
 
+// TODO: Setup macros for these repetitive impls
+
 impl VaultId {
     pub fn new() -> Self {
+        Self::default()
+    }
+}
+
+impl Default for VaultId {
+    fn default() -> Self {
         VaultId(Uuid::new_v4())
     }
 }
@@ -102,6 +111,12 @@ impl From<VaultId> for EntityId {
 
 impl PageId {
     pub fn new() -> Self {
+        Self::default()
+    }
+}
+
+impl Default for PageId {
+    fn default() -> Self {
         PageId(Uuid::new_v4())
     }
 }
@@ -130,6 +145,12 @@ impl From<PageId> for EntityId {
 
 impl EthProviderId {
     pub fn new() -> Self {
+        Self::default()
+    }
+}
+
+impl Default for EthProviderId {
+    fn default() -> Self {
         EthProviderId(Uuid::new_v4())
     }
 }
@@ -158,6 +179,12 @@ impl From<EthProviderId> for EntityId {
 
 impl CoordinatorId {
     pub fn new() -> Self {
+        Self::default()
+    }
+}
+
+impl Default for CoordinatorId {
+    fn default() -> Self {
         CoordinatorId(Uuid::new_v4())
     }
 }

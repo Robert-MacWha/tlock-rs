@@ -5,7 +5,6 @@ use tlock_pdk::{
     tlock_api::{RpcMethod, global},
     wasmi_plugin_pdk::{rpc_message::RpcError, transport::JsonRpcTransport},
 };
-
 use tracing::info;
 use tracing_subscriber::fmt;
 
