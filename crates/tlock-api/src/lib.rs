@@ -276,18 +276,18 @@ pub mod vault {
         vault_get_deposit_address, GetDepositAddress, (VaultId, AssetId), AccountId
     );
 
-    // TODO: Consider removing this method.  We can't guarantee it will be called
+    // TODO: Whether this method makes sense. We can't guarantee it will be called
     // on every deposit, so vaults will need to reconcile deposits themselves
     // anyway. It may be better to add callbacks vaults can register for when
     // deposits are made rather than trusting depositors to call this method.
-    rpc_method!(
-        /// Callback for when an amount is deposited in an account.
-        ///
-        /// Acts as a hint to the vault plugin that it should handle the deposit
-        /// and update its internal state accordingly. The vault cannot assume
-        /// that this method will always be called for every deposit.
-        vault_on_deposit, OnDeposit, (VaultId, AccountId, AssetId), ()
-    );
+    // rpc_method!(
+    //     /// Callback for when an amount is deposited in an account.
+    //     ///
+    //     /// Acts as a hint to the vault plugin that it should handle the deposit
+    //     /// and update its internal state accordingly. The vault cannot assume
+    //     /// that this method will always be called for every deposit.
+    //     vault_on_deposit, OnDeposit, (VaultId, AccountId, AssetId), ()
+    // );
 }
 
 pub mod coordinator {

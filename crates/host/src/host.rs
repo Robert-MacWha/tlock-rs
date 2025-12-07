@@ -122,7 +122,7 @@ impl Host {
             .with_method(vault::GetAssets, vault_get_assets)
             .with_method(vault::Withdraw, vault_withdraw)
             .with_method(vault::GetDepositAddress, vault_get_deposit_address)
-            .with_method(vault::OnDeposit, vault_on_deposit)
+            // .with_method(vault::OnDeposit, vault_on_deposit)
             .with_method(page::OnLoad, page_on_load)
             .with_method(page::OnUpdate, page_on_update)
             .with_method(eth::ChainId, eth_provider_chain_id)
@@ -539,18 +539,18 @@ impl Host {
         Ok(result)
     }
 
-    pub async fn vault_on_deposit(
-        &self,
-        params: <vault::OnDeposit as RpcMethod>::Params,
-    ) -> Result<(), RpcError> {
-        let plugin = self.get_entity_plugin_error(params.0)?;
+    // pub async fn vault_on_deposit(
+    //     &self,
+    //     params: <vault::OnDeposit as RpcMethod>::Params,
+    // ) -> Result<(), RpcError> {
+    //     let plugin = self.get_entity_plugin_error(params.0)?;
 
-        vault::OnDeposit.call(plugin, params).await.map_err(|e| {
-            warn!("Error calling OnReceive: {:?}", e);
-            e.as_rpc_code()
-        })?;
-        Ok(())
-    }
+    //     vault::OnDeposit.call(plugin, params).await.map_err(|e| {
+    //         warn!("Error calling OnReceive: {:?}", e);
+    //         e.as_rpc_code()
+    //     })?;
+    //     Ok(())
+    // }
 
     pub async fn page_on_load(&self, page_id: PageId) -> Result<(), RpcError> {
         let plugin = self.get_entity_plugin_error(page_id)?;
@@ -736,7 +736,7 @@ impl_host_rpc!(Host, host::SetPage, set_interface);
 impl_host_rpc_no_id!(Host, vault::GetAssets, vault_get_assets);
 impl_host_rpc_no_id!(Host, vault::Withdraw, vault_withdraw);
 impl_host_rpc_no_id!(Host, vault::GetDepositAddress, vault_get_deposit_address);
-impl_host_rpc_no_id!(Host, vault::OnDeposit, vault_on_deposit);
+// impl_host_rpc_no_id!(Host, vault::OnDeposit, vault_on_deposit);
 impl_host_rpc_no_id!(Host, page::OnLoad, page_on_load);
 impl_host_rpc_no_id!(Host, page::OnUpdate, page_on_update);
 impl_host_rpc_no_id!(Host, eth::ChainId, eth_provider_chain_id);

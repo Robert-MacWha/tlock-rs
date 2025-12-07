@@ -160,23 +160,6 @@ async fn get_deposit_address(
     }
 }
 
-async fn on_deposit(
-    _transport: Arc<JsonRpcTransport>,
-    params: (VaultId, AccountId, AssetId),
-) -> Result<(), RpcError> {
-    let (vault_id, account_id, asset_id) = params;
-    info!(
-        "Received OnDeposit notification for vault: {}, account: {}, asset: {}",
-        vault_id, account_id, asset_id
-    );
-
-    // Since this is an EOA vault, no action is needed on deposit. Other
-    // vaults might log here, forward funds to another address, call some
-    // api, etc.
-
-    Ok(())
-}
-
 async fn withdraw(
     transport: Arc<JsonRpcTransport>,
     params: (VaultId, AccountId, AssetId, U256),
@@ -417,7 +400,6 @@ fn main() {
         .with_method(vault::GetAssets, get_assets)
         .with_method(vault::Withdraw, withdraw)
         .with_method(vault::GetDepositAddress, get_deposit_address)
-        .with_method(vault::OnDeposit, on_deposit)
         .with_method(page::OnLoad, on_load)
         .with_method(page::OnUpdate, on_update)
         .run();
