@@ -2988,6 +2988,8 @@ dependencies = [
 name = "eoa-coordinator"
 version = "0.1.0"
 dependencies = [
+ "alloy",
+ "serde",
  "tlock-pdk",
  "tracing",
  "tracing-subscriber",

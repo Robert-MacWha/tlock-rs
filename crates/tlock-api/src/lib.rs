@@ -294,13 +294,15 @@ pub mod coordinator {
     use alloy::primitives::{Address, U256};
 
     use crate::{
-        caip::{AccountId, AssetId},
+        caip::{AccountId, AssetId, ChainId},
         entities::CoordinatorId,
     };
 
     #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
     pub struct EvmBundle {
-        pub assets: Vec<(AccountId, U256)>,
+        pub inputs: Vec<(AssetId, U256)>,
+        // TODO: Consider something like railgun's hasNonDeterministicOutputs flag?
+        pub outputs: Vec<AssetId>,
         pub operations: Vec<EvmOperation>,
     }
 
@@ -319,7 +321,7 @@ pub mod coordinator {
         /// return an error.
         ///
         /// If None(accountID) the coordinator may start a new session with any account.
-        coordinator_get_session, GetSession, (CoordinatorId, Option<AccountId>), AccountId
+        coordinator_get_session, GetSession, (CoordinatorId, ChainId, Option<AccountId>), AccountId
     );
 
     rpc_method!(

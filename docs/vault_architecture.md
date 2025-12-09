@@ -11,6 +11,8 @@ This design splits core responsibilities across two domains: Vault (Storage/Sign
 3. Isolation of concerns is critical for security and maintainability.
    1. Vaults should be unaware of the complexities of the blockchain.
    2. Plugins should be unaware of the inner workings of vaults.
+4. We want to minimize the total number of unique trusted objects
+   1. Where a trusted object basically means a function on an entity
 
 ## 2. Entities and Responsibilities
 
@@ -28,6 +30,8 @@ Vaults are opaque and can be any system capable of holding and transfering asset
 - Construct operations
 
 ### Coordinator
+
+"Authority over what actions can be performed on what assets"
 
 - Coordinate between Vaults and Plugins
 - Interprets plugin intent
