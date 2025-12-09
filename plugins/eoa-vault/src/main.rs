@@ -23,9 +23,7 @@ use tlock_pdk::{
     tlock_api::{
         RpcMethod,
         caip::{AccountId, AssetId, AssetType, ChainId},
-        component::{
-            Component, button_input, container, form, heading, submit_input, text, text_input,
-        },
+        component::{button_input, container, form, heading, submit_input, text, text_input},
         domains::Domain,
         entities::{EntityId, EthProviderId, PageId, VaultId},
         eth::{self},
@@ -42,7 +40,6 @@ use tracing_subscriber::fmt;
 #[derive(Serialize, Deserialize, Default, Debug)]
 struct PluginState {
     vaults: HashMap<EntityId, Vault>,
-    page_id: Option<PageId>,
     eth_provider_id: Option<EthProviderId>,
 }
 
@@ -253,11 +250,19 @@ async fn request_eth_provider(transport: Arc<JsonRpcTransport>) -> Result<EthPro
 async fn on_load(transport: Arc<JsonRpcTransport>, page_id: PageId) -> Result<(), RpcError> {
     info!("OnPageLoad called for page: {}", page_id);
 
-    let mut state: PluginState = get_state(transport.clone()).await;
-    state.page_id = Some(page_id);
-    set_state(transport.clone(), &state).await?;
+    let component = container(vec![
+        heading("EOA Vault"),
+        text("This is an example vault plugin. Please enter a dev private key."),
+        form(
+            "private_key_form",
+            vec![
+                text_input("dev_private_key", "Enter your private key"),
+                submit_input("Update"),
+            ],
+        ),
+        button_input("generate_dev_key", "Generate Dev Key"),
+    ]);
 
-    let component = private_key_form_component("Enter your private key");
     host::SetPage
         .call(transport.clone(), (page_id, component))
         .await?;
@@ -318,21 +323,6 @@ async fn on_update(
         .await?;
 
     Ok(())
-}
-
-fn private_key_form_component(preview: &str) -> Component {
-    container(vec![
-        heading("EOA Vault"),
-        text("This is an example vault plugin. Please enter a dev private key."),
-        button_input("generate_dev_key", "Generate Dev Key"),
-        form(
-            "private_key_form",
-            vec![
-                text_input("dev_private_key", preview),
-                submit_input("Update"),
-            ],
-        ),
-    ])
 }
 
 // ---------- Helpers ----------
