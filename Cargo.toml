@@ -39,8 +39,11 @@ tower-service = "0.3"
 tracing = "0.1"
 tracing-subscriber = "0.3"
 uuid = { version = "1", features = [ "v4", "serde", "js" ] } 
-wasmi-plugin-hdk = { version = "0.1" }
-wasmi-plugin-pdk = { version = "0.1" }
+wasmi-plugin-hdk = "0.1"
+wasmi-plugin-pdk = "0.1"
+wasm-bindgen = "0.2"
+web-sys = "0.3"
+base64 = "0.22"
 
 [profile.release]
 lto = true
@@ -57,5 +60,7 @@ inherits = "dev"
 
 [patch.crates-io]
 alloy = { git = "https://github.com/Robert-MacWha/alloy", branch = "wasm32-wasip-support" }
+wasmi-plugin-hdk = { git = "https://github.com/Robert-MacWha/wasmi-plugin-framework", branch = "main" }
+wasmi-plugin-pdk = { git = "https://github.com/Robert-MacWha/wasmi-plugin-framework", branch = "main" }
 
 # alloy = { path = "../alloy/crates/alloy" }

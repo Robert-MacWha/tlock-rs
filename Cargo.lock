@@ -3229,7 +3229,10 @@ dependencies = [
  "futures",
  "gloo-timers",
  "host",
+ "serde_json",
  "tlock-hdk",
+ "wasm-bindgen",
+ "web-sys",
 ]
 
 [[package]]
@@ -3916,7 +3919,10 @@ name = "host"
 version = "0.1.0"
 dependencies = [
  "alloy",
+ "base64",
  "futures",
+ "serde",
+ "thiserror 2.0.17",
  "tlock-hdk",
  "tracing",
  "uuid",
@@ -8133,8 +8139,7 @@ dependencies = [
 [[package]]
 name = "wasmi-plugin-hdk"
 version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9a43555d0300c45e0412bb7ff992eaf6e1cc6013ea281f0adc1833ba0efa9d99"
+source = "git+https://github.com/Robert-MacWha/wasmi-plugin-framework?branch=main#510f918c111f4a8adbae4fcc2e94f9ac2b3e6664"
 dependencies = [
  "async-trait",
  "futures",
@@ -8153,8 +8158,7 @@ dependencies = [
 [[package]]
 name = "wasmi-plugin-pdk"
 version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c93ce8192348cddedeadf773f999fbe8ec122c71692e44c9d244d9aaaed6d762"
+source = "git+https://github.com/Robert-MacWha/wasmi-plugin-framework?branch=main#510f918c111f4a8adbae4fcc2e94f9ac2b3e6664"
 dependencies = [
  "async-trait",
  "futures",
@@ -8170,8 +8174,7 @@ dependencies = [
 [[package]]
 name = "wasmi-plugin-rt"
 version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5fe60bd909b1d2f84879473f820a989aa0978519aaea23e1474d85b6b6c166eb"
+source = "git+https://github.com/Robert-MacWha/wasmi-plugin-framework?branch=main#510f918c111f4a8adbae4fcc2e94f9ac2b3e6664"
 dependencies = [
  "gloo-timers",
  "tokio",

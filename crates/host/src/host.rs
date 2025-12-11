@@ -6,6 +6,7 @@ use std::{
 
 use alloy::{primitives::U256, transports::http::reqwest};
 use futures::channel::{mpsc::UnboundedSender, oneshot};
+use thiserror::Error;
 use tlock_hdk::{
     impl_host_rpc, impl_host_rpc_no_id,
     server::HostServer,
@@ -18,14 +19,20 @@ use tlock_hdk::{
         eth, global, host, page, plugin,
         vault::{self},
     },
-    wasmi_plugin_hdk::plugin::{Plugin, PluginError, PluginId},
+    wasmi_plugin_hdk::{
+        self,
+        plugin::{Plugin, PluginId},
+    },
     wasmi_plugin_pdk::rpc_message::RpcError,
 };
 use tracing::{info, warn};
 use uuid::Uuid;
 
+use crate::host_state::{HostState, PluginData, PluginSource};
+
 pub struct Host {
     plugins: Mutex<HashMap<PluginId, Arc<Plugin>>>,
+    plugin_sources: Mutex<HashMap<PluginId, PluginSource>>,
     entities: Mutex<HashMap<EntityId, PluginId>>,
 
     // TODO: Restrict these to a max size / otherwise prevent plugins from abusing storage
@@ -59,6 +66,14 @@ pub enum UserResponse {
     Vault(VaultId),
 }
 
+#[derive(Error, Debug)]
+pub enum PluginError {
+    #[error("reqwest error")]
+    ReqwestError(#[from] reqwest::Error),
+    #[error(transparent)]
+    WasmiPdkError(#[from] wasmi_plugin_hdk::plugin::PluginError),
+}
+
 impl Default for Host {
     fn default() -> Self {
         Self::new()
@@ -69,6 +84,7 @@ impl Host {
     pub fn new() -> Self {
         Self {
             plugins: Mutex::new(HashMap::new()),
+            plugin_sources: Mutex::new(HashMap::new()),
             entities: Mutex::new(HashMap::new()),
             state: Mutex::new(HashMap::new()),
             interfaces: Mutex::new(HashMap::new()),
@@ -79,31 +95,154 @@ impl Host {
         }
     }
 
+    pub async fn from_state(host_state: HostState) -> Result<Arc<Self>, PluginError> {
+        let entities: HashMap<EntityId, PluginId> = host_state.entities.into_iter().collect();
+        let state: HashMap<PluginId, Vec<u8>> = host_state.state.into_iter().collect();
+        let interfaces: HashMap<PageId, Component> = host_state.interfaces.into_iter().collect();
+
+        info!("Restoring host from state...");
+        info!(
+            "Restoring {} entities, {} state entries, and {} interfaces",
+            entities.len(),
+            state.len(),
+            interfaces.len()
+        );
+
+        entities.iter().for_each(|(entity_id, plugin_id)| {
+            info!(
+                "Restored entity {:?} with plugin ID {}",
+                entity_id, plugin_id
+            );
+        });
+        state.iter().for_each(|(plugin_id, data)| {
+            info!(
+                "Restored state for plugin ID {} with {} bytes",
+                plugin_id,
+                data.len()
+            );
+        });
+        interfaces.iter().for_each(|(page_id, component)| {
+            info!(
+                "Restored interface for page ID {:?} with component: {:?}",
+                page_id, component
+            );
+        });
+
+        let host = Self {
+            plugins: Mutex::new(HashMap::new()),
+            plugin_sources: Mutex::new(HashMap::new()),
+            entities: Mutex::new(entities),
+            state: Mutex::new(state),
+            interfaces: Mutex::new(interfaces),
+            user_requests: Mutex::new(Vec::new()),
+            user_request_senders: Mutex::new(HashMap::new()),
+            observers: Mutex::new(Vec::new()),
+            event_log: Mutex::new(Vec::new()),
+        };
+        let host = Arc::new(host);
+
+        for plugin_data in host_state.plugins {
+            host.load_plugin(plugin_data.source, &plugin_data.name)
+                .await?;
+        }
+
+        Ok(host)
+    }
+
+    pub fn to_state(&self) -> HostState {
+        let plugins = self.plugins.lock().unwrap();
+        let plugin_sources = self.plugin_sources.lock().unwrap();
+
+        let plugins_data = plugins
+            .iter()
+            .map(|(id, plugin)| PluginData {
+                id: *id,
+                name: plugin.name().to_string(),
+                source: plugin_sources
+                    .get(id)
+                    .cloned()
+                    .expect("Plugin source not tracked"),
+            })
+            .collect();
+
+        HostState {
+            plugins: plugins_data,
+            entities: self.entities.lock().unwrap().clone().into_iter().collect(),
+            state: self.state.lock().unwrap().clone().into_iter().collect(),
+            interfaces: self
+                .interfaces
+                .lock()
+                .unwrap()
+                .clone()
+                .into_iter()
+                .collect(),
+        }
+    }
+
     pub fn subscribe(&self, observer: UnboundedSender<()>) {
         let mut observers = self.observers.lock().unwrap();
         observers.push(observer);
     }
 
-    /// Load a plugin from wasm bytes, register it, and return its PluginId
-    pub async fn load_plugin(
+    /// Creates a plugin from its source, register it, and calls its Init method
+    pub async fn new_plugin(
         self: &Arc<Host>,
-        wasm_bytes: &[u8],
+        source: PluginSource,
+        name: &str,
+    ) -> Result<PluginId, PluginError> {
+        let plugin_id = self.load_plugin(source, name).await?;
+
+        info!("Initializing plugin {}", plugin_id);
+        let plugin = match self.get_plugin(&plugin_id) {
+            Some(plugin) => plugin,
+            None => {
+                warn!("Plugin {} not found during initialization", plugin_id);
+                return Err(PluginError::WasmiPdkError(RpcError::InvalidParams.into()));
+            }
+        };
+
+        match plugin::Init.call(plugin.clone(), ()).await {
+            Err(wasmi_plugin_hdk::plugin::PluginError::RpcError(RpcError::MethodNotFound)) => {
+                info!("Plugin {} does not implement Init, skipping", plugin.id());
+                self.notify_observers();
+                Ok(plugin_id)
+            }
+            Err(e) => {
+                warn!("Error calling Init on plugin {}: {:?}", plugin.id(), e);
+                self.notify_observers();
+                Err(e.into())
+            }
+            Ok(_) => {
+                info!("Plugin {} initialized", plugin.id());
+                self.notify_observers();
+                Ok(plugin_id)
+            }
+        }
+    }
+
+    /// Loads a new plugin from its source and registers it
+    async fn load_plugin(
+        self: &Arc<Host>,
+        source: PluginSource,
         name: &str,
     ) -> Result<PluginId, PluginError> {
         let server = self.get_server();
         let server = Arc::new(server);
+
+        let wasm_bytes = source.as_bytes().await?;
 
         info!("Loading plugin '{}'...", name);
         let mut s = DefaultHasher::new();
         wasm_bytes.hash(&mut s);
         let id: u128 = s.finish().into();
         let id = PluginId::from(id);
-        let plugin = Plugin::new(name, wasm_bytes.to_vec(), server)
-            .map_err(|e| PluginError::SpawnError(e.into()))?
+        let plugin = Plugin::new(name, wasm_bytes, server)
+            .map_err(|e| wasmi_plugin_hdk::plugin::PluginError::SpawnError(e.into()))?
             .with_id(id);
 
-        info!("Registering plugin '{}' with id {}", name, id);
-        self.register_plugin(plugin).await?;
+        let plugin = Arc::new(plugin);
+        self.plugins.lock().unwrap().insert(plugin.id(), plugin);
+        self.plugin_sources.lock().unwrap().insert(id, source);
         info!("Loaded plugin '{}'", name);
         Ok(id)
     }
@@ -137,37 +276,6 @@ impl Host {
             .with_method(eth::GetBlock, eth_get_block)
     }
 
-    /// Register a plugin with the host, calling its Init method if it exists
-    pub async fn register_plugin(&self, new_plugin: Plugin) -> Result<(), PluginError> {
-        let new_plugin = Arc::new(new_plugin);
-        self.plugins
-            .lock()
-            .unwrap()
-            .insert(new_plugin.id(), new_plugin.clone());
-
-        info!("Registered plugin {}", new_plugin.id());
-        match plugin::Init.call(new_plugin.clone(), ()).await {
-            Err(PluginError::RpcError(RpcError::MethodNotFound)) => {
-                info!(
-                    "Plugin {} does not implement Init, skipping",
-                    new_plugin.id()
-                );
-                self.notify_observers();
-                Ok(())
-            }
-            Err(e) => {
-                warn!("Error calling Init on plugin {}: {:?}", new_plugin.id(), e);
-                self.notify_observers();
-                Err(e)
-            }
-            Ok(_) => {
-                info!("Plugin {} initialized", new_plugin.id());
-                self.notify_observers();
-                Ok(())
-            }
-        }
-    }
-
     pub fn get_entities(&self) -> Vec<EntityId> {
         let entities = self.entities.lock().unwrap();
         entities.keys().cloned().collect()
@@ -184,12 +292,18 @@ impl Host {
     }
 
     pub fn get_entity_plugin_id(&self, entity_id: impl Into<EntityId>) -> Option<PluginId> {
+        let entity_id = entity_id.into();
         let entities = self.entities.lock().unwrap();
-        entities.get(&entity_id.into()).cloned()
+        info!("Getting plugin ID for entity {:?}", entity_id);
+        info!("Current entities: {:?}", *entities);
+        entities.get(&entity_id).cloned()
     }
 
     pub fn get_entity_plugin(&self, entity_id: impl Into<EntityId>) -> Option<Arc<Plugin>> {
+        let entity_id = entity_id.into();
+        info!("Getting plugin for entity {:?}", entity_id);
         let plugin_id = self.get_entity_plugin_id(entity_id)?;
+        info!("Found plugin ID {} for {}", plugin_id, entity_id);
         self.get_plugin(&plugin_id)
     }
 
@@ -259,10 +373,9 @@ impl Host {
         entity_id: impl Into<EntityId>,
     ) -> Result<Arc<Plugin>, RpcError> {
         let entity_id = entity_id.into();
-        let plugin = self.get_entity_plugin(entity_id).ok_or_else(|| {
-            warn!("Entity {:?} not found", entity_id);
-            RpcError::InvalidParams
-        })?;
+        let plugin = self
+            .get_entity_plugin(entity_id)
+            .ok_or_else(|| RpcError::Custom(format!("Entity {:?} not found", entity_id)))?;
         Ok(plugin)
     }
 
@@ -281,7 +394,8 @@ impl Host {
         Ok(resp)
     }
 
-    fn notify_observers(&self) {
+    pub fn notify_observers(&self) {
+        info!("Notifying observers of host state change");
         let observers = self.observers.lock().unwrap();
         for observer in observers.iter() {
             let _ = observer.unbounded_send(());

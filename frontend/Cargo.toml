@@ -15,3 +15,10 @@ futures = { workspace = true }
 gloo-timers = { workspace = true }
 host = { workspace = true }
 tlock-hdk = { workspace = true }
+serde_json = { workspace = true }
+wasm-bindgen = { workspace = true }
+web-sys = { workspace = true, features = [
+    "BlobPropertyBag",
+    "Blob",
+    "Url"
+] }
