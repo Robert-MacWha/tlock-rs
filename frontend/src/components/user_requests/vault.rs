@@ -27,23 +27,22 @@ pub fn VaultSelectionComponent(request: UserRequest) -> Element {
         }
     };
 
-    let state_for_handlers = state.clone();
     let handle_select_vault = move |vault_id: VaultId| {
-        let state = state_for_handlers.clone();
         move |_| {
-            let state = state.clone();
             info!("User selected vault: {}", vault_id);
-            state.host.resolve_vault_request(request_id, vault_id);
+            consume_context::<HostContext>()
+                .host
+                .read()
+                .resolve_vault_request(request_id, vault_id);
         }
     };
 
-    let handle_deny = {
-        let state = state.clone();
-        move |_| {
-            let state = state.clone();
-            info!("User denied vault selection");
-            state.host.deny_user_request(request_id);
-        }
+    let handle_deny = move |_| {
+        info!("User denied vault selection");
+        consume_context::<HostContext>()
+            .host
+            .read()
+            .deny_user_request(request_id);
     };
 
     rsx! {

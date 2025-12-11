@@ -7,8 +7,12 @@ use dioxus::{
 use frontend::{
     components::{entity::Entity, user_requests::UserRequestComponent},
     contexts::host::HostContext,
+    download_util::trigger_file_download,
 };
-use host::host::Host;
+use host::{
+    host::Host,
+    host_state::{HostState, PluginSource},
+};
 
 fn main() {
     dioxus::launch(app);
@@ -53,11 +57,10 @@ fn app() -> Element {
 
 #[component]
 fn control_panel() -> Element {
-    let state = use_context::<HostContext>();
     let on_wasm_file = move |e: Event<FormData>| {
-        let state = state.clone();
         spawn(async move {
             e.prevent_default();
+
             let files = e.files();
             let Some(file) = files.first() else {
                 error!("No file selected");
@@ -70,7 +73,13 @@ fn control_panel() -> Element {
                 return;
             };
 
-            match state.host.load_plugin(&data, &name).await {
+            let plugin_source = PluginSource::Embedded(data.to_vec());
+            match consume_context::<HostContext>()
+                .host
+                .read()
+                .new_plugin(plugin_source, &name)
+                .await
+            {
                 Ok(id) => {
                     info!("Loaded plugin with id: {}", id);
                 }
@@ -81,15 +90,96 @@ fn control_panel() -> Element {
         });
     };
 
+    let on_host_state = {
+        move |e: Event<FormData>| {
+            spawn(async move {
+                e.prevent_default();
+
+                let files = e.files();
+                let Some(file) = files.first() else {
+                    error!("No file selected");
+                    return;
+                };
+
+                let name = file.name();
+                let Ok(data) = file.read_bytes().await else {
+                    error!("Failed to read file: {}", name);
+                    return;
+                };
+
+                let host_state: HostState = match serde_json::from_slice(&data) {
+                    Ok(state) => state,
+                    Err(e) => {
+                        error!("Failed to parse host state JSON: {:?}", e);
+                        return;
+                    }
+                };
+
+                let host = match Host::from_state(host_state).await {
+                    Ok(host) => host,
+                    Err(e) => {
+                        error!("Failed to load host state: {:?}", e);
+                        return;
+                    }
+                };
+
+                consume_context::<HostContext>().set_host(host);
+            });
+        }
+    };
+
+    let save_host_state = {
+        move |_: Event<MouseData>| {
+            spawn(async move {
+                let host_state = consume_context::<HostContext>().host.read().to_state();
+                let json = match serde_json::to_string_pretty(&host_state) {
+                    Ok(json) => json,
+                    Err(e) => {
+                        error!("Failed to serialize host state: {:?}", e);
+                        return;
+                    }
+                };
+
+                match trigger_file_download(
+                    "host_state.json",
+                    "application/json",
+                    json.into_bytes(),
+                ) {
+                    Ok(_) => info!("Host state download triggered"),
+                    Err(e) => error!("Failed to trigger host state download: {:?}", e),
+                }
+            });
+        }
+    };
+
     rsx! {
         div {
             h5 { "Control Panel" }
             ul {
                 li {
+                    button {
+                        onclick: save_host_state,
+                        "Save Host State"
+                    }
+                }
+                li {
+                    label {for: "host_state_input", "Load Host State"}
+                    br {  }
+                    input {
+                        r#type: "file",
+                        accept: "application/json",
+                        onchange: on_host_state,
+                        name: "host_state_input",
+                    }
+                }
+                li {
+                    label {for: "wasm_file_input", "Load WASM Plugin"}
+                    br {  }
                     input {
                         r#type: "file",
                         accept: ".wasm",
                         onchange: on_wasm_file,
+                        name: "wasm_file_input",
                     }
                 }
             }
@@ -99,7 +189,7 @@ fn control_panel() -> Element {
 
 #[component]
 fn request_list() -> Element {
-    let state = use_context::<HostContext>();
+    let state: HostContext = use_context();
     let requests = state.user_requests.read();
 
     rsx! {
@@ -125,7 +215,9 @@ fn request_list() -> Element {
 fn plugin_list() -> Element {
     let state = use_context::<HostContext>();
     let plugins = state.plugins.read();
-    let named_plugins = plugins.iter().filter_map(|id| state.host.get_plugin(id));
+    let named_plugins = plugins
+        .iter()
+        .filter_map(|id| state.host.read().get_plugin(id));
 
     rsx! {
         div {

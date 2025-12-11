@@ -25,7 +25,6 @@ pub struct PluginData {
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub enum PluginSource {
-    #[serde(with = "base64_serde")]
     Embedded(Vec<u8>),
     Url(String),
 }
@@ -41,28 +40,5 @@ impl PluginSource {
                 Ok(bytes.to_vec())
             }
         }
-    }
-}
-
-mod base64_serde {
-    use base64::{Engine, engine::general_purpose};
-    use serde::{self, Deserialize, Deserializer, Serializer};
-
-    pub fn serialize<S>(bytes: &Vec<u8>, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        let encoded = general_purpose::STANDARD.encode(bytes);
-        serializer.serialize_str(&encoded)
-    }
-
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<Vec<u8>, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let s = String::deserialize(deserializer)?;
-        general_purpose::STANDARD
-            .decode(&s)
-            .map_err(serde::de::Error::custom)
     }
 }
