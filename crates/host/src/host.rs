@@ -98,14 +98,12 @@ impl Host {
     pub async fn from_state(host_state: HostState) -> Result<Arc<Self>, PluginError> {
         let entities: HashMap<EntityId, PluginId> = host_state.entities.into_iter().collect();
         let state: HashMap<PluginId, Vec<u8>> = host_state.state.into_iter().collect();
-        let interfaces: HashMap<PageId, Component> = host_state.interfaces.into_iter().collect();
 
         info!("Restoring host from state...");
         info!(
-            "Restoring {} entities, {} state entries, and {} interfaces",
+            "Restoring {} entities and {} state entries",
             entities.len(),
             state.len(),
-            interfaces.len()
         );
 
         entities.iter().for_each(|(entity_id, plugin_id)| {
@@ -121,19 +119,13 @@ impl Host {
                 data.len()
             );
         });
-        interfaces.iter().for_each(|(page_id, component)| {
-            info!(
-                "Restored interface for page ID {:?} with component: {:?}",
-                page_id, component
-            );
-        });
 
         let host = Self {
             plugins: Mutex::new(HashMap::new()),
             plugin_sources: Mutex::new(HashMap::new()),
             entities: Mutex::new(entities),
             state: Mutex::new(state),
-            interfaces: Mutex::new(interfaces),
+            interfaces: Mutex::new(HashMap::new()),
             user_requests: Mutex::new(Vec::new()),
             user_request_senders: Mutex::new(HashMap::new()),
             observers: Mutex::new(Vec::new()),
@@ -169,13 +161,6 @@ impl Host {
             plugins: plugins_data,
             entities: self.entities.lock().unwrap().clone().into_iter().collect(),
             state: self.state.lock().unwrap().clone().into_iter().collect(),
-            interfaces: self
-                .interfaces
-                .lock()
-                .unwrap()
-                .clone()
-                .into_iter()
-                .collect(),
         }
     }
 

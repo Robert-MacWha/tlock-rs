@@ -1,19 +1,12 @@
 use alloy::transports::http::reqwest;
 use serde::{Deserialize, Serialize};
-use tlock_hdk::{
-    tlock_api::{
-        component::Component,
-        entities::{EntityId, PageId},
-    },
-    wasmi_plugin_hdk::plugin::PluginId,
-};
+use tlock_hdk::{tlock_api::entities::EntityId, wasmi_plugin_hdk::plugin::PluginId};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HostState {
     pub plugins: Vec<PluginData>,
     pub entities: Vec<(EntityId, PluginId)>,
     pub state: Vec<(PluginId, Vec<u8>)>,
-    pub interfaces: Vec<(PageId, Component)>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
