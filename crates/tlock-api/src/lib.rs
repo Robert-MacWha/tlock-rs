@@ -10,13 +10,15 @@ pub mod domains;
 pub mod entities;
 pub use alloy;
 
+// TODO: Add a signer trait just for signing raw messages? Not sure if it'd work
+// - we might end up with too many types requiring user authentication.
+
 // TODO: Consider adding a `mod sealed::Sealed {}` to prevent external impl,
-// forcing plugins to only use provided methods.
-//
-// That's already somewhat enforced since the host will only call / recognize
-// these methods, but could be nice to make it explicit.
-// TODO: Or alternatively, perhaps move it into the `wasmi_plugin_pdk` crate,
-// since it should work fine for any RPC system.
+// forcing plugins to only use provided methods. That's already somewhat
+// enforced since the host will only call / recognize these methods, but could
+// be nice to make it explicit. Or alternatively, perhaps move it into the
+// `wasmi_plugin_pdk` crate, since it should work fine for any RPC system.
+
 // TODO: Also consider forwards compatibility with associated types, maybe wrap
 // them as named structs to allow adding fields later without introducing
 // breaking changes.
@@ -47,7 +49,6 @@ macro_rules! rpc_method {
         $name:ident, $struct_name:ident, $params:ty, $output:ty
     ) => {
         $(#[$meta])*
-        ///
         #[doc = concat!("**Params:** `", stringify!($params), "`")]
         #[doc = concat!("**Output:** `", stringify!($output), "`")]
         pub struct $struct_name;

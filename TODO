@@ -1,47 +1,10 @@
-Problem summary:
-
-When sending transactions with an alloy provider (provider.send_transaction),
-- alloy's provider calls `let _handle = self.root().get_heart();`
-- which calls `Heartbeat::<N, _>::new(Box::pin(stream), paused).spawn()`
-- which calls `task.spawn_task();`
-- which panics because `spawn_task` isn't implemented for wasmi32-wasip1.
-    - It uses tokio in non-wasm targets
-    - It tries to use `wasm_bindgen_futures::spawn_local` in wasm targets
-    `wasm_bindgen_futures` isn't compatible with wasmi32-wasip1.
-        - Seems like wasm_bindgen in general is fairly unmaintained: https://github.com/linebender/fearless_simd/pull/122#discussion_r2525754112
-
-So, we can't send transactions using alloy's provider and the mechanism that 
-prevents that is a runtime panic that happens deep inside hard-to-trace code.  
-Unacceptable for the library.
-
-Solutions might be updating alloy to use something that works with wasm32-wasip.
-They clearly intend for functionality since they have code paths & test compilations
-for wasm32-wasip1 targets.  So either adding a compile-time error for this, feature
-flags to wall it off, or a different async runtime that works in wasmi32-wasip (
-I think it'd be possible using a cooperative runtime or making it single-threaded, 
-which frankly seems best for wasmi32-wasip anyway).
-
-Looking at things, it's possible that just switching to tokio's wasm-support would 
-work without many changes. The main issue would be setting up the runtime properly, 
-but since it seems like all the tasks already cooperatively yield that might be possible
-by just using `#[tokio::main(flavor = "current_thread")]` to setup the runtime, then
-updating the heart.rs and utils.rs's `spawn_task` to not panic for non-wasm-bindgen features
-but rather just use tokio's spawn.
-
-I think this'll work.  Just need to setup a `INFO wasmi/wasmi-hdk/src/plugin.rs:123 [plugin] [eoa-vault.wasm] `spawn_local` called from outside of a `task::LocalSet` to verify.
-
-YES!  Maybe yes.  Don't get your hopes up.  It seems like it works, and managed to progress to sending of the request:
-```
-INFO wasmi/wasmi-hdk/src/plugin.rs:123 [plugin] [eoa-vault.wasm]  INFO tlock_alloy: Chain ID for provider EthProviderId(a9198c60-5961-4cb5-8921-1e28ef8269bf): 11155111 patch_console.js:1:279
-INFO wasmi/wasmi-hdk/src/plugin.rs:123 [plugin] [eoa-vault.wasm]  INFO tlock_alloy: Response: Response { id: Number(5), payload: Success(RawValue("0xaa36a7")) } patch_console.js:1:279
-INFO wasmi/wasmi-hdk/src/plugin.rs:123 [plugin] [eoa-vault.wasm]  INFO alloy_provider::provider::r#trait: send_transaction_internal: called with sendable transaction patch_console.js:1:279
-INFO wasmi/wasmi-hdk/src/plugin.rs:123 [plugin] [eoa-vault.wasm]  INFO alloy_provider::provider::r#trait: send_transaction_internal: initialized heartbeat patch_console.js:1:279
-INFO wasmi/wasmi-hdk/src/plugin.rs:123 [plugin] [eoa-vault.wasm]  INFO tlock_alloy: Handling EthRequest: EthSendRawTransaction(0xf86606830f4240825208942433fd3eeab90fa2248c0e3ff360cd10312c53b901808401546d71a09b5b3f2b97abe916d81037c75161c2da2b6417a737424d71ce0b381e5064d4f9a0322bfdac5dcbdb152413b8c0152bc8d7698f039c09b9c993ff39e35e3d2c6999) patch_console.js:1:279
-INFO wasmi/wasmi-async/src/non_blocking_pipe.rs:115 Pipe writer dropped, closing pipe 2 patch_console.js:1:279
-INFO wasmi/wasmi-hdk/src/plugin.rs:123 [plugin] [eoa-vault.wasm] ERROR tlock_alloy: Error handling request: req=SerializedRequest { meta: RequestMeta { method: "eth_sendRawTransaction", id: Number(6), is_subscription: false, extensions: Extensions }, request: RawValue({"method":"eth_sendRawTransaction","params":["0xf86606830f4240825208942433fd3eeab90fa2248c0e3ff360cd10312c53b901808401546d71a09b5b3f2b97abe916d81037c75161c2da2b6417a737424d71ce0b381e5064d4f9a0322bfdac5dcbdb152413b8c0152bc8d7698f039c09b9c993ff39e35e3d2c6999"],"id":6,"jsonrpc":"2.0"}) }, error=UnsupportedFeature("Unsupported request type") patch_console.js:1:279
-WARN wasmi/wasmi-pdk/src/transport.rs:165 Received error response: "unsupported feature: Unsupported request type"
-```
-
-Whether it'll actually be able to watch for the tx resp remains to be seen, but I'm hopeful.  If this works I can try to upstream it, and frankly it's super super simple.  Just the single change to utils.rs and the cargo.toml to add tokio's wasm support.
-
-Ok yeah, pretty convinced it'll work.  I'm running into an issue now where I can't sleep with wasmtimer, so I need to also switch that to use tokio's sleep. Tokios' sleep depends on `poll_oneoff` which I never bothered implementing, so I'll also need to add that.  But that's hardly terrible.
+- Working uniswap plugin
+  - [ ] Finish writing eoa-coordinator
+  - [ ] Implement uniswap plugin
+  - [ ] Implement some second plugin for a simple contract
+- Demoable app
+  - [ ] Create revm-based eth-provider so balances can be mocked & the chain can be forked
+  - [ ] Create plugin registry hosted in github
+  - [ ] Pretty up the UI so it's not just raw component dumps
+  - [ ] Create a demo app that loads different states and showcases functionality
+  - [ ] Create documentation page explaining the architecture, different domains, showcase plugins, some future ideas, etc.
