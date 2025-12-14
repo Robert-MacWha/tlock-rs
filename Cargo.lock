@@ -2990,6 +2990,7 @@ version = "0.1.0"
 dependencies = [
  "alloy",
  "serde",
+ "tlock-alloy",
  "tlock-pdk",
  "tracing",
  "tracing-subscriber",

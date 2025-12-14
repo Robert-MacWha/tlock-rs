@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 tlock-pdk = { workspace = true }
+tlock-alloy = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 alloy = { workspace = true }
