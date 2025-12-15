@@ -8,3 +8,6 @@
   - [ ] Pretty up the UI so it's not just raw component dumps
   - [ ] Create a demo app that loads different states and showcases functionality
   - [ ] Create documentation page explaining the architecture, different domains, showcase plugins, some future ideas, etc.
+
+- [ ] Turn eth-coordinator into an exemplar
+- [ ] Add multi-chain support for eth-coordinator, eoa-vault, and eth-provider
