@@ -50,29 +50,24 @@ const UNISWAP_V2_FACTORY: Address = address!("0xF62c03E08ada871A0bEb309762E260a7
 struct TokenInfo {
     symbol: &'static str,
     address: Address,
-    decimals: u8,
 }
 
 const TOKENS: [TokenInfo; 4] = [
     TokenInfo {
         symbol: "WETH",
         address: address!("0xfff9976782d46cc05630d1f6ebab18b2324d6b14"),
-        decimals: 18,
     },
     TokenInfo {
         symbol: "USDC",
         address: address!("0x1c7d4b196cb0c7b01d743fbc6116a902379c7238"),
-        decimals: 6,
     },
     TokenInfo {
         symbol: "DAI",
         address: address!("0xFF34B3d4Aee8ddCd6F9AFFFB6Fe49bD371b8a357"),
-        decimals: 18,
     },
     TokenInfo {
         symbol: "LINK",
         address: address!("0x779877A7B0D9E8603169DdbD7836e478b4624789"),
-        decimals: 18,
     },
 ];
 
@@ -85,9 +80,10 @@ struct PluginState {
     page_id: Option<PageId>,
     selected_from_token: Option<usize>,
     selected_to_token: Option<usize>,
-    input_amount: U256,
-    expected_output: Option<U256>,
-    exchange_rate: Option<String>,
+    input_amount: f64,
+    expected_output: f64,
+    input_decimals: u8,
+    output_decimals: u8,
     last_message: Option<String>,
 }
 
@@ -122,6 +118,7 @@ sol! {
     #[sol(rpc)]
     contract ERC20 {
         function approve(address spender, uint256 amount) external returns (bool);
+        function decimals() external view returns (uint8);
     }
 }
 
@@ -145,9 +142,10 @@ async fn init(transport: Arc<JsonRpcTransport>, _params: ()) -> Result<(), RpcEr
         page_id: None,
         selected_from_token: None,
         selected_to_token: None,
-        input_amount: U256::ZERO,
-        expected_output: None,
-        exchange_rate: None,
+        input_amount: 0.0,
+        expected_output: 0.0,
+        input_decimals: 0,
+        output_decimals: 0,
         last_message: None,
     };
 
@@ -241,14 +239,13 @@ async fn handle_swap_form_update(
     };
 
     if amount.is_empty() {
-        state.input_amount = U256::ZERO;
-        state.expected_output = None;
-        state.exchange_rate = None;
+        state.input_amount = 0.0;
+        state.expected_output = 0.0;
         warn!("Amount is empty, cannot calculate quote");
         return Ok(());
     }
 
-    let Ok(amount) = amount.parse::<U256>() else {
+    let Ok(amount) = amount.parse::<f64>() else {
         state.last_message = Some("Invalid amount - must be a valid number".into());
         return Ok(());
     };
@@ -261,7 +258,9 @@ async fn handle_swap_form_update(
         .split(':')
         .next()
         .and_then(|idx_str| idx_str.trim().parse::<usize>().ok());
+
     state.input_amount = amount;
+
     if state.selected_from_token.is_some() && state.selected_to_token.is_some() {
         state.input_amount = amount;
         calculate_quote(transport, state).await?;
@@ -278,7 +277,7 @@ async fn handle_refresh_quote(
 ) -> Result<(), RpcError> {
     if state.selected_from_token.is_some()
         && state.selected_to_token.is_some()
-        && !state.input_amount.is_zero()
+        && state.input_amount != 0.0
     {
         calculate_quote(transport, state).await?;
         state.last_message = Some("Quote refreshed".into());
@@ -312,15 +311,33 @@ async fn calculate_quote(
     // Parse input amount
     let amount_in = state.input_amount;
 
-    if amount_in == U256::ZERO {
+    if amount_in == 0.0 {
         error!("Input amount is zero");
-        state.expected_output = None;
+        state.expected_output = 0.0;
         return Ok(());
     }
 
     // Get provider
     let provider = ProviderBuilder::new()
         .connect_client(AlloyBridge::new(transport.clone(), state.provider_id));
+
+    // Get token decimals
+    let from_token_contract = ERC20::new(from_token.address, &provider);
+    let to_token_contract = ERC20::new(to_token.address, &provider);
+
+    let from_decimals = from_token_contract
+        .decimals()
+        .call()
+        .await
+        .map_err(to_rpc_err)?;
+    let to_decimals = to_token_contract
+        .decimals()
+        .call()
+        .await
+        .map_err(to_rpc_err)?;
+
+    state.input_decimals = from_decimals;
+    state.output_decimals = to_decimals;
 
     // Get pair address from factory
     let factory = IUniswapV2Factory::new(UNISWAP_V2_FACTORY, &provider);
@@ -351,29 +368,14 @@ async fn calculate_quote(
         (reserve1, reserve0)
     };
 
-    let reserve_in_f: f64 = reserve_in.into();
-    let reserve_out_f: f64 = reserve_out.into();
-    let amount_in_f: f64 = amount_in.into();
+    let reserve_in: f64 = reserve_in.into();
+    let reserve_out: f64 = reserve_out.into();
 
     // Calculate output using x*y=k with 0.3% fee
     // amountOut = (amountIn * 0.997 * reserveOut) / (reserveIn + amountIn * 0.997)
-    let amount_in_with_fee = amount_in_f * 0.997;
-    let amount_out_f = (amount_in_with_fee * reserve_out_f) / (reserve_in_f + amount_in_with_fee);
-
-    state.expected_output = Some(U256::from(amount_out_f as u64));
-
-    // Calculate exchange rate for display
-    let rate = if amount_in_f > 0.0 {
-        format!(
-            "1 {} ≈ {:.6} {}",
-            from_token.symbol,
-            amount_out_f / amount_in_f,
-            to_token.symbol
-        )
-    } else {
-        "N/A".into()
-    };
-    state.exchange_rate = Some(rate);
+    let amount_in_with_fee = amount_in * 0.997;
+    let amount_out = (amount_in_with_fee * reserve_out) / (reserve_in + amount_in_with_fee);
+    state.expected_output = amount_out;
 
     state.last_message = Some("Quote calculated".into());
 
@@ -402,15 +404,11 @@ async fn handle_execute_swap(
     let to_token = &TOKENS[to_idx];
 
     // Parse input amount
-    let amount_in: U256 = state.input_amount;
-
-    let Some(expected_output) = &state.expected_output else {
-        state.last_message = Some("Calculate quote first".into());
-        return Ok(());
-    };
+    let amount_in = state.input_amount;
+    let expected_out = state.expected_output;
 
     // Apply 0.5% slippage tolerance
-    let amount_out_min = expected_output * U256::from(995) / U256::from(1000);
+    let amount_out_min = expected_out * 0.995;
 
     // Get coordinator session
     let account_id = coordinator::GetSession
@@ -430,8 +428,8 @@ async fn handle_execute_swap(
         account_address,
         from_token,
         to_token,
-        amount_in,
-        amount_out_min,
+        U256::from(amount_in),
+        U256::from(amount_out_min),
     )?;
 
     // Build EvmBundle
@@ -445,7 +443,7 @@ async fn handle_execute_swap(
     };
 
     let bundle = coordinator::EvmBundle {
-        inputs: vec![(from_asset_id, amount_in)],
+        inputs: vec![(from_asset_id, U256::from(amount_in))],
         outputs: vec![to_asset_id],
         operations,
     };
@@ -456,9 +454,8 @@ async fn handle_execute_swap(
         .await?;
 
     state.last_message = Some("Swap executed successfully!".into());
-    state.input_amount = U256::ZERO;
-    state.expected_output = None;
-    state.exchange_rate = None;
+    state.input_amount = 0.0;
+    state.expected_output = 0.0;
 
     Ok(())
 }
@@ -541,19 +538,23 @@ fn build_ui(state: &PluginState) -> tlock_pdk::tlock_api::component::Component {
             dropdown("from_token", token_options.clone(), from_selected),
             text("To Token:"),
             dropdown("to_token", token_options, to_selected),
-            text("Amount (in smallest unit):"),
+            text("Amount (in wei):"),
             text_input("amount", "Enter amount"),
             submit_input("Update Quote"),
         ],
     ));
 
     // Display quote if available
-    if let Some(expected_output) = &state.expected_output {
-        sections.push(heading("Quote"));
-        sections.push(text(format!("Expected Output: {}", expected_output)));
+    let formatted_in = state.input_amount / 10f64.powi(state.input_decimals as i32);
+    let formatted_out = state.expected_output / 10f64.powi(state.output_decimals as i32);
 
-        if let Some(rate) = &state.exchange_rate {
-            sections.push(text(format!("Exchange Rate: {}", rate)));
+    if formatted_out > 0.0 {
+        sections.push(heading("Quote"));
+        sections.push(text(format!("Expected Output: {:.4}", formatted_out)));
+
+        if formatted_in != 0.0 {
+            let exchange_rate = formatted_out / formatted_in;
+            sections.push(text(format!("Exchange Rate: {:.4}", exchange_rate)));
         }
 
         sections.push(button_input("refresh_quote", "Refresh Quote"));
@@ -564,17 +565,14 @@ fn build_ui(state: &PluginState) -> tlock_pdk::tlock_api::component::Component {
     if let Some(from_idx) = state.selected_from_token {
         let token = &TOKENS[from_idx];
         sections.push(text(format!(
-            "From: {} ({} decimals, {:?})",
-            token.symbol, token.decimals, token.address
+            "From: {} ({:?})",
+            token.symbol, token.address
         )));
     }
 
     if let Some(to_idx) = state.selected_to_token {
         let token = &TOKENS[to_idx];
-        sections.push(text(format!(
-            "To: {} ({} decimals, {:?})",
-            token.symbol, token.decimals, token.address
-        )));
+        sections.push(text(format!("To: {} ({:?})", token.symbol, token.address)));
     }
 
     container(sections)

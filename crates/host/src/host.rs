@@ -14,6 +14,7 @@ use tlock_hdk::{
         RpcMethod,
         caip::{self, AccountId, AssetId},
         component::Component,
+        coordinator,
         domains::Domain,
         entities::{CoordinatorId, EntityId, EthProviderId, PageId, VaultId},
         eth, global, host, page, plugin,
@@ -275,6 +276,9 @@ impl Host {
             .with_method(eth::EstimateGas, eth_estimate_gas)
             .with_method(eth::GetTransactionReceipt, eth_get_transaction_receipt)
             .with_method(eth::GetBlock, eth_get_block)
+            .with_method(coordinator::GetAssets, coordinator_get_assets)
+            .with_method(coordinator::GetSession, coordinator_get_session)
+            .with_method(coordinator::Propose, coordinator_propose)
     }
 
     pub fn get_entities(&self) -> Vec<EntityId> {
@@ -447,6 +451,8 @@ impl Host {
     }
 }
 
+// TODO: Create a macro for these. It seens extremely possible, if a little
+// fiddly.
 impl Host {
     pub async fn ping(&self, _plugin_id: &PluginId, _params: ()) -> Result<String, RpcError> {
         Ok("Pong from host".to_string())
@@ -816,6 +822,54 @@ impl Host {
         })?;
         Ok(block)
     }
+
+    pub async fn coordinator_get_assets(
+        &self,
+        params: <coordinator::GetAssets as RpcMethod>::Params,
+    ) -> Result<<coordinator::GetAssets as RpcMethod>::Output, RpcError> {
+        let plugin = self.get_entity_plugin_error(params.0)?;
+
+        let assets = coordinator::GetAssets
+            .call(plugin, params)
+            .await
+            .map_err(|e| {
+                warn!("Error calling GetAssets: {:?}", e);
+                e.as_rpc_code()
+            })?;
+        Ok(assets)
+    }
+
+    pub async fn coordinator_get_session(
+        &self,
+        params: <coordinator::GetSession as RpcMethod>::Params,
+    ) -> Result<<coordinator::GetSession as RpcMethod>::Output, RpcError> {
+        let plugin = self.get_entity_plugin_error(params.0)?;
+
+        let session = coordinator::GetSession
+            .call(plugin, params)
+            .await
+            .map_err(|e| {
+                warn!("Error calling GetSession: {:?}", e);
+                e.as_rpc_code()
+            })?;
+        Ok(session)
+    }
+
+    pub async fn coordinator_propose(
+        &self,
+        params: <coordinator::Propose as RpcMethod>::Params,
+    ) -> Result<<coordinator::Propose as RpcMethod>::Output, RpcError> {
+        let plugin = self.get_entity_plugin_error(params.0)?;
+
+        let result = coordinator::Propose
+            .call(plugin, params)
+            .await
+            .map_err(|e| {
+                warn!("Error calling Propose: {:?}", e);
+                e.as_rpc_code()
+            })?;
+        Ok(result)
+    }
 }
 
 // Macro invocations to implement the host RPC methods
@@ -853,3 +907,6 @@ impl_host_rpc_no_id!(
     eth_get_transaction_receipt
 );
 impl_host_rpc_no_id!(Host, eth::GetBlock, eth_get_block);
+impl_host_rpc_no_id!(Host, coordinator::GetAssets, coordinator_get_assets);
+impl_host_rpc_no_id!(Host, coordinator::GetSession, coordinator_get_session);
+impl_host_rpc_no_id!(Host, coordinator::Propose, coordinator_propose);

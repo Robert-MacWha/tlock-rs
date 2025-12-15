@@ -14,6 +14,15 @@ plugins:
 		fi \
 	done
 
+plugins-release:
+	@for dir in plugins/*/; do \
+		if [ -f "$$dir/Cargo.toml" ]; then \
+			plugin_name=$$(basename $$dir); \
+			echo "Building plugin: $$plugin_name"; \
+			cargo build --target wasm32-wasip1 -p $$plugin_name --release; \
+		fi \
+	done
+
 fmt:
 	cargo fmt
 

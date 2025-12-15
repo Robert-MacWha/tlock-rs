@@ -79,7 +79,7 @@ async fn ping(transport: Arc<JsonRpcTransport>, _: ()) -> Result<String, RpcErro
 
 async fn init(transport: Arc<JsonRpcTransport>, _: ()) -> Result<(), RpcError> {
     let vault_id = host::RequestVault.call(transport.clone(), ()).await?;
-    info!("Obtained vault ID: {:?}", vault_id);
+    info!("Obtained vault ID: {}", vault_id);
 
     let provider_id = host::RequestEthProvider
         .call(transport.clone(), ChainId::new_evm(CHAIN_ID))
@@ -159,6 +159,8 @@ async fn propose(
     transport: Arc<JsonRpcTransport>,
     params: (CoordinatorId, AccountId, coordinator::EvmBundle),
 ) -> Result<(), RpcError> {
+    info!("Received proposal: {:#?}", params);
+
     let state: State = try_get_state(transport.clone()).await?;
     let (coordinator_id, account_id, bundle) = params;
 
@@ -190,7 +192,7 @@ async fn propose(
             state.provider_id.clone(),
         ));
 
-    let initial_state_account_balance = provider
+    let initial_native_balance = provider
         .get_balance(state_account_address)
         .await
         .map_err(to_rpc_err)?;
@@ -204,7 +206,7 @@ async fn propose(
         &provider,
         state_account_address,
         return_assets,
-        initial_state_account_balance,
+        initial_native_balance,
     )
     .await?;
 
@@ -228,7 +230,7 @@ async fn verify_vault_balance(
 
         if &vault_amount < amount {
             return Err(RpcError::Custom(format!(
-                "Insufficient asset {asset_id:?} in vault"
+                "Insufficient asset {asset_id} in vault"
             )));
         }
     }
@@ -252,7 +254,7 @@ async fn validate_and_get_return_assets(
     for asset_id in bundled_assets {
         if (asset_id.chain_id) != ChainId::new_evm(CHAIN_ID) {
             return Err(RpcError::Custom(format!(
-                "Coordinator cannot return asset {:?} on chain {:?}",
+                "Coordinator cannot return asset {} on chain {}",
                 asset_id, asset_id.chain_id
             )));
         }
@@ -262,7 +264,7 @@ async fn validate_and_get_return_assets(
             AssetType::Slip44(id) => {
                 if id != 60 {
                     return Err(RpcError::Custom(format!(
-                        "Coordinator cannot return unsupported slip44 asset {:?}",
+                        "Coordinator cannot return unsupported slip44 asset {}",
                         asset_id
                     )));
                 }
@@ -270,7 +272,7 @@ async fn validate_and_get_return_assets(
             }
             _ => {
                 return Err(RpcError::Custom(format!(
-                    "Coordinator cannot return unsupported asset {:?}",
+                    "Coordinator cannot return unsupported asset {}",
                     asset_id
                 )));
             }
@@ -282,7 +284,7 @@ async fn validate_and_get_return_assets(
 
         let Some(deposit_address) = deposit_address.as_evm_address() else {
             return Err(RpcError::Custom(format!(
-                "Coordinator cannot return asset {:?} to non-EVM address {:?}",
+                "Coordinator cannot return asset {} to non-EVM address {}",
                 asset_id, deposit_address
             )));
         };
@@ -302,7 +304,7 @@ async fn withdraw_assets(
     bundle: &coordinator::EvmBundle,
 ) -> Result<(), RpcError> {
     for (asset_id, amount) in &bundle.inputs {
-        info!("Transferring asset {:?} amount {:?}", asset_id, amount);
+        info!("Transferring asset {} amount {}", asset_id, amount);
         vault::Withdraw
             .call(
                 transport.clone(),
@@ -336,7 +338,7 @@ async fn execute_bundle<T: Provider>(
             .watch()
             .await
             .map_err(to_rpc_err)?;
-        info!("Submitted operation with tx_hash {:?}", tx_hash);
+        info!("Submitted operation with tx_hash {}", tx_hash);
     }
 
     Ok(())
@@ -346,7 +348,7 @@ async fn return_outstanding_assets<T: Provider>(
     provider: &T,
     state_account_address: Address,
     return_assets: Vec<ReturnAsset>,
-    initial_state_account_balance: U256,
+    initial_native_balance: U256,
 ) -> Result<(), RpcError> {
     for return_asset in return_assets {
         info!("Returning {:?} to vault...", &return_asset.asset);
@@ -356,7 +358,7 @@ async fn return_outstanding_assets<T: Provider>(
                     provider,
                     state_account_address,
                     return_asset.deposit_address,
-                    initial_state_account_balance,
+                    initial_native_balance,
                 )
                 .await?;
             }
@@ -379,7 +381,7 @@ async fn return_eth<T: Provider>(
     provider: &T,
     state_account_address: Address,
     deposit_address: Address,
-    initial_state_account_balance: U256,
+    initial_native_balance: U256,
 ) -> Result<(), RpcError> {
     let balance = provider
         .get_balance(state_account_address)
@@ -389,7 +391,7 @@ async fn return_eth<T: Provider>(
     //? Return only the excess balance above the initial balance
     //? This means that any ETH remaining will first be used to cover gas costs,
     //? which is generally fine.
-    let return_amount = balance.saturating_sub(initial_state_account_balance);
+    let return_amount = balance.saturating_sub(initial_native_balance);
     if return_amount == U256::ZERO {
         trace!("No balance to return, skipping ETH return");
         return Ok(());
@@ -406,7 +408,7 @@ async fn return_eth<T: Provider>(
         .watch()
         .await
         .map_err(to_rpc_err)?;
-    info!("Returned ETH to vault with tx_hash {:?}", tx_hash);
+    info!("Returned ETH to vault with tx_hash {}", tx_hash);
     Ok(())
 }
 
@@ -424,7 +426,7 @@ async fn return_erc20<T: Provider>(
         .map_err(to_rpc_err)?;
 
     if balance == U256::ZERO {
-        trace!("No balance for ERC20 {:?}, skipping return", erc20_address);
+        trace!("No balance for ERC20 {}, skipping return", erc20_address);
         return Ok(());
     }
 
@@ -437,7 +439,7 @@ async fn return_erc20<T: Provider>(
         .await
         .map_err(to_rpc_err)?;
     info!(
-        "Returned ERC20 {:?} to vault with tx_hash {:?}",
+        "Returned ERC20 {} to vault with tx_hash {}",
         erc20_address, tx_hash
     );
 
@@ -513,11 +515,16 @@ async fn on_update(
         .call(transport.clone(), (page_id, component))
         .await?;
 
-    todo!()
+    Ok(())
 }
 
 fn main() {
-    fmt().with_writer(stderr).init();
+    fmt()
+        .with_writer(stderr)
+        .without_time()
+        .with_ansi(false)
+        .compact()
+        .init();
     info!("Starting plugin...");
 
     PluginServer::new_with_transport()

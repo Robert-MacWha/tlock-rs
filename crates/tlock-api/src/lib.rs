@@ -96,6 +96,8 @@ pub mod host {
         host_register_entity, RegisterEntity, Domain, EntityId
     );
 
+    // TODO: Consider turning the host_request_* into their own domain? Makes it
+    // more obvious they're all related and can share docs.
     rpc_method!(
         /// Request the host to provide an EthProvider for this plugin
         host_request_eth_provider,

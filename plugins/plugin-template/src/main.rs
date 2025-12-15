@@ -14,7 +14,12 @@ async fn ping(transport: Arc<JsonRpcTransport>, _: ()) -> Result<String, RpcErro
 }
 
 fn main() {
-    fmt().with_writer(stderr).init();
+    fmt()
+        .with_writer(stderr)
+        .without_time()
+        .with_ansi(false)
+        .compact()
+        .init();
     info!("Starting plugin...");
 
     PluginServer::new_with_transport()

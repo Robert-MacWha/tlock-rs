@@ -54,12 +54,16 @@ RequestSession(Option<AccountId>) -> Result<AccountId, Error>
 
 - Receives assets from Vaults
 - Executes arbitrary operations on behalf of Coordinator
+- Only allows execution of valid bundles (signed, within a block range, etc)
 - Allows Coordinator to withdraw assets back to Vaults
 - Acts as a temporary "session account"
 
 Escrows are technically implementation details of Coordinators, but are important enough to be called out seperately.  Coordinators may use whatever mechanism they desire to hold assets during operators and return assets to vaults, so long as they fufill the Coordinator Domain.  Escrows are simply the cannonical and most secure way to do this I've found so far.
 
 The existance of Escrows cannot be assumed, and Vaults and Plugins need not be aware of them.
+
+This is an interesting semi-related topic:
+    - https://github.com/ethereum/L2-interop/blob/main/docs/intents/atomic-swaps.md
 
 ## 3. Operational Flows
 
