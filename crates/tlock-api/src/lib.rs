@@ -239,6 +239,11 @@ pub mod eth {
 
 /// The vault namespace contains methods for interacting with vaults,
 /// transferring funds between different accounts.
+///
+/// Plugins should NOT generally interact with vaults directly, but instead
+/// request a controller from the host which manages vault interactions on their
+/// behalf. Direct vault interactions are highly secure operations and will
+/// generally require increased user permissions.
 pub mod vault {
     use alloy::primitives::U256;
 
