@@ -78,16 +78,12 @@ async fn ping(transport: Arc<JsonRpcTransport>, _: ()) -> Result<String, RpcErro
 }
 
 async fn init(transport: Arc<JsonRpcTransport>, _: ()) -> Result<(), RpcError> {
-    let vault_id = host::RequestVault
-        .call(transport.clone(), ())
-        .await?
-        .ok_or(RpcError::Custom("Expected vault ID".into()))?;
+    let vault_id = host::RequestVault.call(transport.clone(), ()).await?;
     info!("Obtained vault ID: {:?}", vault_id);
 
     let provider_id = host::RequestEthProvider
         .call(transport.clone(), ChainId::new_evm(CHAIN_ID))
-        .await?
-        .ok_or(RpcError::Custom("Expected provider ID".into()))?;
+        .await?;
 
     host::RegisterEntity
         .call(transport.clone(), Domain::Page)

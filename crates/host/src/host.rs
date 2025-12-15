@@ -58,12 +58,27 @@ pub enum UserRequest {
         id: Uuid,
         plugin_id: PluginId,
     },
+    CoordinatorSelection {
+        id: Uuid,
+        plugin_id: PluginId,
+    },
+}
+
+impl UserRequest {
+    pub fn id(&self) -> Uuid {
+        match self {
+            UserRequest::EthProviderSelection { id, .. } => id.clone(),
+            UserRequest::VaultSelection { id, .. } => id.clone(),
+            UserRequest::CoordinatorSelection { id, .. } => id.clone(),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
 pub enum UserResponse {
     EthProvider(EthProviderId),
     Vault(VaultId),
+    Coordinator(CoordinatorId),
 }
 
 #[derive(Error, Debug)]
@@ -239,6 +254,7 @@ impl Host {
             .with_method(host::RegisterEntity, register_entity)
             .with_method(host::RequestEthProvider, request_eth_provider)
             .with_method(host::RequestVault, request_vault)
+            .with_method(host::RequestCoordinator, request_coordinator)
             .with_method(host::Fetch, fetch)
             .with_method(host::GetState, get_state)
             .with_method(host::SetState, set_state)
@@ -312,36 +328,16 @@ impl Host {
         log.clone()
     }
 
-    pub fn resolve_user_request(&self, request_id: Uuid, provider_id: EthProviderId) {
-        let sender = self
-            .user_request_senders
-            .lock()
-            .unwrap()
-            .remove(&request_id);
-        let Some(sender) = sender else {
-            warn!("No sender found for user request {}", request_id);
-            return;
-        };
-
-        if sender.send(UserResponse::EthProvider(provider_id)).is_err() {
-            warn!("Failed to send response for user request {}", request_id);
-        }
+    pub fn resolve_eth_provider_request(&self, request_id: Uuid, provider_id: EthProviderId) {
+        self.resolve_user_request(request_id, UserResponse::EthProvider(provider_id));
     }
 
     pub fn resolve_vault_request(&self, request_id: Uuid, vault_id: VaultId) {
-        let sender = self
-            .user_request_senders
-            .lock()
-            .unwrap()
-            .remove(&request_id);
-        let Some(sender) = sender else {
-            warn!("No sender found for user request {}", request_id);
-            return;
-        };
+        self.resolve_user_request(request_id, UserResponse::Vault(vault_id));
+    }
 
-        if sender.send(UserResponse::Vault(vault_id)).is_err() {
-            warn!("Failed to send response for vault request {}", request_id);
-        }
+    pub fn resolve_coordinator_request(&self, request_id: Uuid, coordinator_id: CoordinatorId) {
+        self.resolve_user_request(request_id, UserResponse::Coordinator(coordinator_id.into()));
     }
 
     pub fn deny_user_request(&self, request_id: Uuid) {
@@ -350,6 +346,63 @@ impl Host {
             .lock()
             .unwrap()
             .remove(&request_id);
+    }
+
+    async fn create_user_request<T, F>(
+        &self,
+        request: UserRequest,
+        extract_response: F,
+    ) -> Result<T, RpcError>
+    where
+        F: FnOnce(UserResponse) -> Option<T>,
+    {
+        let request_id = request.id();
+
+        // Insert the request
+        self.user_requests.lock().unwrap().push(request);
+
+        // Construct a receiver for the response and await it
+        let (sender, receiver) = oneshot::channel();
+        self.user_request_senders
+            .lock()
+            .unwrap()
+            .insert(request_id.clone(), sender);
+
+        let resp = receiver.await;
+
+        // Remove the request from the list
+        self.user_requests
+            .lock()
+            .unwrap()
+            .retain(|req| req.id() != request_id);
+
+        self.notify_observers();
+
+        let Ok(resp) = resp else {
+            return Err(RpcError::Custom("Request Dropped".into()));
+        };
+
+        let Some(resp) = extract_response(resp) else {
+            return Err(RpcError::Custom("Unexpected Response Type".into()));
+        };
+
+        Ok(resp)
+    }
+
+    fn resolve_user_request(&self, request_id: Uuid, resp: UserResponse) {
+        let sender = self
+            .user_request_senders
+            .lock()
+            .unwrap()
+            .remove(&request_id);
+        let Some(sender) = sender else {
+            warn!("No sender found for user request {}", request_id);
+            return;
+        };
+
+        if sender.send(resp).is_err() {
+            warn!("Failed to send response for user request {}", request_id);
+        }
     }
 
     /// ? Helper to get the plugin or return an RpcError if not found
@@ -422,103 +475,50 @@ impl Host {
         &self,
         plugin_id: &PluginId,
         chain_id: caip::ChainId,
-    ) -> Result<Option<EthProviderId>, RpcError> {
-        let request_id = Uuid::new_v4();
-        let (sender, receiver) = oneshot::channel();
-
-        info!(
-            "Created eth provider selection request {} for chain_id: {}",
-            request_id, chain_id
-        );
-
-        let user_request = UserRequest::EthProviderSelection {
-            id: request_id,
+    ) -> Result<EthProviderId, RpcError> {
+        let request = UserRequest::EthProviderSelection {
+            id: Uuid::new_v4(),
             plugin_id: *plugin_id,
             chain_id,
         };
 
-        self.user_requests.lock().unwrap().push(user_request);
-        self.user_request_senders
-            .lock()
-            .unwrap()
-            .insert(request_id, sender);
-
-        self.notify_observers();
-        let resp = receiver.await;
-
-        // Remove the request from the list
-        self.user_requests.lock().unwrap().retain(|req| match req {
-            UserRequest::EthProviderSelection { id, .. } => *id != request_id,
-            UserRequest::VaultSelection { .. } => true,
-        });
-
-        match resp {
-            Ok(UserResponse::EthProvider(selected_provider)) => {
-                info!("User selected provider: {:?}", selected_provider);
-                self.notify_observers();
-                Ok(Some(selected_provider))
-            }
-            Ok(_) => {
-                warn!("Unexpected response type for EthProvider request");
-                self.notify_observers();
-                Err(RpcError::InternalError)
-            }
-            Err(_) => {
-                warn!("User request cancelled - receiver dropped");
-                self.notify_observers();
-                Err(RpcError::InternalError)
-            }
-        }
+        self.create_user_request(request, |resp| match resp {
+            UserResponse::EthProvider(selected_provider) => Some(selected_provider),
+            _ => None,
+        })
+        .await
     }
 
     pub async fn request_vault(
         &self,
         plugin_id: &PluginId,
         _params: (),
-    ) -> Result<Option<VaultId>, RpcError> {
-        let request_id = Uuid::new_v4();
-        let (sender, receiver) = oneshot::channel();
-
-        info!(
-            "Created vault selection request {} for plugin: {}",
-            request_id, plugin_id
-        );
-
-        let user_request = UserRequest::VaultSelection {
-            id: request_id,
+    ) -> Result<VaultId, RpcError> {
+        let request = UserRequest::VaultSelection {
+            id: Uuid::new_v4(),
             plugin_id: *plugin_id,
         };
 
-        self.user_requests.lock().unwrap().push(user_request);
-        self.user_request_senders
-            .lock()
-            .unwrap()
-            .insert(request_id, sender);
+        self.create_user_request(request, |resp| match resp {
+            UserResponse::Vault(selected_vault) => Some(selected_vault),
+            _ => None,
+        })
+        .await
+    }
 
-        self.notify_observers();
-        let resp = receiver.await;
-
-        // Remove the request from the list
-        self.user_requests.lock().unwrap().retain(|req| match req {
-            UserRequest::VaultSelection { id, .. } => *id != request_id,
-            UserRequest::EthProviderSelection { .. } => true,
-        });
-
-        match resp {
-            Ok(UserResponse::Vault(selected_vault)) => {
-                info!("User selected vault: {:?}", selected_vault);
-                self.notify_observers();
-                Ok(Some(selected_vault))
-            }
-            Ok(_) => {
-                warn!("Unexpected response type for Vault request");
-                self.notify_observers();
-                Err(RpcError::InternalError)
-            }
-            Err(_) => {
-                warn!("User request cancelled - receiver dropped");
-                self.notify_observers();
-                Err(RpcError::InternalError)
+    pub async fn request_coordinator(
+        &self,
+        plugin_id: &PluginId,
+        _params: (),
+    ) -> Result<CoordinatorId, RpcError> {
+        let entity_id = self.register_entity(plugin_id, Domain::Coordinator).await?;
+        match entity_id {
+            EntityId::Coordinator(coord_id) => Ok(coord_id),
+            _ => {
+                warn!("Registered entity ID {:?} is not a Coordinator", entity_id);
+                Err(RpcError::Custom(
+                    "Registered entity is not a Coordinator".into(),
+                ))
             }
         }
     }
@@ -828,6 +828,7 @@ impl_host_rpc!(Host, global::Ping, ping);
 impl_host_rpc!(Host, host::RegisterEntity, register_entity);
 impl_host_rpc!(Host, host::RequestEthProvider, request_eth_provider);
 impl_host_rpc!(Host, host::RequestVault, request_vault);
+impl_host_rpc!(Host, host::RequestCoordinator, request_coordinator);
 impl_host_rpc!(Host, host::Fetch, fetch);
 impl_host_rpc!(Host, host::GetState, get_state);
 impl_host_rpc!(Host, host::SetState, set_state);

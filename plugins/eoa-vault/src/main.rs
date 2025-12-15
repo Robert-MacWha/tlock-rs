@@ -236,8 +236,7 @@ async fn request_eth_provider(transport: Arc<JsonRpcTransport>) -> Result<EthPro
     let chain_id: ChainId = ChainId::new_evm(CHAIN_ID);
     let provider_id = host::RequestEthProvider
         .call(transport.clone(), chain_id)
-        .await?
-        .ok_or_else(|| RpcError::Custom("Failed to obtain Eth Provider".into()))?;
+        .await?;
 
     state.eth_provider_id = Some(provider_id);
     set_state(transport.clone(), &state).await?;

@@ -44,15 +44,8 @@ async fn init(transport: Arc<JsonRpcTransport>, _params: ()) -> Result<(), RpcEr
     Ok(())
 }
 
-async fn ping(transport: Arc<JsonRpcTransport>, _params: ()) -> Result<String, RpcError> {
-    info!("Ping received, testing vault request");
-
-    let vault_id = host::RequestVault.call(transport, ()).await?;
-
-    match vault_id {
-        Some(id) => Ok(format!("Pong! Got vault: {}", id)),
-        None => Ok("Pong! No vault selected".to_string()),
-    }
+async fn ping(_: Arc<JsonRpcTransport>, _: ()) -> Result<String, RpcError> {
+    Ok("pong".to_string())
 }
 
 // ---------- UI Handlers ----------
@@ -113,19 +106,10 @@ async fn handle_request_vault(transport: &Arc<JsonRpcTransport>) -> Result<(), R
     info!("Requesting vault from host");
 
     let vault_id = host::RequestVault.call(transport.clone(), ()).await?;
-
     let mut state: PluginState = get_state(transport.clone()).await;
-    match vault_id {
-        Some(id) => {
-            state.vault_id = Some(id);
-            state.last_message = Some(format!("Vault selected: {}", id));
-            info!("Vault selected: {}", id);
-        }
-        None => {
-            state.last_message = Some("No vault selected".to_string());
-            info!("User cancelled vault selection");
-        }
-    }
+    state.vault_id = Some(vault_id);
+    state.last_message = Some(format!("Vault selected: {}", vault_id));
+    info!("Vault selected: {}", vault_id);
 
     set_state(transport.clone(), &state).await?;
     host::SetPage

@@ -79,7 +79,7 @@ pub mod host {
         caip::ChainId,
         component::Component,
         domains::Domain,
-        entities::{EntityId, EthProviderId, PageId, VaultId},
+        entities::{CoordinatorId, EntityId, EthProviderId, PageId, VaultId},
     };
 
     #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -96,22 +96,25 @@ pub mod host {
         host_register_entity, RegisterEntity, Domain, EntityId
     );
 
-    // TODO: Consider better approaches for these getters. Ultimately we'll want
-    // to have one for each domain, and perhaps a more general function / standard
-    // identification schema for entities would be better.
-    //
-    // For now this is quick and dirty and works.
     rpc_method!(
-        /// Request
+        /// Request the host to provide an EthProvider for this plugin
         host_request_eth_provider,
         RequestEthProvider,
         ChainId,
-        Option<EthProviderId>
+        EthProviderId
     );
 
     rpc_method!(
-        /// Request the host to provide a vault entity for the plugin to interact with
-        host_request_vault, RequestVault, (), Option<VaultId>
+        /// Request the host to provide a Vault for this plugin
+        host_request_vault, RequestVault, (), VaultId
+    );
+
+    rpc_method!(
+        /// Requests the host to provide a Coordinator for this plugin
+        host_request_coordinator,
+        RequestCoordinator,
+        (),
+        CoordinatorId
     );
 
     rpc_method!(
