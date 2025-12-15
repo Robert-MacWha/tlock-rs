@@ -59,8 +59,5 @@ inherits = "dev"
 inherits = "dev"
 
 [patch.crates-io]
-alloy = { git = "https://github.com/Robert-MacWha/alloy", branch = "wasm32-wasip-support" }
 wasmi-plugin-hdk = { git = "https://github.com/Robert-MacWha/wasmi-plugin-framework", branch = "main" }
 wasmi-plugin-pdk = { git = "https://github.com/Robert-MacWha/wasmi-plugin-framework", branch = "main" }
-
-# alloy = { path = "../alloy/crates/alloy" }
