@@ -296,7 +296,6 @@ impl Host {
         let entity_id = entity_id.into();
         let entities = self.entities.lock().unwrap();
         info!("Getting plugin ID for entity {:?}", entity_id);
-        info!("Current entities: {:?}", *entities);
         entities.get(&entity_id).cloned()
     }
 
@@ -368,6 +367,7 @@ impl Host {
             .unwrap()
             .insert(request_id.clone(), sender);
 
+        self.notify_observers();
         let resp = receiver.await;
 
         // Remove the request from the list
@@ -511,16 +511,16 @@ impl Host {
         plugin_id: &PluginId,
         _params: (),
     ) -> Result<CoordinatorId, RpcError> {
-        let entity_id = self.register_entity(plugin_id, Domain::Coordinator).await?;
-        match entity_id {
-            EntityId::Coordinator(coord_id) => Ok(coord_id),
-            _ => {
-                warn!("Registered entity ID {:?} is not a Coordinator", entity_id);
-                Err(RpcError::Custom(
-                    "Registered entity is not a Coordinator".into(),
-                ))
-            }
-        }
+        let request = UserRequest::CoordinatorSelection {
+            id: Uuid::new_v4(),
+            plugin_id: *plugin_id,
+        };
+
+        self.create_user_request(request, |resp| match resp {
+            UserResponse::Coordinator(selected_coordinator) => Some(selected_coordinator),
+            _ => None,
+        })
+        .await
     }
 
     pub async fn fetch(

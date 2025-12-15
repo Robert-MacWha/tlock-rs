@@ -1,0 +1,12 @@
+[package]
+name = "uniswap-v2"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+alloy = { workspace = true }
+serde = { workspace = true }
+tlock-alloy = { workspace = true }
+tlock-pdk = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }

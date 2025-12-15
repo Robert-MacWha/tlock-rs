@@ -1,10 +1,11 @@
 - Working uniswap plugin
-  - [ ] Finish writing eoa-coordinator
+  - [/] Finish writing eoa-coordinator
   - [ ] Implement uniswap plugin
+    - Fix whatever pricing / quote issue you have 
   - [ ] Implement some second plugin for a simple contract
 - Demoable app
   - [ ] Create revm-based eth-provider so balances can be mocked & the chain can be forked
-  - [ ] Create plugin registry hosted in github
+  - [ ] Create plugin registry hosted in github or etc that you can pull plugins from
   - [ ] Pretty up the UI so it's not just raw component dumps
   - [ ] Create a demo app that loads different states and showcases functionality
   - [ ] Create documentation page explaining the architecture, different domains, showcase plugins, some future ideas, etc.

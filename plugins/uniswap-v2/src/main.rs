@@ -1,0 +1,600 @@
+//! Uniswap V2 Plugin
+//!
+//! This plugin enables users to swap ERC20 tokens on Sepolia testnet using
+//! Uniswap V2. It fetches on-chain reserves to calculate expected output
+//! amounts and executes swaps via a coordinator account.
+
+use std::{collections::HashMap, io::stderr, sync::Arc};
+
+use alloy::{
+    primitives::{Address, U256, address},
+    providers::ProviderBuilder,
+    sol,
+    sol_types::SolCall,
+};
+use serde::{Deserialize, Serialize};
+use tlock_alloy::AlloyBridge;
+use tlock_pdk::{
+    server::PluginServer,
+    state::{set_state, try_get_state},
+    tlock_api::{
+        RpcMethod,
+        caip::{AssetId, AssetType, ChainId},
+        component::{
+            button_input, container, dropdown, form, heading, submit_input, text, text_input,
+        },
+        coordinator,
+        domains::Domain,
+        entities::{CoordinatorId, EthProviderId, PageId},
+        global, host, page, plugin,
+    },
+    wasmi_plugin_pdk::{
+        rpc_message::{RpcError, to_rpc_err},
+        transport::JsonRpcTransport,
+    },
+};
+use tracing::{error, info, warn};
+use tracing_subscriber::fmt;
+
+// ---------- Constants ----------
+
+const CHAIN_ID: u64 = 11155111; // Sepolia
+
+// Uniswap V2 Addresses on Sepolia
+const UNISWAP_V2_ROUTER: Address = address!("0xeE567Fe1712Faf6149d80dA1E6934E354124CfE3");
+const UNISWAP_V2_FACTORY: Address = address!("0xF62c03E08ada871A0bEb309762E260a7a6a880E6");
+
+// ---------- Token Configuration ----------
+
+#[derive(Debug, Clone)]
+struct TokenInfo {
+    symbol: &'static str,
+    address: Address,
+    decimals: u8,
+}
+
+const TOKENS: [TokenInfo; 4] = [
+    TokenInfo {
+        symbol: "WETH",
+        address: address!("0xfff9976782d46cc05630d1f6ebab18b2324d6b14"),
+        decimals: 18,
+    },
+    TokenInfo {
+        symbol: "USDC",
+        address: address!("0x1c7d4b196cb0c7b01d743fbc6116a902379c7238"),
+        decimals: 6,
+    },
+    TokenInfo {
+        symbol: "DAI",
+        address: address!("0xFF34B3d4Aee8ddCd6F9AFFFB6Fe49bD371b8a357"),
+        decimals: 18,
+    },
+    TokenInfo {
+        symbol: "LINK",
+        address: address!("0x779877A7B0D9E8603169DdbD7836e478b4624789"),
+        decimals: 18,
+    },
+];
+
+// ---------- Plugin State ----------
+
+#[derive(Serialize, Deserialize, Debug)]
+struct PluginState {
+    coordinator_id: CoordinatorId,
+    provider_id: EthProviderId,
+    page_id: Option<PageId>,
+    selected_from_token: Option<usize>,
+    selected_to_token: Option<usize>,
+    input_amount: U256,
+    expected_output: Option<U256>,
+    exchange_rate: Option<String>,
+    last_message: Option<String>,
+}
+
+// ---------- Alloy Contract Interfaces ----------
+
+sol! {
+    #[sol(rpc)]
+    contract IUniswapV2Router02 {
+        function swapExactTokensForTokens(
+            uint256 amountIn,
+            uint256 amountOutMin,
+            address[] calldata path,
+            address to,
+            uint256 deadline
+        ) external returns (uint256[] memory amounts);
+    }
+
+    #[sol(rpc)]
+    contract IUniswapV2Factory {
+        function getPair(address tokenA, address tokenB) external view returns (address pair);
+    }
+
+    #[sol(rpc)]
+    contract IUniswapV2Pair {
+        function getReserves() external view returns (
+            uint112 reserve0,
+            uint112 reserve1,
+            uint32 blockTimestampLast
+        );
+    }
+
+    #[sol(rpc)]
+    contract ERC20 {
+        function approve(address spender, uint256 amount) external returns (bool);
+    }
+}
+
+// ---------- Plugin Handlers ----------
+
+async fn init(transport: Arc<JsonRpcTransport>, _params: ()) -> Result<(), RpcError> {
+    info!("Initializing Uniswap V2 Plugin");
+
+    // Request coordinator
+    let coordinator_id = host::RequestCoordinator.call(transport.clone(), ()).await?;
+
+    // Request eth provider for Sepolia
+    let provider_id = host::RequestEthProvider
+        .call(transport.clone(), ChainId::new_evm(CHAIN_ID))
+        .await?;
+
+    // Initialize state
+    let state = PluginState {
+        coordinator_id,
+        provider_id,
+        page_id: None,
+        selected_from_token: None,
+        selected_to_token: None,
+        input_amount: U256::ZERO,
+        expected_output: None,
+        exchange_rate: None,
+        last_message: None,
+    };
+
+    set_state(transport.clone(), &state).await?;
+
+    // Register plugin's page
+    host::RegisterEntity
+        .call(transport.clone(), Domain::Page)
+        .await?;
+
+    Ok(())
+}
+
+async fn ping(transport: Arc<JsonRpcTransport>, _params: ()) -> Result<String, RpcError> {
+    global::Ping.call(transport, ()).await?;
+    Ok("pong".to_string())
+}
+
+// ---------- Page Handlers ----------
+
+async fn on_load(transport: Arc<JsonRpcTransport>, page_id: PageId) -> Result<(), RpcError> {
+    info!("Page loaded: {}", page_id);
+
+    let mut state: PluginState = try_get_state(transport.clone()).await?;
+    state.page_id = Some(page_id);
+    set_state(transport.clone(), &state).await?;
+
+    let component = build_ui(&state);
+    host::SetPage
+        .call(transport.clone(), (page_id, component))
+        .await?;
+
+    Ok(())
+}
+
+async fn on_update(
+    transport: Arc<JsonRpcTransport>,
+    params: (PageId, page::PageEvent),
+) -> Result<(), RpcError> {
+    let (page_id, event) = params;
+    info!("Page updated: {:?}", event);
+
+    let mut state: PluginState = try_get_state(transport.clone()).await?;
+
+    match event {
+        page::PageEvent::FormSubmitted(form_id, form_data) if form_id == "swap_form" => {
+            handle_swap_form_update(&transport, &mut state, form_data).await?;
+        }
+        page::PageEvent::ButtonClicked(button_id) if button_id == "execute_swap" => {
+            handle_execute_swap(&transport, &mut state).await?;
+        }
+        page::PageEvent::ButtonClicked(button_id) if button_id == "refresh_quote" => {
+            handle_refresh_quote(&transport, &mut state).await?;
+        }
+        _ => {
+            warn!("Unhandled page event: {:?}", event);
+            return Ok(());
+        }
+    }
+
+    set_state(transport.clone(), &state).await?;
+
+    let component = build_ui(&state);
+    host::SetPage
+        .call(transport.clone(), (page_id, component))
+        .await?;
+
+    Ok(())
+}
+
+// ---------- Event Handler Functions ----------
+
+async fn handle_swap_form_update(
+    transport: &Arc<JsonRpcTransport>,
+    state: &mut PluginState,
+    form_data: HashMap<String, String>,
+) -> Result<(), RpcError> {
+    let Some(from_token) = form_data.get("from_token") else {
+        error!("From token field missing in form data");
+        return Ok(());
+    };
+
+    let Some(to_token) = form_data.get("to_token") else {
+        error!("To token field missing in form data");
+        return Ok(());
+    };
+
+    let Some(amount) = form_data.get("amount") else {
+        error!("Amount field missing in form data");
+        return Ok(());
+    };
+
+    if amount.is_empty() {
+        state.input_amount = U256::ZERO;
+        state.expected_output = None;
+        state.exchange_rate = None;
+        warn!("Amount is empty, cannot calculate quote");
+        return Ok(());
+    }
+
+    let Ok(amount) = amount.parse::<U256>() else {
+        state.last_message = Some("Invalid amount - must be a valid number".into());
+        return Ok(());
+    };
+
+    state.selected_from_token = from_token
+        .split(':')
+        .next()
+        .and_then(|idx_str| idx_str.trim().parse::<usize>().ok());
+    state.selected_to_token = to_token
+        .split(':')
+        .next()
+        .and_then(|idx_str| idx_str.trim().parse::<usize>().ok());
+    state.input_amount = amount;
+    if state.selected_from_token.is_some() && state.selected_to_token.is_some() {
+        state.input_amount = amount;
+        calculate_quote(transport, state).await?;
+    } else {
+        state.last_message = Some("Select both tokens to calculate quote".into());
+    }
+
+    Ok(())
+}
+
+async fn handle_refresh_quote(
+    transport: &Arc<JsonRpcTransport>,
+    state: &mut PluginState,
+) -> Result<(), RpcError> {
+    if state.selected_from_token.is_some()
+        && state.selected_to_token.is_some()
+        && !state.input_amount.is_zero()
+    {
+        calculate_quote(transport, state).await?;
+        state.last_message = Some("Quote refreshed".into());
+    } else {
+        state.last_message = Some("Fill all fields first".into());
+    }
+    Ok(())
+}
+
+async fn calculate_quote(
+    transport: &Arc<JsonRpcTransport>,
+    state: &mut PluginState,
+) -> Result<(), RpcError> {
+    let Some(from_idx) = state.selected_from_token else {
+        error!("From token not selected");
+        return Ok(());
+    };
+    let Some(to_idx) = state.selected_to_token else {
+        error!("To token not selected");
+        return Ok(());
+    };
+
+    if from_idx == to_idx {
+        state.last_message = Some("Cannot swap same token".into());
+        return Ok(());
+    }
+
+    let from_token = &TOKENS[from_idx];
+    let to_token = &TOKENS[to_idx];
+
+    // Parse input amount
+    let amount_in = state.input_amount;
+
+    if amount_in == U256::ZERO {
+        error!("Input amount is zero");
+        state.expected_output = None;
+        return Ok(());
+    }
+
+    // Get provider
+    let provider = ProviderBuilder::new()
+        .connect_client(AlloyBridge::new(transport.clone(), state.provider_id));
+
+    // Get pair address from factory
+    let factory = IUniswapV2Factory::new(UNISWAP_V2_FACTORY, &provider);
+    let pair_address = Address::from(
+        factory
+            .getPair(from_token.address, to_token.address)
+            .call()
+            .await
+            .map_err(to_rpc_err)?
+            .0,
+    );
+
+    if pair_address == Address::ZERO {
+        state.last_message = Some("No liquidity pool for this pair".into());
+        return Ok(());
+    }
+
+    // Get reserves
+    let pair = IUniswapV2Pair::new(pair_address, &provider);
+    let reserves = pair.getReserves().call().await.map_err(to_rpc_err)?;
+    let (reserve0, reserve1) = (reserves.reserve0, reserves.reserve1);
+
+    // Determine which reserve corresponds to which token
+    // Uniswap V2 pairs always store tokens sorted by address (token0 < token1)
+    let (reserve_in, reserve_out) = if from_token.address < to_token.address {
+        (reserve0, reserve1)
+    } else {
+        (reserve1, reserve0)
+    };
+
+    let reserve_in_f: f64 = reserve_in.into();
+    let reserve_out_f: f64 = reserve_out.into();
+    let amount_in_f: f64 = amount_in.into();
+
+    // Calculate output using x*y=k with 0.3% fee
+    // amountOut = (amountIn * 0.997 * reserveOut) / (reserveIn + amountIn * 0.997)
+    let amount_in_with_fee = amount_in_f * 0.997;
+    let amount_out_f = (amount_in_with_fee * reserve_out_f) / (reserve_in_f + amount_in_with_fee);
+
+    state.expected_output = Some(U256::from(amount_out_f as u64));
+
+    // Calculate exchange rate for display
+    let rate = if amount_in_f > 0.0 {
+        format!(
+            "1 {} ≈ {:.6} {}",
+            from_token.symbol,
+            amount_out_f / amount_in_f,
+            to_token.symbol
+        )
+    } else {
+        "N/A".into()
+    };
+    state.exchange_rate = Some(rate);
+
+    state.last_message = Some("Quote calculated".into());
+
+    Ok(())
+}
+
+async fn handle_execute_swap(
+    transport: &Arc<JsonRpcTransport>,
+    state: &mut PluginState,
+) -> Result<(), RpcError> {
+    state.last_message = Some("Preparing swap...".into());
+
+    // Validate all required fields
+    let Some(from_idx) = state.selected_from_token else {
+        state.last_message = Some("Select from token".into());
+        return Ok(());
+    };
+
+    let Some(to_idx) = state.selected_to_token else {
+        state.last_message = Some("Select to token".into());
+        return Ok(());
+    };
+
+    let coordinator_id = state.coordinator_id;
+    let from_token = &TOKENS[from_idx];
+    let to_token = &TOKENS[to_idx];
+
+    // Parse input amount
+    let amount_in: U256 = state.input_amount;
+
+    let Some(expected_output) = &state.expected_output else {
+        state.last_message = Some("Calculate quote first".into());
+        return Ok(());
+    };
+
+    // Apply 0.5% slippage tolerance
+    let amount_out_min = expected_output * U256::from(995) / U256::from(1000);
+
+    // Get coordinator session
+    let account_id = coordinator::GetSession
+        .call(
+            transport.clone(),
+            (coordinator_id, ChainId::new_evm(CHAIN_ID), None),
+        )
+        .await?;
+
+    // Get account address
+    let Some(account_address) = account_id.as_evm_address() else {
+        return Err(RpcError::Custom("Invalid account address".into()));
+    };
+
+    // Build swap operations
+    let operations = build_swap_operations(
+        account_address,
+        from_token,
+        to_token,
+        amount_in,
+        amount_out_min,
+    )?;
+
+    // Build EvmBundle
+    let from_asset_id = AssetId {
+        chain_id: ChainId::new_evm(CHAIN_ID),
+        asset: AssetType::Erc20(from_token.address),
+    };
+    let to_asset_id = AssetId {
+        chain_id: ChainId::new_evm(CHAIN_ID),
+        asset: AssetType::Erc20(to_token.address),
+    };
+
+    let bundle = coordinator::EvmBundle {
+        inputs: vec![(from_asset_id, amount_in)],
+        outputs: vec![to_asset_id],
+        operations,
+    };
+
+    // Propose to coordinator
+    coordinator::Propose
+        .call(transport.clone(), (coordinator_id, account_id, bundle))
+        .await?;
+
+    state.last_message = Some("Swap executed successfully!".into());
+    state.input_amount = U256::ZERO;
+    state.expected_output = None;
+    state.exchange_rate = None;
+
+    Ok(())
+}
+
+fn build_swap_operations(
+    account_address: Address,
+    from_token: &TokenInfo,
+    to_token: &TokenInfo,
+    amount_in: U256,
+    amount_out_min: U256,
+) -> Result<Vec<coordinator::EvmOperation>, RpcError> {
+    let mut operations = Vec::new();
+
+    // Operation 1: Approve Router to spend tokens
+    let approve_call = ERC20::approveCall {
+        spender: UNISWAP_V2_ROUTER,
+        amount: amount_in,
+    };
+
+    operations.push(coordinator::EvmOperation {
+        to: from_token.address,
+        value: U256::ZERO,
+        data: approve_call.abi_encode(),
+    });
+
+    // Operation 2: Swap tokens
+    let path = vec![from_token.address, to_token.address];
+    let deadline = U256::from(u64::MAX); // Far future deadline
+
+    let swap_call = IUniswapV2Router02::swapExactTokensForTokensCall {
+        amountIn: amount_in,
+        amountOutMin: amount_out_min,
+        path,
+        to: account_address,
+        deadline,
+    };
+
+    operations.push(coordinator::EvmOperation {
+        to: UNISWAP_V2_ROUTER,
+        value: U256::ZERO,
+        data: swap_call.abi_encode(),
+    });
+
+    Ok(operations)
+}
+
+// ---------- UI Builder Function ----------
+
+fn build_ui(state: &PluginState) -> tlock_pdk::tlock_api::component::Component {
+    let mut sections = vec![
+        heading("Uniswap V2 Swap"),
+        text("Swap ERC20 tokens on Sepolia using Uniswap V2"),
+    ];
+
+    // Status message
+    if let Some(msg) = &state.last_message {
+        sections.push(text(format!("Status: {}", msg)));
+    }
+
+    // Token selection and swap form
+    sections.push(heading("Select Tokens"));
+
+    let token_options: Vec<String> = TOKENS
+        .iter()
+        .enumerate()
+        .map(|(i, t)| format!("{}: {}", i, t.symbol))
+        .collect();
+
+    let from_selected = state
+        .selected_from_token
+        .map(|i| format!("{}: {}", i, TOKENS[i].symbol));
+    let to_selected = state
+        .selected_to_token
+        .map(|i| format!("{}: {}", i, TOKENS[i].symbol));
+
+    sections.push(form(
+        "swap_form",
+        vec![
+            text("From Token:"),
+            dropdown("from_token", token_options.clone(), from_selected),
+            text("To Token:"),
+            dropdown("to_token", token_options, to_selected),
+            text("Amount (in smallest unit):"),
+            text_input("amount", "Enter amount"),
+            submit_input("Update Quote"),
+        ],
+    ));
+
+    // Display quote if available
+    if let Some(expected_output) = &state.expected_output {
+        sections.push(heading("Quote"));
+        sections.push(text(format!("Expected Output: {}", expected_output)));
+
+        if let Some(rate) = &state.exchange_rate {
+            sections.push(text(format!("Exchange Rate: {}", rate)));
+        }
+
+        sections.push(button_input("refresh_quote", "Refresh Quote"));
+        sections.push(button_input("execute_swap", "Execute Swap"));
+    }
+
+    // Display selected token info
+    if let Some(from_idx) = state.selected_from_token {
+        let token = &TOKENS[from_idx];
+        sections.push(text(format!(
+            "From: {} ({} decimals, {:?})",
+            token.symbol, token.decimals, token.address
+        )));
+    }
+
+    if let Some(to_idx) = state.selected_to_token {
+        let token = &TOKENS[to_idx];
+        sections.push(text(format!(
+            "To: {} ({} decimals, {:?})",
+            token.symbol, token.decimals, token.address
+        )));
+    }
+
+    container(sections)
+}
+
+// ---------- Main Entry Point ----------
+
+fn main() {
+    fmt()
+        .with_writer(stderr)
+        .without_time()
+        .with_ansi(false)
+        .compact()
+        .init();
+    info!("Starting Uniswap V2 Plugin...");
+
+    PluginServer::new_with_transport()
+        .with_method(plugin::Init, init)
+        .with_method(global::Ping, ping)
+        .with_method(page::OnLoad, on_load)
+        .with_method(page::OnUpdate, on_update)
+        .run();
+}
