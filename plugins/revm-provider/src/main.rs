@@ -2,7 +2,6 @@ use std::{io::stderr, sync::Arc};
 
 use revm::{
     DatabaseRef,
-    database::EmptyDB,
     primitives::{Address, Bytes, alloy_primitives::TxHash},
 };
 use serde::{Deserialize, Serialize};
@@ -13,7 +12,7 @@ use tlock_pdk::{
     tlock_api::{
         RpcMethod,
         alloy::{
-            eips::{BlockId, BlockNumberOrTag},
+            eips::BlockId,
             primitives::U256,
             providers::{Provider as AlloyProvider, ProviderBuilder},
             rpc::types::{
@@ -35,8 +34,12 @@ use tlock_pdk::{
 use tracing::info;
 use tracing_subscriber::fmt;
 
-use crate::{provider::Provider, provider_snapshot::ProviderSnapshot, rpc::header_to_block_env};
+use crate::{
+    alloydb::AlloyDb, provider::Provider, provider_snapshot::ProviderSnapshot,
+    rpc::header_to_block_env,
+};
 
+mod alloydb;
 mod chain;
 mod provider;
 mod provider_snapshot;
@@ -53,44 +56,42 @@ struct State {
 const CHAIN_ID: u64 = 11155111u64;
 
 async fn init(transport: Arc<JsonRpcTransport>, _params: ()) -> Result<(), RpcError> {
-    host::RegisterEntity
-        .call(transport.clone(), Domain::EthProvider)
-        .await?;
-
     // TODO: Consider embedding the alloy instance in this plugin rather than using
     // an eth provider. Saves the cost of inter-plugin calls.
     let provider_id = host::RequestEthProvider
         .call(transport.clone(), ChainId::new_evm(CHAIN_ID))
         .await?;
 
+    //? Setup the forked provider
     let alloy =
         ProviderBuilder::new().connect_client(AlloyBridge::new(transport.clone(), provider_id));
 
-    let latest_block = alloy.get_block_number().await.map_err(to_rpc_err)?;
-    let block_id = BlockId::Number(BlockNumberOrTag::Number(latest_block));
     let block = alloy
-        .get_block(block_id)
+        .get_block(BlockId::latest())
         .await
         .map_err(to_rpc_err)?
         .ok_or(RpcError::Custom("Failed to get latest block".into()))?;
-    let header = block.header;
+    let fork_block_id = BlockId::number(block.number());
 
-    let db = EmptyDB::default();
-    // let db =
-    //     WrapDatabaseAsync::new(db).ok_or(RpcError::Custom("No tokio runtime
-    // available".into()))?;
-
-    let parent_hash = header.parent_hash;
-    let block_env = header_to_block_env(header);
+    let db = AlloyDb::new(alloy, fork_block_id)
+        .ok_or(RpcError::Custom("No tokio runtime available".into()))?;
+    let parent_hash = block.header.parent_hash;
+    let block_env = header_to_block_env(block.header);
     let fork = Provider::new(db, block_env, parent_hash);
     let fork_snapshot = fork.snapshot();
 
+    //? Save setup snapshot
     let state = State {
         alloy_provider_id: provider_id,
-        fork_block: block_id,
+        fork_block: fork_block_id,
         fork_snapshot,
     };
     set_state(transport.clone(), &state).await?;
+
+    //? Register the revm eth provider
+    host::RegisterEntity
+        .call(transport.clone(), Domain::EthProvider)
+        .await?;
 
     Ok(())
 }
@@ -223,21 +224,20 @@ async fn send_raw_transaction(
 
 /// Returns a fork provider based on the saved state.
 ///
-/// Returns None if no tokio runtime is available.
+/// Errors if no tokio runtime is available.
 async fn get_fork_provider(
     transport: Arc<JsonRpcTransport>,
 ) -> Result<Provider<impl DatabaseRef>, RpcError> {
     let state: State = try_get_state(transport.clone()).await.unwrap();
     let alloy_provider_id = state.alloy_provider_id;
+    let fork_block = state.fork_block;
     let fork_snapshot = state.fork_snapshot;
 
     let alloy = ProviderBuilder::new()
         .connect_client(AlloyBridge::new(transport.clone(), alloy_provider_id));
 
-    let db = EmptyDB::default();
-    // let db =
-    //     WrapDatabaseAsync::new(db).ok_or(RpcError::Custom("No tokio runtime
-    // available".into()))?;
+    let db = AlloyDb::new(alloy, fork_block)
+        .ok_or(RpcError::Custom("No tokio runtime available".into()))?;
     let fork_provider = Provider::from_snapshot(db, fork_snapshot);
     Ok(fork_provider)
 }

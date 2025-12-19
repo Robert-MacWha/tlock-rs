@@ -11,3 +11,4 @@ tracing-subscriber = { workspace = true }
 serde = { workspace = true }
 revm = { workspace = true, features = ["std", "serde"] }
 thiserror = { workspace = true }
+tokio = { workspace = true }
