@@ -17,7 +17,8 @@ The architecture prioritizes plugin-only updates for most functionality while re
 - Never-nester: Avoid deep nesting.  If code is nested more than 3 levels, consider refactoring to exit early or extract into a new function.
 - Functional: Avoid unnecessary state, and keep things functional
 - Dependency injection: Use traits to perform dependency injection for simpler testing.
-- State Safety: Using rust's rich type system, aim to encode state such that invalid states are unrepresentable. This means creating new, narrower types to represent specific states where needed.
+- Typestate: Using rust's rich type system, aim to encode state such that invalid states are unrepresentable. This means creating new, narrower types to represent specific states where needed.
+  - https://cliffle.com/blog/rust-typestate/
 
 ## Workspace Structure
 

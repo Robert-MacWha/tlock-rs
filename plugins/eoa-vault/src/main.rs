@@ -19,7 +19,7 @@ use serde::{Deserialize, Serialize};
 use tlock_alloy::AlloyBridge;
 use tlock_pdk::{
     server::PluginServer,
-    state::{get_state, set_state},
+    state::{get_state, set_state, try_get_state},
     tlock_api::{
         RpcMethod,
         caip::{AccountId, AssetId, AssetType, ChainId},
@@ -40,7 +40,7 @@ use tracing_subscriber::fmt;
 #[derive(Serialize, Deserialize, Default, Debug)]
 struct PluginState {
     vaults: HashMap<EntityId, Vault>,
-    eth_provider_id: Option<EthProviderId>,
+    provider_id: EthProviderId,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -75,19 +75,22 @@ async fn init(transport: Arc<JsonRpcTransport>, _params: ()) -> Result<(), RpcEr
         .call(transport.clone(), Domain::Page)
         .await?;
 
-    request_eth_provider(transport.clone()).await?;
+    let provider_id = host::RequestEthProvider
+        .call(transport.clone(), ChainId::Evm(Some(CHAIN_ID)))
+        .await?;
+    let state = PluginState {
+        vaults: HashMap::new(),
+        provider_id,
+    };
+    set_state(transport.clone(), &state).await?;
 
     Ok(())
 }
 
 async fn ping(transport: Arc<JsonRpcTransport>, _params: ()) -> Result<String, RpcError> {
-    let provider_id = request_eth_provider(transport.clone()).await?;
-    info!(
-        "Pong received, querying chain ID from Eth provider: {}",
-        provider_id
-    );
+    let state: PluginState = try_get_state(transport.clone()).await?;
 
-    let chain_id = eth::ChainId.call(transport, provider_id).await?;
+    let chain_id = eth::ChainId.call(transport, state.provider_id).await?;
     Ok(format!("Pong! Connected to chain: {}", chain_id))
 }
 
@@ -102,9 +105,9 @@ async fn get_assets(
 
     let vault = get_vault(&transport, vault_id).await?;
 
-    let provider_id = request_eth_provider(transport.clone()).await?;
-    let provider =
-        ProviderBuilder::new().connect_client(AlloyBridge::new(transport.clone(), provider_id));
+    let state: PluginState = try_get_state(transport.clone()).await?;
+    let provider = ProviderBuilder::new()
+        .connect_client(AlloyBridge::new(transport.clone(), state.provider_id));
 
     // Fetch native ETH balance
     let balance = provider
@@ -176,10 +179,10 @@ async fn withdraw(
 
     let vault = get_vault(&transport, vault_id).await?;
     let signer: PrivateKeySigner = vault.private_key.parse().map_err(to_rpc_err)?;
-    let provider_id = request_eth_provider(transport.clone()).await?;
+    let state: PluginState = try_get_state(transport.clone()).await?;
     let provider = ProviderBuilder::new()
         .wallet(signer)
-        .connect_client(AlloyBridge::new(transport.clone(), provider_id));
+        .connect_client(AlloyBridge::new(transport.clone(), state.provider_id));
 
     match &asset_id.asset {
         AssetType::Slip44(60) => withdraw_eth(&provider, to_addr, amount).await,
@@ -225,23 +228,6 @@ async fn withdraw_erc20(
         .map_err(to_rpc_err)?;
     info!("ERC20 withdrawal transaction sent with hash: {}", tx_hash);
     Ok(())
-}
-
-async fn request_eth_provider(transport: Arc<JsonRpcTransport>) -> Result<EthProviderId, RpcError> {
-    let mut state: PluginState = get_state(transport.clone()).await;
-    if let Some(provider_id) = state.eth_provider_id {
-        return Ok(provider_id);
-    }
-
-    let chain_id: ChainId = ChainId::new_evm(CHAIN_ID);
-    let provider_id = host::RequestEthProvider
-        .call(transport.clone(), chain_id)
-        .await?;
-
-    state.eth_provider_id = Some(provider_id);
-    set_state(transport.clone(), &state).await?;
-
-    Ok(provider_id)
 }
 
 // ---------- UI Handlers ----------

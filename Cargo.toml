@@ -5,6 +5,7 @@ members = [
     "plugins/eoa-vault",
     "plugins/eth-provider",
     "plugins/plugin-template",
+    "plugins/revm-provider",
     "plugins/vault-page",
     "plugins/eoa-coordinator",
     "plugins/uniswap-v2",
@@ -45,6 +46,7 @@ wasmi-plugin-pdk = "0.1"
 wasm-bindgen = "0.2"
 web-sys = "0.3"
 base64 = "0.22"
+revm = "33.1.0"
 
 [profile.release]
 lto = true

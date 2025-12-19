@@ -20,9 +20,12 @@ use tlock_pdk::{
         entities::{EthProviderId, PageId},
         eth, global, host, page, plugin,
     },
-    wasmi_plugin_pdk::{rpc_message::RpcError, transport::JsonRpcTransport},
+    wasmi_plugin_pdk::{
+        rpc_message::{RpcError, to_rpc_err},
+        transport::JsonRpcTransport,
+    },
 };
-use tracing::{error, info};
+use tracing::info;
 use tracing_subscriber::fmt;
 
 use crate::alloy_provider::create_alloy_provider;
@@ -82,10 +85,7 @@ async fn chain_id(
     let state: ProviderState = try_get_state(transport.clone()).await?;
 
     let provider = create_alloy_provider(transport.clone(), state.rpc_url);
-    let chain_id = provider.get_chain_id().await.map_err(|e| {
-        error!("Error fetching chain ID: {:?}", e);
-        RpcError::InternalError
-    })?;
+    let chain_id = provider.get_chain_id().await.map_err(to_rpc_err)?;
     let chain_id = U256::from(chain_id);
 
     Ok(chain_id)
@@ -98,10 +98,7 @@ async fn block_number(
     let state: ProviderState = try_get_state(transport.clone()).await?;
 
     let provider = create_alloy_provider(transport.clone(), state.rpc_url);
-    let block_number = provider.get_block_number().await.map_err(|e| {
-        error!("Error fetching block number: {:?}", e);
-        RpcError::InternalError
-    })?;
+    let block_number = provider.get_block_number().await.map_err(to_rpc_err)?;
     Ok(block_number)
 }
 
@@ -126,10 +123,7 @@ async fn call(
         .overrides_opt(state_overrides)
         .with_block_overrides_opt(block_overrides)
         .await
-        .map_err(|e| {
-            error!("Error processing call: {:?}", e);
-            RpcError::Custom(format!("Call failed: {:?}", e))
-        })?;
+        .map_err(to_rpc_err)?;
 
     Ok(resp)
 }
@@ -141,10 +135,7 @@ async fn gas_price(
     let state: ProviderState = try_get_state(transport.clone()).await?;
 
     let provider = create_alloy_provider(transport.clone(), state.rpc_url);
-    let gas_price = provider.get_gas_price().await.map_err(|e| {
-        error!("Error fetching gas price: {:?}", e);
-        RpcError::Custom(format!("Failed to fetch gas price: {:?}", e))
-    })?;
+    let gas_price = provider.get_gas_price().await.map_err(to_rpc_err)?;
 
     Ok(gas_price)
 }
@@ -161,10 +152,7 @@ async fn get_balance(
         .get_balance(address)
         .block_id(block)
         .await
-        .map_err(|e| {
-            error!("Error fetching balance: {:?}", e);
-            RpcError::Custom(format!("Failed to fetch balance: {:?}", e))
-        })?;
+        .map_err(to_rpc_err)?;
     Ok(balance)
 }
 
@@ -180,10 +168,7 @@ async fn get_block(
         .get_block(block_id)
         .kind(include_transactions)
         .await
-        .map_err(|e| {
-            error!("Error fetching block: {:?}", e);
-            RpcError::Custom(format!("Failed to fetch block: {:?}", e))
-        })?;
+        .map_err(to_rpc_err)?;
 
     match block {
         Some(b) => Ok(b),
@@ -199,10 +184,10 @@ async fn get_block_receipts(
     let (_provider_id, block_id) = params;
 
     let provider = create_alloy_provider(transport.clone(), state.rpc_url);
-    let receipts = provider.get_block_receipts(block_id).await.map_err(|e| {
-        error!("Error fetching block receipts: {:?}", e);
-        RpcError::Custom(format!("Failed to fetch block receipts: {:?}", e))
-    })?;
+    let receipts = provider
+        .get_block_receipts(block_id)
+        .await
+        .map_err(to_rpc_err)?;
 
     match receipts {
         Some(r) => Ok(r),
@@ -222,10 +207,7 @@ async fn get_code(
         .get_code_at(address)
         .block_id(block_id)
         .await
-        .map_err(|e| {
-            error!("Error fetching code: {:?}", e);
-            RpcError::Custom(format!("Failed to fetch code: {:?}", e))
-        })?;
+        .map_err(to_rpc_err)?;
 
     Ok(code)
 }
@@ -238,10 +220,7 @@ async fn get_logs(
     let (_provider_id, filter) = params;
 
     let provider = create_alloy_provider(transport.clone(), state.rpc_url);
-    let logs = provider.get_logs(&filter).await.map_err(|e| {
-        error!("Error fetching logs: {:?}", e);
-        RpcError::Custom(format!("Failed to fetch logs: {:?}", e))
-    })?;
+    let logs = provider.get_logs(&filter).await.map_err(to_rpc_err)?;
 
     Ok(logs)
 }
@@ -257,10 +236,7 @@ async fn get_transaction_by_hash(
     let tx = provider
         .get_transaction_by_hash(tx_hash)
         .await
-        .map_err(|e| {
-            error!("Error fetching transaction: {:?}", e);
-            RpcError::Custom(format!("Failed to fetch transaction: {:?}", e))
-        })?;
+        .map_err(to_rpc_err)?;
 
     match tx {
         Some(t) => Ok(t),
@@ -279,10 +255,7 @@ async fn get_transaction_receipt(
     let receipt = provider
         .get_transaction_receipt(tx_hash)
         .await
-        .map_err(|e| {
-            error!("Error fetching transaction receipt: {:?}", e);
-            RpcError::Custom(format!("Failed to fetch transaction receipt: {:?}", e))
-        })?;
+        .map_err(to_rpc_err)?;
 
     match receipt {
         Some(r) => Ok(r),
@@ -302,10 +275,7 @@ async fn get_transaction_count(
         .get_transaction_count(address)
         .block_id(block_id)
         .await
-        .map_err(|e| {
-            error!("Error fetching transaction count: {:?}", e);
-            RpcError::Custom(format!("Failed to fetch transaction count: {:?}", e))
-        })?;
+        .map_err(to_rpc_err)?;
 
     Ok(tx_count)
 }
@@ -318,10 +288,10 @@ async fn send_raw_transaction(
     let (_provider_id, raw_tx) = params;
 
     let provider = create_alloy_provider(transport.clone(), state.rpc_url);
-    let tx = provider.send_raw_transaction(&raw_tx).await.map_err(|e| {
-        error!("Error sending raw transaction: {:?}", e);
-        RpcError::Custom(format!("Failed to send raw transaction: {:?}", e))
-    })?;
+    let tx = provider
+        .send_raw_transaction(&raw_tx)
+        .await
+        .map_err(to_rpc_err)?;
     let tx_hash = tx.tx_hash();
 
     Ok(*tx_hash)
@@ -347,10 +317,7 @@ async fn estimate_gas(
         .overrides_opt(state_override)
         .with_block_overrides_opt(block_override)
         .await
-        .map_err(|e| {
-            error!("Error estimating gas: {:?}", e);
-            RpcError::Custom(format!("Failed to estimate gas: {:?}", e))
-        })?;
+        .map_err(to_rpc_err)?;
 
     Ok(gas_estimate)
 }

@@ -166,12 +166,12 @@ pub mod eth {
 
     use crate::entities::EthProviderId;
 
-    rpc_method!(eth_chainId, ChainId, EthProviderId, U256);
-
     rpc_method!(
         /// Get the current block number.
         eth_blockNumber, BlockNumber, EthProviderId, u64
     );
+
+    rpc_method!(eth_chainId, ChainId, EthProviderId, U256);
 
     rpc_method!(
         /// Executes a new message call immediately without creating a transaction on the block chain.
