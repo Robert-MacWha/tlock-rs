@@ -9,8 +9,5 @@ tlock-alloy = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 serde = { workspace = true }
-revm = { workspace = true, features = ["std", "alloydb", "serde"] }
+revm = { workspace = true, features = ["std", "serde"] }
 thiserror = { workspace = true }
-
-[build]
-target = "wasm32-wasip1"

@@ -10,6 +10,3 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 alloy = { workspace = true }
 serde = { workspace = true }
-
-[build]
-target = "wasm32-wasip1"

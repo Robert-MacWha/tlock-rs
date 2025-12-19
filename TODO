@@ -4,6 +4,7 @@
     - Fix whatever pricing / quote issue you have 
 - Demoable app
   - [ ] Create revm-based eth-provider so balances can be mocked & the chain can be forked
+    - Make your own version of the revm alloy provider that's wasm-compatible
   - [ ] Create plugin registry hosted in github or etc that you can pull plugins from
   - [ ] Pretty up the UI so it's not just raw component dumps
   - [ ] Create a demo app that loads different states and showcases functionality

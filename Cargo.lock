@@ -6531,14 +6531,11 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "980d8d6bba78c5dd35b83abbb6585b0b902eb25ea4448ed7bfba6283b0337191"
 dependencies = [
  "alloy-eips",
- "alloy-provider",
- "alloy-transport",
  "revm-bytecode",
  "revm-database-interface",
  "revm-primitives",
  "revm-state",
  "serde",
- "tokio",
 ]
 
 [[package]]
@@ -6552,7 +6549,6 @@ dependencies = [
  "revm-primitives",
  "revm-state",
  "serde",
- "tokio",
 ]
 
 [[package]]
@@ -6618,7 +6614,6 @@ dependencies = [
  "ark-serialize 0.5.0",
  "arrayref",
  "aurora-engine-modexp",
- "blst",
  "c-kzg",
  "cfg-if",
  "k256",

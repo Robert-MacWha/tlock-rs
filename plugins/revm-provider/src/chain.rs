@@ -7,14 +7,14 @@ use revm::{
         BlockEnv, TxEnv,
         result::{EVMError, ExecutionResult, TransactionIndexedError},
     },
-    database::{BlockId, CacheDB},
+    database::CacheDB,
     primitives::{B256, U256, keccak256},
 };
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tlock_pdk::{
     tlock_api::alloy::{
-        eips::BlockNumberOrTag,
+        eips::{BlockId, BlockNumberOrTag},
         rpc::types::{BlockOverrides, state::StateOverride},
     },
     wasmi_plugin_pdk::rpc_message::RpcError,

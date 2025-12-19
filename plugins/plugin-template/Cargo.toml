@@ -7,6 +7,3 @@ edition = "2024"
 tlock-pdk = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
-
-[build]
-target = "wasm32-wasip1"

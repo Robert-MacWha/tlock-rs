@@ -46,7 +46,7 @@ wasmi-plugin-pdk = "0.1"
 wasm-bindgen = "0.2"
 web-sys = "0.3"
 base64 = "0.22"
-revm = "33.1.0"
+revm = { version = "33.1.0", default-features = false }
 
 [profile.release]
 lto = true

@@ -4,7 +4,6 @@ use revm::{
         BlockEnv,
         result::{ExecutionResult, HaltReason, Output},
     },
-    database::BlockId,
     primitives::{
         Address, Bytes, HashMap, U256,
         alloy_primitives::{BlockHash, TxHash},
@@ -16,7 +15,7 @@ use tlock_pdk::{
     tlock_api::alloy::{
         self,
         consensus::{TxEnvelope, transaction::SignerRecoverable},
-        eips::BlockNumberOrTag,
+        eips::{BlockId, BlockNumberOrTag},
         rlp::Decodable,
         rpc::{
             self,

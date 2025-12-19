@@ -2,7 +2,7 @@ use std::{io::stderr, sync::Arc};
 
 use revm::{
     DatabaseRef,
-    database::{AlloyDB, WrapDatabaseAsync},
+    database::EmptyDB,
     primitives::{Address, Bytes, alloy_primitives::TxHash},
 };
 use serde::{Deserialize, Serialize};
@@ -75,9 +75,10 @@ async fn init(transport: Arc<JsonRpcTransport>, _params: ()) -> Result<(), RpcEr
         .ok_or(RpcError::Custom("Failed to get latest block".into()))?;
     let header = block.header;
 
-    let db = AlloyDB::new(alloy.clone(), block_id);
-    let db =
-        WrapDatabaseAsync::new(db).ok_or(RpcError::Custom("No tokio runtime available".into()))?;
+    let db = EmptyDB::default();
+    // let db =
+    //     WrapDatabaseAsync::new(db).ok_or(RpcError::Custom("No tokio runtime
+    // available".into()))?;
 
     let parent_hash = header.parent_hash;
     let block_env = header_to_block_env(header);
@@ -233,9 +234,10 @@ async fn get_fork_provider(
     let alloy = ProviderBuilder::new()
         .connect_client(AlloyBridge::new(transport.clone(), alloy_provider_id));
 
-    let db = AlloyDB::new(alloy, state.fork_block);
-    let db =
-        WrapDatabaseAsync::new(db).ok_or(RpcError::Custom("No tokio runtime available".into()))?;
+    let db = EmptyDB::default();
+    // let db =
+    //     WrapDatabaseAsync::new(db).ok_or(RpcError::Custom("No tokio runtime
+    // available".into()))?;
     let fork_provider = Provider::from_snapshot(db, fork_snapshot);
     Ok(fork_provider)
 }
