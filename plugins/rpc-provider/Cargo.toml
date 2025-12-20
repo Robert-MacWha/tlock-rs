@@ -1,5 +1,5 @@
 [package]
-name = "eth-provider"
+name = "rpc-provider"
 version = "0.1.0"
 edition = "2024"
 

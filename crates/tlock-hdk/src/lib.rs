@@ -57,7 +57,7 @@ macro_rules! impl_host_rpc_no_id {
             |host: ::std::sync::Arc<$host_ty>,
              _plugin_id: $crate::wasmi_plugin_hdk::plugin::PluginId,
              params: <$method as $crate::tlock_api::RpcMethod>::Params| async move {
-                host.log_event(format!("Plugin {} called {}", _plugin_id, <$method>::NAME));
+                host.log_event(format!("[{}] {}", _plugin_id, <$method>::NAME));
                 host.$host_fn(params).await
             }
         );

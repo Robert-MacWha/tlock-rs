@@ -3,7 +3,7 @@ members = [
     "frontend",
     "crates/host",
     "plugins/eoa-vault",
-    "plugins/eth-provider",
+    "plugins/rpc-provider",
     "plugins/plugin-template",
     "plugins/revm-provider",
     "plugins/vault-page",

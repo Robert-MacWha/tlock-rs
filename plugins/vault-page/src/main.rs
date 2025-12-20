@@ -8,8 +8,8 @@ use tlock_pdk::{
         RpcMethod,
         caip::{AccountId, AssetId},
         component::{
-            Component, button_input, container, dropdown, form, heading, submit_input, text,
-            text_input,
+            Component, button_input, container, dropdown, form, heading, heading2, submit_input,
+            text, text_input, unordered_list,
         },
         domains::Domain,
         entities::{PageId, VaultId},
@@ -245,71 +245,58 @@ fn build_ui(state: &PluginState) -> Component {
     ];
 
     // Status section
-    if let Some(vault_id) = &state.vault_id {
-        sections.push(text(format!("Current vault: {}", vault_id)));
-    } else {
+    let Some(vault_id) = &state.vault_id else {
         sections.push(text("No vault selected"));
+        return container(sections);
+    };
+
+    sections.extend(vec![
+        text(format!("Current vault: {}", vault_id)),
+        text(format!(
+            "Status: {}",
+            state.last_message.as_deref().unwrap_or("OK")
+        )),
+        heading2("Assets"),
+        button_input("refresh_assets", "Refresh Assets"),
+    ]);
+
+    // Assets section
+    if state.cached_assets.is_empty() {
+        sections.push(text("No assets. Click 'Refresh Assets' to load."));
+        return container(sections);
     }
 
-    if let Some(msg) = &state.last_message {
-        sections.push(text(format!("Status: {}", msg)));
-    }
+    let balances = state
+        .cached_assets
+        .iter()
+        .map(|(id, bal)| (id.to_string(), text(format!("{}: {}", id, bal))));
 
-    // Assets section (if vault exists)
-    if state.vault_id.is_some() {
-        sections.push(heading("Assets"));
-        sections.push(button_input("refresh_assets", "Refresh Assets"));
+    let asset_options = state.cached_assets.iter().map(|(id, _)| id.to_string());
 
-        if !state.cached_assets.is_empty() {
-            for (asset_id, balance) in &state.cached_assets {
-                sections.push(text(format!("{}: {}", asset_id, balance)));
-            }
-        } else {
-            sections.push(text("No assets cached. Click Refresh Assets."));
-        }
-
+    sections.extend(vec![
+        // Assets list
+        unordered_list(balances),
         // Deposit section
-        sections.push(heading("Get Deposit Address"));
-        if !state.cached_assets.is_empty() {
-            let asset_options: Vec<String> = state
-                .cached_assets
-                .iter()
-                .map(|(asset_id, _)| asset_id.to_string())
-                .collect();
-
-            sections.push(form(
-                "get_deposit_form",
-                vec![
-                    dropdown("asset", asset_options.clone(), None),
-                    submit_input("Get Address"),
-                ],
-            ));
-        } else {
-            sections.push(text("Refresh assets first to get deposit address"));
-        }
-
+        heading2("Get Deposit Address"),
+        form(
+            "get_deposit_form",
+            vec![
+                dropdown("asset", asset_options.clone(), None),
+                submit_input("Get Address"),
+            ],
+        ),
         // Withdraw section
-        sections.push(heading("Withdraw"));
-        if !state.cached_assets.is_empty() {
-            let asset_options: Vec<String> = state
-                .cached_assets
-                .iter()
-                .map(|(asset_id, _)| asset_id.to_string())
-                .collect();
-
-            sections.push(form(
-                "withdraw_form",
-                vec![
-                    text_input("to_address", "Recipient address (CAIP-10)"),
-                    dropdown("asset", asset_options, None),
-                    text_input("amount", "Amount (wei)"),
-                    submit_input("Withdraw"),
-                ],
-            ));
-        } else {
-            sections.push(text("Refresh assets first to withdraw"));
-        }
-    }
+        heading2("Withdraw"),
+        form(
+            "withdraw_form",
+            vec![
+                text_input("to_address", "Recipient address (CAIP-10)"),
+                dropdown("asset", asset_options, None),
+                text_input("amount", "Amount (wei)"),
+                submit_input("Withdraw"),
+            ],
+        ),
+    ]);
 
     container(sections)
 }

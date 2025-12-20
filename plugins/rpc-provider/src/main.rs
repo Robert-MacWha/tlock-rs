@@ -12,14 +12,8 @@ use alloy::{
 use serde::{Deserialize, Serialize};
 use tlock_pdk::{
     server::PluginServer,
-    state::{get_state, set_state, try_get_state},
-    tlock_api::{
-        RpcMethod,
-        component::{container, text},
-        domains::Domain,
-        entities::{EthProviderId, PageId},
-        eth, global, host, page, plugin,
-    },
+    state::{set_state, try_get_state},
+    tlock_api::{RpcMethod, domains::Domain, entities::EthProviderId, eth, global, host, plugin},
     wasmi_plugin_pdk::{
         rpc_message::{RpcError, to_rpc_err},
         transport::JsonRpcTransport,
@@ -45,34 +39,13 @@ async fn ping(transport: Arc<JsonRpcTransport>, _params: ()) -> Result<String, R
 async fn init(transport: Arc<JsonRpcTransport>, _params: ()) -> Result<(), RpcError> {
     info!("Initializing Ethereum Provider Plugin...");
 
-    host::RegisterEntity
-        .call(transport.clone(), Domain::Page)
-        .await?;
-
-    info!("Registering Ethereum Provider...");
-
-    host::RegisterEntity
-        .call(transport.clone(), Domain::EthProvider)
-        .await?;
-
     let state = ProviderState {
         rpc_url: "https://1rpc.io/sepolia".to_string(),
     };
     set_state(transport.clone(), &state).await?;
 
-    Ok(())
-}
-
-async fn on_load(transport: Arc<JsonRpcTransport>, page_id: PageId) -> Result<(), RpcError> {
-    let state: ProviderState = get_state(transport.clone()).await;
-
-    let component = container(vec![
-        text("This is the Ethereum Provider Plugin"),
-        text(format!("RPC URL: {}", state.rpc_url)),
-    ]);
-
-    host::SetPage
-        .call(transport.clone(), (page_id, component))
+    host::RegisterEntity
+        .call(transport.clone(), Domain::EthProvider)
         .await?;
 
     Ok(())
@@ -334,7 +307,6 @@ fn main() {
     PluginServer::new_with_transport()
         .with_method(global::Ping, ping)
         .with_method(plugin::Init, init)
-        .with_method(page::OnLoad, on_load)
         .with_method(eth::ChainId, chain_id)
         .with_method(eth::BlockNumber, block_number)
         .with_method(eth::Call, call)

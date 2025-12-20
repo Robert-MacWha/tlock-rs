@@ -29,10 +29,10 @@ pub enum EntityId {
 impl Display for EntityId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            EntityId::Vault(vault_id) => write!(f, "{}", vault_id),
-            EntityId::Page(page_id) => write!(f, "{}", page_id),
-            EntityId::EthProvider(eth_provider_id) => write!(f, "{}", eth_provider_id),
-            EntityId::Coordinator(coordinator_id) => write!(f, "{}", coordinator_id),
+            EntityId::Vault(vault_id) => Display::fmt(vault_id, f),
+            EntityId::Page(page_id) => Display::fmt(page_id, f),
+            EntityId::EthProvider(eth_provider_id) => Display::fmt(eth_provider_id, f),
+            EntityId::Coordinator(coordinator_id) => Display::fmt(coordinator_id, f),
         }
     }
 }
@@ -42,7 +42,7 @@ impl Serialize for EntityId {
     where
         S: serde::Serializer,
     {
-        serializer.serialize_str(&self.to_string())
+        serializer.serialize_str(&format!("{:#}", self))
     }
 }
 
@@ -89,7 +89,12 @@ impl Default for VaultId {
 
 impl Display for VaultId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "vault:{}", self.0)
+        if f.alternate() {
+            write!(f, "vault:{}", self.0) // full: {:#}
+        } else {
+            let uuid_str = self.0.as_simple().to_string();
+            write!(f, "vault:{}", &uuid_str[..6]) // short: {}
+        }
     }
 }
 
@@ -123,7 +128,12 @@ impl Default for PageId {
 
 impl Display for PageId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "page:{}", self.0)
+        if f.alternate() {
+            write!(f, "page:{}", self.0) // full: {:#}
+        } else {
+            let uuid_str = self.0.as_simple().to_string();
+            write!(f, "page:{}", &uuid_str[..6]) // short: {}
+        }
     }
 }
 
@@ -157,7 +167,12 @@ impl Default for EthProviderId {
 
 impl Display for EthProviderId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "eth_provider:{}", self.0)
+        if f.alternate() {
+            write!(f, "eth_provider:{}", self.0) // full: {:#}
+        } else {
+            let uuid_str = self.0.as_simple().to_string();
+            write!(f, "eth_provider:{}", &uuid_str[..6]) // short: {}
+        }
     }
 }
 
@@ -191,7 +206,12 @@ impl Default for CoordinatorId {
 
 impl Display for CoordinatorId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "coordinator:{}", self.0)
+        if f.alternate() {
+            write!(f, "coordinator:{}", self.0) // full: {:#}
+        } else {
+            let uuid_str = self.0.as_simple().to_string();
+            write!(f, "coordinator:{}", &uuid_str[..6]) // short: {}
+        }
     }
 }
 
@@ -208,5 +228,58 @@ impl FromStr for CoordinatorId {
 impl From<CoordinatorId> for EntityId {
     fn from(coordinator_id: CoordinatorId) -> Self {
         EntityId::Coordinator(coordinator_id)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn entity_id_vault_roundtrip() {
+        let id = EntityId::Vault(VaultId::new());
+        let serialized = serde_json::to_value(&id).unwrap();
+        assert!(
+            serialized.is_string(),
+            "EntityId should serialize as a string"
+        );
+        let deserialized: EntityId = serde_json::from_str(&serialized.to_string()).unwrap();
+        assert_eq!(id, deserialized);
+    }
+
+    #[test]
+    fn entity_id_page_roundtrip() {
+        let id = EntityId::Page(PageId::new());
+        let serialized = serde_json::to_value(&id).unwrap();
+        assert!(
+            serialized.is_string(),
+            "EntityId should serialize as a string"
+        );
+        let deserialized: EntityId = serde_json::from_str(&serialized.to_string()).unwrap();
+        assert_eq!(id, deserialized);
+    }
+
+    #[test]
+    fn entity_id_eth_provider_roundtrip() {
+        let id = EntityId::EthProvider(EthProviderId::new());
+        let serialized = serde_json::to_value(&id).unwrap();
+        assert!(
+            serialized.is_string(),
+            "EntityId should serialize as a string"
+        );
+        let deserialized: EntityId = serde_json::from_str(&serialized.to_string()).unwrap();
+        assert_eq!(id, deserialized);
+    }
+
+    #[test]
+    fn entity_id_coordinator_roundtrip() {
+        let id = EntityId::Coordinator(CoordinatorId::new());
+        let serialized = serde_json::to_value(&id).unwrap();
+        assert!(
+            serialized.is_string(),
+            "EntityId should serialize as a string"
+        );
+        let deserialized: EntityId = serde_json::from_str(&serialized.to_string()).unwrap();
+        assert_eq!(id, deserialized);
     }
 }

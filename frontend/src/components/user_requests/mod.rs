@@ -34,12 +34,20 @@ fn EthProviderSelectionComponent(request: UserRequest) -> Element {
         }
     };
 
+    let plugins = consume_context::<HostContext>()
+        .host
+        .read()
+        .get_plugin(&plugin_id);
+    let plugin_name = plugins
+        .as_ref()
+        .map(|p| p.name())
+        .unwrap_or("Unknown Plugin");
+
     rsx!(
         div {
-            p { "Ethereum Provider Selection" }
+            "Ethereum Provider requested by {plugin_name}"
             ul {
-                li { "Plugin: {plugin_id}" }
-                li { "Chain ID: {chain_id}" }
+                li { "Requested ChainId: {chain_id}" }
                 EntitySelection {
                     filter_map: move |entity_id| match entity_id {
                         EntityId::EthProvider(id) => Some(id),
@@ -72,11 +80,19 @@ fn VaultSelectionComponent(request: UserRequest) -> Element {
         }
     };
 
+    let plugins = consume_context::<HostContext>()
+        .host
+        .read()
+        .get_plugin(&plugin_id);
+    let plugin_name = plugins
+        .as_ref()
+        .map(|p| p.name())
+        .unwrap_or("Unknown Plugin");
+
     rsx!(
         div {
-            p { "Vault Selection" }
+            "Vault requested by {plugin_name}"
             ul {
-                li { "Plugin: {plugin_id}" }
                 EntitySelection {
                     filter_map: move |entity_id| match entity_id {
                         EntityId::Vault(id) => Some(id),
@@ -109,11 +125,19 @@ fn CoordinatorSelectionComponent(request: UserRequest) -> Element {
         }
     };
 
+    let plugins = consume_context::<HostContext>()
+        .host
+        .read()
+        .get_plugin(&plugin_id);
+    let plugin_name = plugins
+        .as_ref()
+        .map(|p| p.name())
+        .unwrap_or("Unknown Plugin");
+
     rsx!(
         div {
-            p { "Coordinator Selection" }
+            "Coordinator requested by {plugin_name}"
             ul {
-                li { "Plugin: {plugin_id}" }
                 EntitySelection {
                     filter_map: move |entity_id| match entity_id {
                         EntityId::Coordinator(id) => Some(id),
@@ -153,8 +177,8 @@ where
         .entities
         .read()
         .iter()
-        .filter_map(|entity_id| filter_map.call(*entity_id))
-        .collect::<Vec<T>>();
+        .filter_map(|entity_id| filter_map.call(*entity_id).map(|t| (*entity_id, t)))
+        .collect::<Vec<(EntityId, T)>>();
 
     rsx!(
         div {
@@ -162,9 +186,10 @@ where
                 for entity in entities {
                     li {
                         key: "{entity:?}",
-                        button {
-                            onclick: move |_| on_select.call(entity),
-                            "Select {entity:?}"
+                        SelectableEntity {
+                            id: entity.0,
+                            entity: entity.1,
+                            on_select: on_select.clone()
                         }
                     }
                 }
@@ -174,5 +199,27 @@ where
                 "Deny Request"
             }
          }
+    )
+}
+
+#[component]
+fn SelectableEntity<T>(id: EntityId, entity: T, on_select: EventHandler<T>) -> Element
+where
+    T: PartialEq + Debug + Copy + 'static,
+{
+    let entity_plugin = consume_context::<HostContext>()
+        .host
+        .read()
+        .get_entity_plugin(id);
+    let plugin_name = entity_plugin
+        .as_ref()
+        .map(|p| p.name())
+        .unwrap_or("Unknown Plugin");
+
+    rsx!(
+        button {
+            onclick: move |_| on_select.call(entity),
+            "{id} (provided by plugin {plugin_name})"
+        }
     )
 }

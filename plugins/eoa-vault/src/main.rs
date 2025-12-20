@@ -299,10 +299,11 @@ async fn on_update(
     );
     set_state(transport.clone(), &state).await?;
 
-    let component = text(format!(
-        "Vault created!\n\nAddress: {}\n\nPrivate Key: {}",
-        address, private_key_hex
-    ));
+    let component = container(vec![
+        heading("EOA Vault"),
+        text(&format!("Address: {}", address)),
+        text(&format!("Private Key: {}", private_key_hex)),
+    ]);
     host::SetPage
         .call(transport.clone(), (page_id, component))
         .await?;

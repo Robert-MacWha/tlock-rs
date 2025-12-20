@@ -38,7 +38,8 @@ pub trait RpcMethod: Send + Sync {
     {
         let raw_params = serde_json::to_value(params).map_err(|_| RpcError::InvalidParams)?;
         let resp = transport.call(Self::NAME, raw_params).await?;
-        let result = serde_json::from_value(resp.result).map_err(|_| RpcError::InternalError)?;
+        let result = serde_json::from_value(resp.result)
+            .map_err(|_| RpcError::Custom("Deserialization Error".into()))?;
         Ok(result)
     }
 }

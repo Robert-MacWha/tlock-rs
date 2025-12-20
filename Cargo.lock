@@ -3194,20 +3194,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
-]
-
-[[package]]
-name = "eth-provider"
-version = "0.1.0"
-dependencies = [
- "alloy",
- "serde",
- "serde_json",
- "tlock-pdk",
- "tower-service",
- "tracing",
- "tracing-subscriber 0.3.22",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -4263,7 +4250,7 @@ dependencies = [
  "libc",
  "percent-encoding",
  "pin-project-lite",
- "socket2 0.6.1",
+ "socket2 0.5.10",
  "tokio",
  "tower-service",
  "tracing",
@@ -6153,7 +6140,7 @@ dependencies = [
  "quinn-udp",
  "rustc-hash 2.1.1",
  "rustls",
- "socket2 0.6.1",
+ "socket2 0.5.10",
  "thiserror 2.0.17",
  "tokio",
  "tracing",
@@ -6190,9 +6177,9 @@ dependencies = [
  "cfg_aliases",
  "libc",
  "once_cell",
- "socket2 0.6.1",
+ "socket2 0.5.10",
  "tracing",
- "windows-sys 0.60.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -6731,6 +6718,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "rpc-provider"
+version = "0.1.0"
+dependencies = [
+ "alloy",
+ "serde",
+ "serde_json",
+ "tlock-pdk",
+ "tower-service",
+ "tracing",
+ "tracing-subscriber 0.3.22",
+]
+
+[[package]]
 name = "rug"
 version = "1.28.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6832,7 +6832,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -7758,7 +7758,7 @@ dependencies = [
  "getrandom 0.3.4",
  "once_cell",
  "rustix",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -8677,7 +8677,7 @@ dependencies = [
 [[package]]
 name = "wasmi-plugin-hdk"
 version = "0.1.0"
-source = "git+https://github.com/Robert-MacWha/wasmi-plugin-framework?branch=main#510f918c111f4a8adbae4fcc2e94f9ac2b3e6664"
+source = "git+https://github.com/Robert-MacWha/wasmi-plugin-framework?branch=main#860243ad7ecbc98f4016c1733dfcca3c2bb3d05b"
 dependencies = [
  "async-trait",
  "futures",
@@ -8696,7 +8696,7 @@ dependencies = [
 [[package]]
 name = "wasmi-plugin-pdk"
 version = "0.1.0"
-source = "git+https://github.com/Robert-MacWha/wasmi-plugin-framework?branch=main#510f918c111f4a8adbae4fcc2e94f9ac2b3e6664"
+source = "git+https://github.com/Robert-MacWha/wasmi-plugin-framework?branch=main#860243ad7ecbc98f4016c1733dfcca3c2bb3d05b"
 dependencies = [
  "async-trait",
  "futures",
@@ -8712,7 +8712,7 @@ dependencies = [
 [[package]]
 name = "wasmi-plugin-rt"
 version = "0.1.0"
-source = "git+https://github.com/Robert-MacWha/wasmi-plugin-framework?branch=main#510f918c111f4a8adbae4fcc2e94f9ac2b3e6664"
+source = "git+https://github.com/Robert-MacWha/wasmi-plugin-framework?branch=main#860243ad7ecbc98f4016c1733dfcca3c2bb3d05b"
 dependencies = [
  "gloo-timers",
  "tokio",
@@ -9009,7 +9009,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]

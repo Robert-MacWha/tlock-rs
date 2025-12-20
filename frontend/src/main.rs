@@ -5,7 +5,7 @@ use dioxus::{
     prelude::*,
 };
 use frontend::{
-    components::{entity::Entity, user_requests::UserRequestComponent},
+    components::{entity::Entity, page::Page, user_requests::UserRequestComponent},
     contexts::host::HostContext,
     download_util::trigger_file_download,
 };
@@ -13,6 +13,7 @@ use host::{
     host::Host,
     host_state::{HostState, PluginSource},
 };
+use tlock_hdk::tlock_api::entities::{EntityId, PageId};
 
 fn main() {
     dioxus::launch(app);
@@ -43,11 +44,12 @@ fn app() -> Element {
                     class: "col-lg-8",
                     control_panel {}
                     request_list {}
-                    entities_list {}
+                    page_list {}
                 }
                 div {
                     class: "col-lg-4",
                     plugin_list {}
+                    entities_list {}
                     event_log {}
                 }
             }
@@ -77,7 +79,7 @@ fn control_panel() -> Element {
             match consume_context::<HostContext>()
                 .host
                 .read()
-                .new_plugin(plugin_source, &name)
+                .new_plugin(plugin_source, name.strip_suffix(".wasm").unwrap_or(&name))
                 .await
             {
                 Ok(id) => {
@@ -212,6 +214,33 @@ fn request_list() -> Element {
 }
 
 #[component]
+fn page_list() -> Element {
+    let state = use_context::<HostContext>();
+    let entities = state.entities.read();
+    let pages: Vec<PageId> = entities
+        .iter()
+        .filter_map(|e| match e {
+            EntityId::Page(id) => Some(*id),
+            _ => None,
+        })
+        .collect();
+
+    rsx! {
+        div {
+            h5 { "Pages:" },
+            ul {
+                for page_id in pages {
+                    li {
+                        key: "{page_id}",
+                        Page { id: page_id }
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[component]
 fn plugin_list() -> Element {
     let state = use_context::<HostContext>();
     let plugins = state.plugins.read();
@@ -224,7 +253,7 @@ fn plugin_list() -> Element {
             h5 { "Plugin List:" },
             ul {
                 for plugin in named_plugins {
-                    li { key: "{plugin.id()}", "{plugin.name()} ({plugin.id()})" }
+                    li { key: "{plugin.id()}", "{plugin.name()} (id = {plugin.id()})" }
                 }
             }
         }
@@ -244,7 +273,7 @@ fn entities_list() -> Element {
                     li {
                         key: "{entity_id}",
                         Entity { id: *entity_id }
-                     }
+                    }
                 }
             }
         }
