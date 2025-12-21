@@ -1,5 +1,5 @@
 use revm::{
-    DatabaseRef,
+    Database, DatabaseRef,
     context::{
         BlockEnv,
         result::{ExecutionResult, HaltReason, Output},
@@ -8,6 +8,7 @@ use revm::{
         Address, Bytes, HashMap, U256,
         alloy_primitives::{BlockHash, TxHash},
         hex::ToHexExt,
+        keccak256,
     },
 };
 use thiserror::Error;
@@ -23,6 +24,7 @@ use tlock_pdk::{
                 BlockOverrides, BlockTransactions, BlockTransactionsKind, state::StateOverride,
             },
         },
+        sol_types::SolValue,
     },
     wasmi_plugin_pdk::rpc_message::RpcError,
 };
@@ -74,6 +76,9 @@ pub enum ProviderError<DB: DatabaseRef> {
 
     #[error("Chain Halted: {0:?}")]
     ChainHalted(HaltReason),
+
+    #[error("Not Implemented")]
+    NotImplemented,
 }
 
 impl<DB: DatabaseRef> From<ProviderError<DB>> for RpcError {
@@ -82,7 +87,7 @@ impl<DB: DatabaseRef> From<ProviderError<DB>> for RpcError {
     }
 }
 
-impl<DB: DatabaseRef> Provider<DB> {
+impl<DB: DatabaseRef + std::fmt::Debug> Provider<DB> {
     pub fn new(db: DB, block_env: BlockEnv, parent_hash: BlockHash) -> Self {
         let chain = Chain::new(db, block_env, Some(parent_hash));
         Self {
@@ -120,7 +125,7 @@ impl<DB: DatabaseRef> Provider<DB> {
     }
 
     pub fn get_balance(
-        &self,
+        &mut self,
         address: Address,
         block_id: BlockId,
     ) -> Result<U256, ProviderError<DB>> {
@@ -130,8 +135,8 @@ impl<DB: DatabaseRef> Provider<DB> {
 
         let account = self
             .chain
-            .db_ref()
-            .basic_ref(address)
+            .db()
+            .basic(address)
             .map_err(|e| ChainError::Db(e.to_string()))?
             .ok_or(ProviderError::AccountNotFound)?;
 
@@ -173,7 +178,7 @@ impl<DB: DatabaseRef> Provider<DB> {
     }
 
     pub fn get_code(
-        &self,
+        &mut self,
         address: Address,
         block_id: BlockId,
     ) -> Result<Option<Bytes>, ProviderError<DB>> {
@@ -183,8 +188,8 @@ impl<DB: DatabaseRef> Provider<DB> {
 
         let account = self
             .chain
-            .db_ref()
-            .basic_ref(address)
+            .db()
+            .basic(address)
             .map_err(|e| ChainError::Db(e.to_string()))?
             .ok_or(ProviderError::AccountNotFound)?;
 
@@ -192,7 +197,7 @@ impl<DB: DatabaseRef> Provider<DB> {
     }
 
     pub fn get_transaction_count(
-        &self,
+        &mut self,
         address: Address,
         block_id: BlockId,
     ) -> Result<u64, ProviderError<DB>> {
@@ -202,8 +207,8 @@ impl<DB: DatabaseRef> Provider<DB> {
 
         let account = self
             .chain
-            .db_ref()
-            .basic_ref(address)
+            .db()
+            .basic(address)
             .map_err(|e| ChainError::Db(e.to_string()))?
             .ok_or(ProviderError::AccountNotFound)?;
 
@@ -322,6 +327,72 @@ impl<DB: DatabaseRef> Provider<DB> {
         Ok(receipts)
     }
 
+    pub fn get_logs(
+        &self,
+        _filter: rpc::types::Filter,
+    ) -> Result<Vec<rpc::types::Log>, ProviderError<DB>> {
+        // TODO: Impl get_logs
+        return Err(ProviderError::NotImplemented);
+    }
+}
+
+// ---------- CHEATCODES ----------
+#[allow(dead_code)]
+impl<DB: DatabaseRef> Provider<DB> {
+    /// Sets the balance for a given address.
+    pub fn deal(&mut self, address: Address, amount: U256) -> Result<(), ProviderError<DB>> {
+        let mut info = self
+            .chain
+            .db()
+            .basic(address)
+            .map_err(|e| ChainError::Db(e.to_string()))?
+            .unwrap_or_default();
+
+        info.balance = amount;
+        self.chain.db().insert_account_info(address, info);
+
+        Ok(())
+    }
+
+    /// Sets the ERC20 token balance for a given address by directly modifying
+    /// the storage slot corresponding to the balance mapping.
+    ///
+    /// Uses the standard Solidity storage layout for mappings, where the slot
+    /// is calculated as keccak256(abi.encode(address, slot_number)). Will
+    /// not work for non-standard address mappings, viper contracts, etc.
+    pub fn deal_erc20(
+        &mut self,
+        address: Address,
+        erc20: Address,
+        amount: U256,
+    ) -> Result<(), ProviderError<DB>> {
+        let slot = self.erc_address_storage(address);
+        let mut storage = HashMap::default();
+        storage.insert(slot, amount);
+
+        self.chain
+            .db()
+            .replace_account_storage(erc20, storage)
+            .map_err(|e| ChainError::Db(e.to_string()))?;
+
+        Ok(())
+    }
+
+    /// Mines a new block.
+    pub fn mine(&mut self) -> Result<(), ProviderError<DB>> {
+        self.chain.mine()?;
+        Ok(())
+    }
+
+    /// Calculates the storage slot for an ERC20 balance mapping.
+    /// This implements the standard Solidity mapping storage layout where
+    /// slot = keccak256(abi.encode(address, slot_number))
+    fn erc_address_storage(&self, address: Address) -> U256 {
+        keccak256((address, U256::from(4)).abi_encode()).into()
+    }
+}
+
+impl<DB: DatabaseRef> Provider<DB> {
     fn is_latest(&self, block: BlockId) -> bool {
         match block {
             BlockId::Number(BlockNumberOrTag::Latest) => true,

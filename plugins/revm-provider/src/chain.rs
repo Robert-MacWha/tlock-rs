@@ -19,6 +19,7 @@ use tlock_pdk::{
     },
     wasmi_plugin_pdk::rpc_message::RpcError,
 };
+use tracing::info;
 
 use crate::provider_snapshot::ChainSnapshot;
 
@@ -66,9 +67,9 @@ pub enum ChainError<DB: DatabaseRef> {
     Db(String),
 }
 
-impl<DB: DatabaseRef> Chain<DB> {
+impl<DB: DatabaseRef + std::fmt::Debug> Chain<DB> {
     pub fn new(db: DB, block_env: BlockEnv, parent_hash: Option<B256>) -> Self {
-        Self {
+        let mut chain = Self {
             db: CacheDB::new(db),
             pending: PendingBlock {
                 env: block_env,
@@ -77,7 +78,10 @@ impl<DB: DatabaseRef> Chain<DB> {
             },
             blocks: BTreeMap::new(),
             block_time: 12,
-        }
+        };
+        //? Safe because we start with no transactions
+        chain.mine().unwrap();
+        chain
     }
 
     pub fn from_snapshot(db: DB, snapshot: ChainSnapshot) -> Self {
@@ -115,8 +119,8 @@ impl<DB: DatabaseRef> Chain<DB> {
         self.blocks.get(&number)
     }
 
-    pub fn db_ref(&self) -> Box<&dyn DatabaseRef<Error = DB::Error>> {
-        Box::new(&self.db)
+    pub fn db(&mut self) -> &mut CacheDB<DB> {
+        &mut self.db
     }
 
     /// Calls a transaction against the chain at the specified block, with
@@ -130,10 +134,13 @@ impl<DB: DatabaseRef> Chain<DB> {
         state_override: Option<StateOverride>,
         block_override: Option<BlockOverrides>,
     ) -> Result<ExecutionResult, ChainError<DB>> {
-        let block_env = match self.get_blockenv(block_id) {
+        info!("Calling tx {:?} at block {:?}", tx, block_id);
+
+        let mut block_env = match self.get_blockenv(block_id) {
             Some(env) => env,
             None => return Err(ChainError::Rpc(RpcError::Custom("Invalid Block ID".into()))),
         };
+        block_env.basefee = 0;
 
         let block_env = if let Some(overrides) = block_override {
             apply_block_overrides(&block_env, overrides)
@@ -141,7 +148,8 @@ impl<DB: DatabaseRef> Chain<DB> {
             block_env
         };
 
-        //? Only clone the DB if we have state overrides to apply
+        //? Stack a new CacheDB to apply state overrides without modifying
+        //? the underlying chain state
         let mut db = CacheDB::new(&self.db);
         if let Some(overrides) = state_override {
             apply_state_overrides(&mut db, overrides).map_err(|e| ChainError::Db(e.to_string()))?;
@@ -177,7 +185,7 @@ impl<DB: DatabaseRef> Chain<DB> {
     ///
     /// TODO: Make public and add `transact` as an alternative to
     /// `transact_commit`
-    fn mine(&mut self) -> Result<Vec<ExecutionResult>, ChainError<DB>> {
+    pub fn mine(&mut self) -> Result<Vec<ExecutionResult>, ChainError<DB>> {
         let db = &mut self.db;
         let block_env = self.pending.env.clone();
         let mut evm = Context::mainnet()

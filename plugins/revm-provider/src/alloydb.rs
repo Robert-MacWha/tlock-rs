@@ -7,13 +7,16 @@ use revm::{
     primitives::{Address, B256},
     state::{AccountInfo, Bytecode},
 };
-use tlock_pdk::tlock_api::alloy::{
-    eips::BlockId,
-    network::{BlockResponse, Network, primitives::HeaderResponse},
-    providers::Provider,
-    transports::TransportError,
+use tlock_pdk::{
+    futures::FutureExt,
+    tlock_api::alloy::{
+        eips::BlockId,
+        network::{BlockResponse, Network, primitives::HeaderResponse},
+        providers::Provider,
+        transports::TransportError,
+    },
 };
-use tokio::runtime::Handle;
+use tracing::info;
 
 /// Error type for transport-related database operations.
 #[derive(Debug)]
@@ -35,30 +38,32 @@ impl From<TransportError> for DBTransportError {
     }
 }
 
+#[derive(Debug)]
 pub struct AlloyDb<N: Network, P: Provider<N>> {
     provider: P,
     block_number: BlockId,
-    handle: Handle,
     _marker: core::marker::PhantomData<fn() -> N>,
 }
 
 impl<N: Network, P: Provider<N>> AlloyDb<N, P> {
     /// Creates a new `AlloyDb` instance.
-    ///
-    /// Returns `None` if the current thread does not have a Tokio runtime.
-    pub fn new(provider: P, block_number: BlockId) -> Option<Self> {
-        let handle = Handle::try_current().ok()?;
-
-        Some(Self {
+    pub fn new(provider: P, block_number: BlockId) -> Self {
+        Self {
             provider,
             block_number,
-            handle,
             _marker: core::marker::PhantomData,
-        })
+        }
     }
 
-    fn block_on<F: std::future::Future>(&self, fut: F) -> F::Output {
-        self.handle.block_on(fut)
+    fn block_on<T>(&self, fut: impl core::future::Future<Output = T>) -> T {
+        let mut fut = Box::pin(fut);
+
+        loop {
+            if let Some(result) = fut.as_mut().now_or_never() {
+                return result;
+            }
+            std::thread::yield_now();
+        }
     }
 }
 
@@ -67,17 +72,26 @@ impl<N: Network, P: Provider<N>> DatabaseRef for AlloyDb<N, P> {
 
     fn basic_ref(&self, address: Address) -> Result<Option<AccountInfo>, Self::Error> {
         self.block_on(async {
-            let (nonce, balance, code) = tokio::try_join!(
-                self.provider
-                    .get_transaction_count(address)
-                    .block_id(self.block_number),
-                self.provider
-                    .get_balance(address)
-                    .block_id(self.block_number),
-                self.provider
-                    .get_code_at(address)
-                    .block_id(self.block_number),
-            )?;
+            info!("Fetching account info for address: {:?}", address);
+
+            // TODO: Try futures::join! macro for parallel requests
+            let nonce = self
+                .provider
+                .get_transaction_count(address)
+                .block_id(self.block_number)
+                .await?;
+
+            let balance = self
+                .provider
+                .get_balance(address)
+                .block_id(self.block_number)
+                .await?;
+
+            let code = self
+                .provider
+                .get_code_at(address)
+                .block_id(self.block_number)
+                .await?;
 
             let code = Bytecode::new_raw(code.0.into());
             let code_hash = code.hash_slow();

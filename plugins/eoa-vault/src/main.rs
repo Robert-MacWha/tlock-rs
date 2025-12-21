@@ -71,10 +71,6 @@ async fn init(transport: Arc<JsonRpcTransport>, _params: ()) -> Result<(), RpcEr
     info!("Calling Init on Vault Plugin");
 
     // ? Register the vault's page
-    host::RegisterEntity
-        .call(transport.clone(), Domain::Page)
-        .await?;
-
     let provider_id = host::RequestEthProvider
         .call(transport.clone(), ChainId::Evm(Some(CHAIN_ID)))
         .await?;
@@ -83,6 +79,10 @@ async fn init(transport: Arc<JsonRpcTransport>, _params: ()) -> Result<(), RpcEr
         provider_id,
     };
     set_state(transport.clone(), &state).await?;
+
+    host::RegisterEntity
+        .call(transport.clone(), Domain::Page)
+        .await?;
 
     Ok(())
 }
@@ -322,10 +322,10 @@ fn validate_chain_id(chain_id: &ChainId) -> Result<(), RpcError> {
 
 async fn get_vault(transport: &Arc<JsonRpcTransport>, id: VaultId) -> Result<Vault, RpcError> {
     let state: PluginState = get_state(transport.clone()).await;
-    let vault = state
-        .vaults
-        .get(&id.into())
-        .ok_or_else(|| RpcError::Custom(format!("Vault ID not found: {}", id)))?;
+    let vault = state.vaults.get(&id.into()).ok_or_else(|| {
+        warn!("vaults: {:?}", state.vaults.keys());
+        RpcError::Custom(format!("Vault ID not found: {}", id))
+    })?;
 
     Ok(vault.clone())
 }

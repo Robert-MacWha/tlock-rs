@@ -244,9 +244,29 @@ async fn call_req(
                 .map_err(|e| TransportErrorKind::custom_str(&e.message()))?;
             serde_json::to_value(resp).map_err(TransportError::ser_err)?
         }
+        EthRequest::EthGetCodeAt(address, block_id) => {
+            let block_id = block_id.unwrap_or(BlockId::latest());
+            let resp = eth::GetCode
+                .call(transport.clone(), (provider_id, address, block_id))
+                .await
+                .map_err(|e| TransportErrorKind::custom_str(&e.message()))?;
+            serde_json::to_value(resp).map_err(TransportError::ser_err)?
+        }
+        EthRequest::EthGetStorageAt(address, slot, block_id) => {
+            let block_id = block_id.unwrap_or(BlockId::latest());
+            let resp = eth::GetStorageAt
+                .call(transport.clone(), (provider_id, address, slot, block_id))
+                .await
+                .map_err(|e| TransportErrorKind::custom_str(&e.message()))?;
+            serde_json::to_value(resp).map_err(TransportError::ser_err)?
+        }
         _ => {
-            return Err(TransportError::UnsupportedFeature(
-                "Unsupported request type",
+            return Err(TransportErrorKind::custom_str(
+                format!(
+                    "Unsupported request type in tlock-alloy::AlloyBridge: {:?}",
+                    req
+                )
+                .as_str(),
             ));
         }
     };

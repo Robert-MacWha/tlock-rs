@@ -1,4 +1,4 @@
-use std::{io::stderr, sync::Arc};
+use std::{collections::HashMap, io::stderr, sync::Arc};
 
 use revm::{
     DatabaseRef,
@@ -16,22 +16,26 @@ use tlock_pdk::{
             primitives::U256,
             providers::{Provider as AlloyProvider, ProviderBuilder},
             rpc::types::{
-                Block, BlockOverrides, BlockTransactionsKind, Transaction, TransactionReceipt,
-                TransactionRequest, state::StateOverride,
+                Block, BlockOverrides, BlockTransactionsKind, Filter, Log, Transaction,
+                TransactionReceipt, TransactionRequest, state::StateOverride,
             },
         },
         caip::ChainId,
+        component::{
+            Component, button_input, container, form, heading, heading2, submit_input, text,
+            text_input, unordered_list,
+        },
         domains::Domain,
-        entities::EthProviderId,
+        entities::{EthProviderId, PageId},
         eth::{self},
-        host, plugin,
+        host, page, plugin,
     },
     wasmi_plugin_pdk::{
         rpc_message::{RpcError, to_rpc_err},
         transport::JsonRpcTransport,
     },
 };
-use tracing::info;
+use tracing::{info, warn};
 use tracing_subscriber::fmt;
 
 use crate::{
@@ -65,18 +69,18 @@ async fn init(transport: Arc<JsonRpcTransport>, _params: ()) -> Result<(), RpcEr
     //? Setup the forked provider
     let alloy =
         ProviderBuilder::new().connect_client(AlloyBridge::new(transport.clone(), provider_id));
-
     let block = alloy
         .get_block(BlockId::latest())
         .await
         .map_err(to_rpc_err)?
         .ok_or(RpcError::Custom("Failed to get latest block".into()))?;
-    let fork_block_id = BlockId::number(block.number());
 
-    let db = AlloyDb::new(alloy, fork_block_id)
-        .ok_or(RpcError::Custom("No tokio runtime available".into()))?;
+    let fork_block_id = BlockId::number(block.number());
+    let db = AlloyDb::new(alloy, fork_block_id);
+
     let parent_hash = block.header.parent_hash;
     let block_env = header_to_block_env(block.header);
+
     let fork = Provider::new(db, block_env, parent_hash);
     let fork_snapshot = fork.snapshot();
 
@@ -88,9 +92,58 @@ async fn init(transport: Arc<JsonRpcTransport>, _params: ()) -> Result<(), RpcEr
     };
     set_state(transport.clone(), &state).await?;
 
-    //? Register the revm eth provider
+    //? Register the revm entities
     host::RegisterEntity
         .call(transport.clone(), Domain::EthProvider)
+        .await?;
+    host::RegisterEntity
+        .call(transport.clone(), Domain::Page)
+        .await?;
+
+    Ok(())
+}
+
+async fn on_load(transport: Arc<JsonRpcTransport>, page_id: PageId) -> Result<(), RpcError> {
+    let state: State = try_get_state(transport.clone()).await.map_err(to_rpc_err)?;
+
+    let component = build_ui(&state);
+    host::SetPage.call(transport, (page_id, component)).await?;
+    Ok(())
+}
+
+async fn on_update(
+    transport: Arc<JsonRpcTransport>,
+    params: (PageId, page::PageEvent),
+) -> Result<(), RpcError> {
+    let (page_id, event) = params;
+    info!("Page updated: {:?}", event);
+
+    let mut state: State = try_get_state(transport.clone()).await.map_err(to_rpc_err)?;
+
+    match event {
+        page::PageEvent::ButtonClicked(button_id) if button_id == "reset_fork" => {
+            handle_reset_fork(&transport, &mut state).await?;
+        }
+        page::PageEvent::ButtonClicked(button_id) if button_id == "mine_fork" => {
+            handle_mine(&transport, &mut state).await?;
+        }
+        page::PageEvent::FormSubmitted(form_id, form_data) if form_id == "deal_form" => {
+            handle_deal(&transport, &mut state, form_data).await?;
+        }
+        page::PageEvent::FormSubmitted(form_id, form_data) if form_id == "deal_erc20_form" => {
+            handle_deal_erc20(&transport, &mut state, form_data).await?;
+        }
+        _ => {
+            warn!("Unhandled page event: {:?}", event);
+            return Ok(());
+        }
+    }
+
+    set_state(transport.clone(), &state).await?;
+
+    let component = build_ui(&state);
+    host::SetPage
+        .call(transport.clone(), (page_id, component))
         .await?;
 
     Ok(())
@@ -115,8 +168,10 @@ async fn get_balance(
     params: (EthProviderId, Address, BlockId),
 ) -> Result<U256, RpcError> {
     let (_, address, block_id) = params;
-    let fork = get_fork_provider(transport.clone()).await?;
-    Ok(fork.get_balance(address, block_id)?)
+    let mut fork = get_fork_provider(transport.clone()).await?;
+    let balance = fork.get_balance(address, block_id)?;
+    set_snapshot(transport.clone(), fork.snapshot()).await?;
+    Ok(balance)
 }
 
 async fn get_block(
@@ -133,10 +188,11 @@ async fn get_code(
     params: (EthProviderId, Address, BlockId),
 ) -> Result<Bytes, RpcError> {
     let (_, address, block_id) = params;
-    let fork = get_fork_provider(transport.clone()).await?;
+    let mut fork = get_fork_provider(transport.clone()).await?;
     let code = fork
         .get_code(address, block_id)?
         .ok_or(RpcError::Custom("Account has no code".into()))?;
+    set_snapshot(transport.clone(), fork.snapshot()).await?;
     Ok(code)
 }
 
@@ -145,8 +201,10 @@ async fn get_transaction_count(
     params: (EthProviderId, Address, BlockId),
 ) -> Result<u64, RpcError> {
     let (_, address, block_id) = params;
-    let fork = get_fork_provider(transport.clone()).await?;
-    Ok(fork.get_transaction_count(address, block_id)?)
+    let mut fork = get_fork_provider(transport.clone()).await?;
+    let transaction_count = fork.get_transaction_count(address, block_id)?;
+    set_snapshot(transport.clone(), fork.snapshot()).await?;
+    Ok(transaction_count)
 }
 
 async fn get_transaction_by_hash(
@@ -191,6 +249,8 @@ async fn call(
 ) -> Result<Bytes, RpcError> {
     let (_, tx_request, block_id, state_override, block_override) = params;
     let fork = get_fork_provider(transport.clone()).await?;
+
+    set_snapshot(transport.clone(), fork.snapshot()).await?;
     Ok(fork.call(tx_request, block_id, state_override, block_override)?)
 }
 
@@ -206,6 +266,8 @@ async fn estimate_gas(
 ) -> Result<u64, RpcError> {
     let (_, tx_request, block_id, state_override, block_override) = params;
     let fork = get_fork_provider(transport.clone()).await?;
+
+    set_snapshot(transport.clone(), fork.snapshot()).await?;
     Ok(fork.estimate_gas(tx_request, block_id, state_override, block_override)?)
 }
 
@@ -217,9 +279,27 @@ async fn send_raw_transaction(
     let mut fork = get_fork_provider(transport.clone()).await?;
     let tx = fork.send_raw_transaction(raw_tx)?;
 
-    // TODO: Save the fork database state
-
+    set_snapshot(transport.clone(), fork.snapshot()).await?;
     Ok(tx)
+}
+
+async fn get_logs(
+    transport: Arc<JsonRpcTransport>,
+    params: (EthProviderId, Filter),
+) -> Result<Vec<Log>, RpcError> {
+    let (_, filter) = params;
+    let fork = get_fork_provider(transport.clone()).await?;
+    Ok(fork.get_logs(filter)?)
+}
+
+async fn set_snapshot(
+    transport: Arc<JsonRpcTransport>,
+    snapshot: ProviderSnapshot,
+) -> Result<(), RpcError> {
+    let mut state: State = try_get_state(transport.clone()).await.map_err(to_rpc_err)?;
+    state.fork_snapshot = snapshot;
+    set_state(transport.clone(), &state).await?;
+    Ok(())
 }
 
 /// Returns a fork provider based on the saved state.
@@ -227,8 +307,8 @@ async fn send_raw_transaction(
 /// Errors if no tokio runtime is available.
 async fn get_fork_provider(
     transport: Arc<JsonRpcTransport>,
-) -> Result<Provider<impl DatabaseRef>, RpcError> {
-    let state: State = try_get_state(transport.clone()).await.unwrap();
+) -> Result<Provider<impl DatabaseRef + std::fmt::Debug>, RpcError> {
+    let state: State = try_get_state(transport.clone()).await.map_err(to_rpc_err)?;
     let alloy_provider_id = state.alloy_provider_id;
     let fork_block = state.fork_block;
     let fork_snapshot = state.fork_snapshot;
@@ -236,10 +316,185 @@ async fn get_fork_provider(
     let alloy = ProviderBuilder::new()
         .connect_client(AlloyBridge::new(transport.clone(), alloy_provider_id));
 
-    let db = AlloyDb::new(alloy, fork_block)
-        .ok_or(RpcError::Custom("No tokio runtime available".into()))?;
+    let db = AlloyDb::new(alloy, fork_block);
     let fork_provider = Provider::from_snapshot(db, fork_snapshot);
     Ok(fork_provider)
+}
+
+fn build_ui(state: &State) -> Component {
+    let mut sections = vec![
+        heading("REVM Provider"),
+        text("A forked Ethereum provider running on REVM"),
+    ];
+
+    // Fork info section
+    let current_block = state.fork_snapshot.chain.pending.env.number;
+    let latest_mined = current_block.saturating_sub(U256::from(1));
+
+    sections.extend(vec![
+        heading2("Fork Information"),
+        text(format!(
+            "Fork Block: {:?}",
+            state.fork_block.as_u64().unwrap_or(0)
+        )),
+        text(format!("Current Block: {}", latest_mined.to_string())),
+        button_input("mine_fork", "Mine"),
+        button_input("reset_fork", "Reset Fork to Chain Head"),
+    ]);
+
+    // Cheatcodes section
+    sections.extend(vec![
+        heading2("Cheatcodes"),
+        heading2("Deal"),
+        text("Set native ETH balance for an address"),
+        form(
+            "deal_form",
+            vec![
+                text_input("address", "Address (hex)"),
+                text_input("amount", "Amount (wei)"),
+                submit_input("Execute Deal"),
+            ],
+        ),
+        heading2("Deal ERC20"),
+        text("Set ERC20 token balance for an address"),
+        form(
+            "deal_erc20_form",
+            vec![
+                text_input("address", "Holder Address (hex)"),
+                text_input("erc20", "ERC20 Contract Address (hex)"),
+                text_input("amount", "Amount (wei)"),
+                submit_input("Execute Deal ERC20"),
+            ],
+        ),
+    ]);
+
+    // Transactions section
+    let tx_count: usize = state
+        .fork_snapshot
+        .transactions
+        .values()
+        .map(|v| v.len())
+        .sum();
+    sections.push(heading2("Transactions"));
+
+    if tx_count == 0 {
+        sections.push(text("No transactions"));
+        return container(sections);
+    }
+
+    sections.push(text(format!("Total transactions: {}", tx_count)));
+
+    // Show transactions by block
+    let mut sorted_blocks: Vec<_> = state.fork_snapshot.transactions.iter().collect();
+    sorted_blocks.sort_by_key(|(block_num, _)| *block_num);
+    sections.push(unordered_list(sorted_blocks.iter().map(|(number, txs)| {
+        (
+            format!("block_{}", number),
+            text(format!("Block {}: {} transaction(s)", number, txs.len())),
+        )
+    })));
+
+    container(sections)
+}
+
+async fn handle_reset_fork(
+    transport: &Arc<JsonRpcTransport>,
+    state: &mut State,
+) -> Result<(), RpcError> {
+    info!("Resetting fork to chain head");
+
+    let alloy = ProviderBuilder::new()
+        .connect_client(AlloyBridge::new(transport.clone(), state.alloy_provider_id));
+
+    let block = alloy
+        .get_block(BlockId::latest())
+        .await
+        .map_err(to_rpc_err)?
+        .ok_or(RpcError::Custom("Failed to get latest block".into()))?;
+    let fork_block_id = BlockId::number(block.number());
+
+    let db = AlloyDb::new(alloy, fork_block_id);
+    let parent_hash = block.header.parent_hash;
+    let block_env = header_to_block_env(block.header);
+    let fork = Provider::new(db, block_env, parent_hash);
+    let fork_snapshot = fork.snapshot();
+
+    state.fork_block = fork_block_id;
+    state.fork_snapshot = fork_snapshot;
+
+    Ok(())
+}
+
+async fn handle_mine(transport: &Arc<JsonRpcTransport>, state: &mut State) -> Result<(), RpcError> {
+    let mut fork = get_fork_provider(transport.clone()).await?;
+    fork.mine()?;
+    state.fork_snapshot = fork.snapshot();
+    info!("Mined a new block on the fork");
+    Ok(())
+}
+
+async fn handle_deal(
+    transport: &Arc<JsonRpcTransport>,
+    state: &mut State,
+    form_data: HashMap<String, String>,
+) -> Result<(), RpcError> {
+    let address: Address = form_data
+        .get("address")
+        .ok_or(RpcError::Custom("Missing address".into()))?
+        .parse()
+        .map_err(|e| RpcError::Custom(format!("Invalid address: {}", e)))?;
+
+    let amount: U256 = form_data
+        .get("amount")
+        .ok_or(RpcError::Custom("Missing amount".into()))?
+        .parse()
+        .map_err(|_| RpcError::Custom("Invalid amount".into()))?;
+
+    info!(
+        "Executing deal for address {} with amount {}",
+        address, amount
+    );
+
+    let mut fork = get_fork_provider(transport.clone()).await?;
+    fork.deal(address, amount)?;
+    state.fork_snapshot = fork.snapshot();
+
+    Ok(())
+}
+
+async fn handle_deal_erc20(
+    transport: &Arc<JsonRpcTransport>,
+    state: &mut State,
+    form_data: HashMap<String, String>,
+) -> Result<(), RpcError> {
+    let address: Address = form_data
+        .get("address")
+        .ok_or(RpcError::Custom("Missing address".into()))?
+        .parse()
+        .map_err(|e| RpcError::Custom(format!("Invalid address: {}", e)))?;
+
+    let erc20: Address = form_data
+        .get("erc20")
+        .ok_or(RpcError::Custom("Missing erc20 contract address".into()))?
+        .parse()
+        .map_err(|e| RpcError::Custom(format!("Invalid erc20 address: {}", e)))?;
+
+    let amount: U256 = form_data
+        .get("amount")
+        .ok_or(RpcError::Custom("Missing amount".into()))?
+        .parse()
+        .map_err(|_| RpcError::Custom("Invalid amount".into()))?;
+
+    info!(
+        "Executing deal_erc20 for address {} with erc20 {} and amount {}",
+        address, erc20, amount
+    );
+
+    let mut fork = get_fork_provider(transport.clone()).await?;
+    fork.deal_erc20(address, erc20, amount)?;
+    state.fork_snapshot = fork.snapshot();
+
+    Ok(())
 }
 
 // TODO: See if there's a way to use anvil instead of revm directly + my own
@@ -255,7 +510,8 @@ fn main() {
     info!("Starting plugin...");
     PluginServer::new_with_transport()
         .with_method(plugin::Init, init)
-        // .with_method(page::OnLoad, on_load)
+        .with_method(page::OnLoad, on_load)
+        .with_method(page::OnUpdate, on_update)
         .with_method(eth::ChainId, chain_id)
         .with_method(eth::BlockNumber, block_number)
         .with_method(eth::GasPrice, gas_price)
@@ -269,6 +525,6 @@ fn main() {
         .with_method(eth::Call, call)
         .with_method(eth::EstimateGas, estimate_gas)
         .with_method(eth::SendRawTransaction, send_raw_transaction)
-        // .with_method(eth::GetLogs, get_logs)
+        .with_method(eth::GetLogs, get_logs)
         .run();
 }

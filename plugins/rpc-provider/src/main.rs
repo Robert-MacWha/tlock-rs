@@ -145,7 +145,7 @@ async fn get_block(
 
     match block {
         Some(b) => Ok(b),
-        None => Err(RpcError::InternalError),
+        None => Err(RpcError::Custom("Block not found".into())),
     }
 }
 
@@ -213,7 +213,7 @@ async fn get_transaction_by_hash(
 
     match tx {
         Some(t) => Ok(t),
-        None => Err(RpcError::InternalError),
+        None => Err(RpcError::Custom("Transaction not found".into())),
     }
 }
 
@@ -232,7 +232,7 @@ async fn get_transaction_receipt(
 
     match receipt {
         Some(r) => Ok(r),
-        None => Err(RpcError::InternalError),
+        None => Err(RpcError::Custom("Transaction Receipt not Found".into())),
     }
 }
 
@@ -295,6 +295,23 @@ async fn estimate_gas(
     Ok(gas_estimate)
 }
 
+async fn get_storage_at(
+    transport: Arc<JsonRpcTransport>,
+    params: (EthProviderId, Address, U256, BlockId),
+) -> Result<U256, RpcError> {
+    let state: ProviderState = try_get_state(transport.clone()).await?;
+    let (_provider_id, address, slot, block_id) = params;
+
+    let provider = create_alloy_provider(transport.clone(), state.rpc_url);
+    let storage_value = provider
+        .get_storage_at(address, slot)
+        .block_id(block_id)
+        .await
+        .map_err(to_rpc_err)?;
+
+    Ok(storage_value)
+}
+
 fn main() {
     fmt()
         .with_writer(stderr)
@@ -321,5 +338,6 @@ fn main() {
         .with_method(eth::GetTransactionCount, get_transaction_count)
         .with_method(eth::SendRawTransaction, send_raw_transaction)
         .with_method(eth::EstimateGas, estimate_gas)
+        .with_method(eth::GetStorageAt, get_storage_at)
         .run();
 }

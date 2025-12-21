@@ -74,6 +74,8 @@ pub mod global {
 /// The host namespace contains methods for interacting with the host and
 /// performing privileged operations.
 pub mod host {
+    use std::fmt;
+
     use serde::{Deserialize, Serialize};
 
     use crate::{
@@ -83,12 +85,31 @@ pub mod host {
         entities::{CoordinatorId, EntityId, EthProviderId, PageId, VaultId},
     };
 
-    #[derive(Serialize, Deserialize, Clone, Debug)]
+    #[derive(Serialize, Deserialize, Clone)]
     pub struct Request {
         pub url: String,
         pub method: String,
         pub headers: Vec<(String, Vec<u8>)>,
         pub body: Option<Vec<u8>>,
+    }
+
+    impl fmt::Debug for Request {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            let headers_debug: Vec<_> = self
+                .headers
+                .iter()
+                .map(|(k, v)| (k, String::from_utf8_lossy(v)))
+                .collect();
+
+            let body_debug = self.body.as_ref().map(|b| String::from_utf8_lossy(b));
+
+            f.debug_struct("Request")
+                .field("url", &self.url)
+                .field("method", &self.method)
+                .field("headers", &headers_debug)
+                .field("body", &body_debug)
+                .finish()
+        }
     }
 
     rpc_method!(
@@ -209,6 +230,11 @@ pub mod eth {
     rpc_method!(
         /// Gets the compiled bytecode of a smart contract.
         eth_getCode, GetCode, (EthProviderId, Address, BlockId), Bytes
+    );
+
+    rpc_method!(
+        /// Gets the storage value at a particular index of a smart contract.
+        eth_getStorageAt, GetStorageAt, (EthProviderId, Address, U256, BlockId), U256
     );
 
     rpc_method!(

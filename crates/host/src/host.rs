@@ -276,6 +276,8 @@ impl Host {
             .with_method(eth::EstimateGas, eth_estimate_gas)
             .with_method(eth::GetTransactionReceipt, eth_get_transaction_receipt)
             .with_method(eth::GetBlock, eth_get_block)
+            .with_method(eth::GetCode, eth_get_code)
+            .with_method(eth::GetStorageAt, eth_get_storage_at)
             .with_method(coordinator::GetAssets, coordinator_get_assets)
             .with_method(coordinator::GetSession, coordinator_get_session)
             .with_method(coordinator::Propose, coordinator_propose)
@@ -823,6 +825,32 @@ impl Host {
         Ok(block)
     }
 
+    pub async fn eth_get_code(
+        &self,
+        params: <eth::GetCode as RpcMethod>::Params,
+    ) -> Result<<eth::GetCode as RpcMethod>::Output, RpcError> {
+        let plugin = self.get_entity_plugin_error(params.0)?;
+
+        let code = eth::GetCode.call(plugin, params).await.map_err(|e| {
+            warn!("Error calling GetCode: {:?}", e);
+            e.as_rpc_code()
+        })?;
+        Ok(code)
+    }
+
+    pub async fn eth_get_storage_at(
+        &self,
+        params: <eth::GetStorageAt as RpcMethod>::Params,
+    ) -> Result<<eth::GetStorageAt as RpcMethod>::Output, RpcError> {
+        let plugin = self.get_entity_plugin_error(params.0)?;
+
+        let storage = eth::GetStorageAt.call(plugin, params).await.map_err(|e| {
+            warn!("Error calling GetStorageAt: {:?}", e);
+            e.as_rpc_code()
+        })?;
+        Ok(storage)
+    }
+
     pub async fn coordinator_get_assets(
         &self,
         params: <coordinator::GetAssets as RpcMethod>::Params,
@@ -907,6 +935,8 @@ impl_host_rpc_no_id!(
     eth_get_transaction_receipt
 );
 impl_host_rpc_no_id!(Host, eth::GetBlock, eth_get_block);
+impl_host_rpc_no_id!(Host, eth::GetCode, eth_get_code);
+impl_host_rpc_no_id!(Host, eth::GetStorageAt, eth_get_storage_at);
 impl_host_rpc_no_id!(Host, coordinator::GetAssets, coordinator_get_assets);
 impl_host_rpc_no_id!(Host, coordinator::GetSession, coordinator_get_session);
 impl_host_rpc_no_id!(Host, coordinator::Propose, coordinator_propose);
