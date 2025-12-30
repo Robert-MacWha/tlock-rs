@@ -7,7 +7,6 @@ edition = "2024"
 revm = { workspace = true, features = ["std", "serde"] }
 serde = { workspace = true }
 thiserror = { workspace = true }
-tlock-alloy = { workspace = true }
 tlock-pdk = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }

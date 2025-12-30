@@ -1,110 +1,88 @@
-use core::error::Error;
-use std::fmt::Display;
-
 use revm::{
     DatabaseRef,
     context::DBErrorMarker,
     primitives::{Address, B256},
     state::{AccountInfo, Bytecode},
 };
+use thiserror::Error;
 use tlock_pdk::{
-    futures::FutureExt,
-    tlock_api::alloy::{
-        eips::BlockId,
-        network::{BlockResponse, Network, primitives::HeaderResponse},
-        providers::Provider,
-        transports::TransportError,
+    tlock_api::{
+        RpcMethod,
+        alloy::{
+            eips::BlockId,
+            network::{Network, primitives::HeaderResponse},
+            rpc::types::BlockTransactionsKind,
+        },
+        entities::EthProviderId,
+        eth,
     },
+    wasmi_plugin_pdk::{rpc_message::RpcError, transport::Transport},
 };
-use tracing::info;
 
 /// Error type for transport-related database operations.
-#[derive(Debug)]
-pub struct DBTransportError(pub TransportError);
+#[derive(Debug, Error)]
+pub enum DBTransportError {
+    #[error("RPC error: {0}")]
+    RpcError(#[from] RpcError),
+}
 
 impl DBErrorMarker for DBTransportError {}
 
-impl Display for DBTransportError {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "Transport error: {}", self.0)
-    }
-}
-
-impl Error for DBTransportError {}
-
-impl From<TransportError> for DBTransportError {
-    fn from(e: TransportError) -> Self {
-        Self(e)
-    }
-}
-
 #[derive(Debug)]
-pub struct AlloyDb<N: Network, P: Provider<N>> {
-    provider: P,
+pub struct AlloyDb<N: Network> {
+    transport: Transport,
+    provider_id: EthProviderId,
     block_number: BlockId,
     _marker: core::marker::PhantomData<fn() -> N>,
 }
 
-impl<N: Network, P: Provider<N>> AlloyDb<N, P> {
-    /// Creates a new `AlloyDb` instance.
-    pub fn new(provider: P, block_number: BlockId) -> Self {
+impl<N: Network> AlloyDb<N> {
+    pub fn new(transport: Transport, provider_id: EthProviderId, block_number: BlockId) -> Self {
         Self {
-            provider,
+            transport,
+            provider_id,
             block_number,
             _marker: core::marker::PhantomData,
         }
     }
-
-    fn block_on<T>(&self, fut: impl core::future::Future<Output = T>) -> T {
-        let mut fut = Box::pin(fut);
-
-        loop {
-            if let Some(result) = fut.as_mut().now_or_never() {
-                return result;
-            }
-            std::thread::yield_now();
-        }
-    }
 }
 
-impl<N: Network, P: Provider<N>> DatabaseRef for AlloyDb<N, P> {
+impl<N: Network> DatabaseRef for AlloyDb<N> {
     type Error = DBTransportError;
 
     fn basic_ref(&self, address: Address) -> Result<Option<AccountInfo>, Self::Error> {
-        self.block_on(async {
-            info!("Fetching account info for address: {:?}", address);
+        let nonce = eth::GetTransactionCount.call(
+            self.transport.clone(),
+            (self.provider_id, address, self.block_number),
+        )?;
 
-            // TODO: Try futures::join! macro for parallel requests
-            let nonce = self
-                .provider
-                .get_transaction_count(address)
-                .block_id(self.block_number)
-                .await?;
+        let balance = eth::GetBalance.call(
+            self.transport.clone(),
+            (self.provider_id, address, self.block_number),
+        )?;
 
-            let balance = self
-                .provider
-                .get_balance(address)
-                .block_id(self.block_number)
-                .await?;
+        let code = eth::GetCode.call(
+            self.transport.clone(),
+            (self.provider_id, address, self.block_number),
+        )?;
 
-            let code = self
-                .provider
-                .get_code_at(address)
-                .block_id(self.block_number)
-                .await?;
+        let code = Bytecode::new_raw(code.0.into());
+        let code_hash = code.hash_slow();
 
-            let code = Bytecode::new_raw(code.0.into());
-            let code_hash = code.hash_slow();
-
-            Ok(Some(AccountInfo::new(balance, nonce, code_hash, code)))
-        })
+        Ok(Some(AccountInfo::new(balance, nonce, code_hash, code)))
     }
 
     fn block_hash_ref(&self, number: u64) -> Result<B256, Self::Error> {
-        self.block_on(async {
-            let block = self.provider.get_block_by_number(number.into()).await?;
-            Ok(B256::new(*block.unwrap().header().hash()))
-        })
+        let block = eth::GetBlock.call(
+            self.transport.clone(),
+            (
+                self.provider_id,
+                BlockId::number(number),
+                BlockTransactionsKind::Hashes,
+            ),
+        )?;
+
+        Ok(B256::new(*block.header.hash()))
     }
 
     fn code_by_hash_ref(&self, _code_hash: B256) -> Result<Bytecode, Self::Error> {
@@ -116,12 +94,11 @@ impl<N: Network, P: Provider<N>> DatabaseRef for AlloyDb<N, P> {
         address: Address,
         index: revm::primitives::StorageKey,
     ) -> Result<revm::primitives::StorageValue, Self::Error> {
-        self.block_on(async {
-            Ok(self
-                .provider
-                .get_storage_at(address, index)
-                .block_id(self.block_number)
-                .await?)
-        })
+        let storage_value = eth::GetStorageAt.call(
+            self.transport.clone(),
+            (self.provider_id, address, index, self.block_number),
+        )?;
+
+        Ok(storage_value)
     }
 }

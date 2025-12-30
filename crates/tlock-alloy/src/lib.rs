@@ -120,12 +120,10 @@ async fn call_req(
 
     let resp = match req {
         EthRequest::EthChainId(()) => {
-            info!("Fetching chain ID for provider {:?}", provider_id);
             let resp = eth::ChainId
                 .call_async(transport.clone(), provider_id)
                 .await
                 .map_err(|e| TransportErrorKind::custom_str(&e.to_string()))?;
-            info!("Chain ID for provider {:?}: {:?}", provider_id, resp);
             serde_json::to_value(resp).map_err(TransportError::ser_err)?
         }
         EthRequest::EthBlockNumber(()) => {

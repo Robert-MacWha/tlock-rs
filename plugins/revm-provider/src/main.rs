@@ -5,7 +5,6 @@ use revm::{
     primitives::{Address, Bytes, alloy_primitives::TxHash},
 };
 use serde::{Deserialize, Serialize};
-use tlock_alloy::AlloyBridge;
 use tlock_pdk::{
     runner::PluginRunner,
     state::{set_state, try_get_state},
@@ -13,8 +12,8 @@ use tlock_pdk::{
         RpcMethod,
         alloy::{
             eips::BlockId,
+            network::Ethereum,
             primitives::U256,
-            providers::{Provider as AlloyProvider, ProviderBuilder},
             rpc::types::{
                 Block, BlockOverrides, BlockTransactionsKind, Filter, Log, Transaction,
                 TransactionReceipt, TransactionRequest, state::StateOverride,
@@ -31,7 +30,7 @@ use tlock_pdk::{
         host, page, plugin,
     },
     wasmi_plugin_pdk::{
-        rpc_message::{RpcError, RpcErrorContext, ToRpcResult},
+        rpc_message::{RpcError, RpcErrorContext},
         transport::Transport,
     },
 };
@@ -67,16 +66,19 @@ async fn init(transport: Transport, _params: ()) -> Result<(), RpcError> {
         .await?;
 
     //? Setup the forked provider
-    let alloy =
-        ProviderBuilder::new().connect_client(AlloyBridge::new(transport.clone(), provider_id));
-    let block = alloy
-        .get_block(BlockId::latest())
-        .await
-        .rpc_err()?
-        .context("Failed to get latest block")?;
+    let block = eth::GetBlock
+        .call_async(
+            transport.clone(),
+            (
+                provider_id,
+                BlockId::latest(),
+                BlockTransactionsKind::Hashes,
+            ),
+        )
+        .await?;
 
     let fork_block_id = BlockId::number(block.number());
-    let db = AlloyDb::new(alloy, fork_block_id);
+    let db: AlloyDb<Ethereum> = AlloyDb::new(transport.clone(), provider_id, fork_block_id);
 
     let parent_hash = block.header.parent_hash;
     let block_env = header_to_block_env(block.header);
@@ -308,14 +310,11 @@ fn get_fork_provider(
     transport: Transport,
 ) -> Result<Provider<impl DatabaseRef + std::fmt::Debug>, RpcError> {
     let state: State = try_get_state(transport.clone())?;
-    let alloy_provider_id = state.alloy_provider_id;
+    let eth_provider_id = state.alloy_provider_id;
     let fork_block = state.fork_block;
     let fork_snapshot = state.fork_snapshot;
 
-    let alloy = ProviderBuilder::new()
-        .connect_client(AlloyBridge::new(transport.clone(), alloy_provider_id));
-
-    let db = AlloyDb::new(alloy, fork_block);
+    let db: AlloyDb<Ethereum> = AlloyDb::new(transport.clone(), eth_provider_id, fork_block);
     let fork_provider = Provider::from_snapshot(db, fork_snapshot);
     Ok(fork_provider)
 }
@@ -399,17 +398,20 @@ fn build_ui(state: &State) -> Component {
 async fn handle_reset_fork(transport: Transport, state: &mut State) -> Result<(), RpcError> {
     info!("Resetting fork to chain head");
 
-    let alloy = ProviderBuilder::new()
-        .connect_client(AlloyBridge::new(transport.clone(), state.alloy_provider_id));
-
-    let block = alloy
-        .get_block(BlockId::latest())
-        .await
-        .rpc_err()?
-        .ok_or(RpcError::Custom("Failed to get latest block".into()))?;
+    let block = eth::GetBlock
+        .call_async(
+            transport.clone(),
+            (
+                state.alloy_provider_id,
+                BlockId::latest(),
+                BlockTransactionsKind::Hashes,
+            ),
+        )
+        .await?;
     let fork_block_id = BlockId::number(block.number());
 
-    let db = AlloyDb::new(alloy, fork_block_id);
+    let db: AlloyDb<Ethereum> =
+        AlloyDb::new(transport.clone(), state.alloy_provider_id, fork_block_id);
     let parent_hash = block.header.parent_hash;
     let block_env = header_to_block_env(block.header);
     let fork = Provider::new(db, block_env, parent_hash);

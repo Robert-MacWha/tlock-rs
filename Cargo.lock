@@ -7184,7 +7184,6 @@ dependencies = [
  "revm",
  "serde",
  "thiserror 2.0.17",
- "tlock-alloy",
  "tlock-pdk",
  "tracing",
  "tracing-subscriber 0.3.22",

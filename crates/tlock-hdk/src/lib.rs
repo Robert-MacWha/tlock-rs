@@ -25,7 +25,6 @@ macro_rules! __impl_host_rpc_base {
             let plugin_id = &host.0;
             let host = host.1.upgrade().context("Host has been dropped")?;
 
-            info!("[host_func] Plugin {} sent {}", plugin_id, <$method>::NAME);
             $call_expr(host, plugin_id.clone(), params).await
         }
     };

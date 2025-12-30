@@ -303,9 +303,7 @@ impl Host {
 
     pub fn get_entity_plugin(&self, entity_id: impl Into<EntityId>) -> Option<Plugin> {
         let entity_id = entity_id.into();
-        info!("Getting plugin for entity {:?}", entity_id);
         let plugin_id = self.get_entity_plugin_id(entity_id)?;
-        info!("Found plugin ID {} for {}", plugin_id, entity_id);
         self.get_plugin(&plugin_id)
     }
 
@@ -553,12 +551,9 @@ impl Host {
             }
         };
 
-        info!("Sending request: {:?}", request);
         // TODO: Handle errors properly
         let resp = request.send().await.unwrap();
-        info!("Received response: {:?}", resp);
         let bytes = resp.bytes().await.unwrap();
-        info!("Response bytes: {:?}", bytes);
         Ok(Ok(bytes.to_vec()))
     }
 
