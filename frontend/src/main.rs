@@ -25,13 +25,6 @@ fn app() -> Element {
     let host_context = HostContext::new(host.clone());
     use_context_provider(|| host_context);
 
-    spawn(async {
-        loop {
-            gloo_timers::future::TimeoutFuture::new(1000).await;
-            info!("heartbeat");
-        }
-    });
-
     rsx! {
         document::Stylesheet { href: asset!("/assets/bootstrap.css") }
 
