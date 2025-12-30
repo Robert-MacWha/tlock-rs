@@ -1,8 +1,6 @@
-use std::sync::Arc;
-
 use async_trait::async_trait;
 use serde::{Serialize, de::DeserializeOwned};
-use wasmi_plugin_pdk::{api::ApiError, rpc_message::RpcError, transport::Transport};
+use wasmi_plugin_pdk::rpc_message::{RpcError, RpcErrorContext};
 
 pub mod caip;
 pub mod component;
@@ -30,16 +28,32 @@ pub trait RpcMethod: Send + Sync {
 
     const NAME: &'static str;
 
-    /// Call this RPC method on the given transport with the provided params.
-    async fn call<E, T>(&self, transport: Arc<T>, params: Self::Params) -> Result<Self::Output, E>
+    fn call<T, E>(&self, transport: T, params: Self::Params) -> Result<Self::Output, RpcError>
     where
-        E: ApiError,
-        T: Transport<E> + Send + Sync + 'static,
+        T: wasmi_plugin_pdk::transport::SyncTransport<E> + Send + Sync + 'static,
+        E: Into<RpcError>,
     {
         let raw_params = serde_json::to_value(params).map_err(|_| RpcError::InvalidParams)?;
-        let resp = transport.call(Self::NAME, raw_params).await?;
-        let result = serde_json::from_value(resp.result)
-            .map_err(|_| RpcError::Custom("Deserialization Error".into()))?;
+        let resp = transport.call(Self::NAME, raw_params).map_err(Into::into)?;
+        let result = serde_json::from_value(resp.result).context("Deserialization Error")?;
+        Ok(result)
+    }
+
+    async fn call_async<T, E>(
+        &self,
+        transport: T,
+        params: Self::Params,
+    ) -> Result<Self::Output, RpcError>
+    where
+        T: wasmi_plugin_pdk::transport::AsyncTransport<E> + Send + Sync + 'static,
+        E: Into<RpcError>,
+    {
+        let raw_params = serde_json::to_value(params).map_err(|_| RpcError::InvalidParams)?;
+        let resp = transport
+            .call_async(Self::NAME, raw_params)
+            .await
+            .map_err(Into::into)?;
+        let result = serde_json::from_value(resp.result).context("Deserialization Error")?;
         Ok(result)
     }
 }
@@ -397,6 +411,7 @@ pub mod page {
 
     use crate::entities::PageId;
 
+    #[non_exhaustive]
     #[derive(Serialize, Deserialize, Debug)]
     pub enum PageEvent {
         ButtonClicked(String),                          // (button_id)

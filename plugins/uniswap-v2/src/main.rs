@@ -4,7 +4,7 @@
 //! Uniswap V2. It fetches on-chain reserves to calculate expected output
 //! amounts and executes swaps via a coordinator account.
 
-use std::{collections::HashMap, io::stderr, sync::Arc};
+use std::{collections::HashMap, io::stderr};
 
 use alloy::{
     primitives::{Address, U256, address},
@@ -15,7 +15,7 @@ use alloy::{
 use serde::{Deserialize, Serialize};
 use tlock_alloy::AlloyBridge;
 use tlock_pdk::{
-    server::PluginServer,
+    runner::PluginRunner,
     state::{set_state, try_get_state},
     tlock_api::{
         RpcMethod,
@@ -29,8 +29,8 @@ use tlock_pdk::{
         global, host, page, plugin,
     },
     wasmi_plugin_pdk::{
-        rpc_message::{RpcError, to_rpc_err},
-        transport::JsonRpcTransport,
+        rpc_message::{RpcError, ToRpcResult},
+        transport::Transport,
     },
 };
 use tracing::{error, info, warn};
@@ -124,15 +124,17 @@ sol! {
 
 // ---------- Plugin Handlers ----------
 
-async fn init(transport: Arc<JsonRpcTransport>, _params: ()) -> Result<(), RpcError> {
+async fn init(transport: Transport, _params: ()) -> Result<(), RpcError> {
     info!("Initializing Uniswap V2 Plugin");
 
     // Request coordinator
-    let coordinator_id = host::RequestCoordinator.call(transport.clone(), ()).await?;
+    let coordinator_id = host::RequestCoordinator
+        .call_async(transport.clone(), ())
+        .await?;
 
     // Request eth provider for Sepolia
     let provider_id = host::RequestEthProvider
-        .call(transport.clone(), ChainId::new_evm(CHAIN_ID))
+        .call_async(transport.clone(), ChainId::new_evm(CHAIN_ID))
         .await?;
 
     // Initialize state
@@ -149,46 +151,46 @@ async fn init(transport: Arc<JsonRpcTransport>, _params: ()) -> Result<(), RpcEr
         last_message: None,
     };
 
-    set_state(transport.clone(), &state).await?;
+    set_state(transport.clone(), &state)?;
 
     // Register plugin's page
     host::RegisterEntity
-        .call(transport.clone(), Domain::Page)
+        .call_async(transport.clone(), Domain::Page)
         .await?;
 
     Ok(())
 }
 
-async fn ping(transport: Arc<JsonRpcTransport>, _params: ()) -> Result<String, RpcError> {
-    global::Ping.call(transport, ()).await?;
+async fn ping(transport: Transport, _params: ()) -> Result<String, RpcError> {
+    global::Ping.call_async(transport, ()).await?;
     Ok("pong".to_string())
 }
 
 // ---------- Page Handlers ----------
 
-async fn on_load(transport: Arc<JsonRpcTransport>, page_id: PageId) -> Result<(), RpcError> {
+async fn on_load(transport: Transport, page_id: PageId) -> Result<(), RpcError> {
     info!("Page loaded: {}", page_id);
 
-    let mut state: PluginState = try_get_state(transport.clone()).await?;
+    let mut state: PluginState = try_get_state(transport.clone())?;
     state.page_id = Some(page_id);
-    set_state(transport.clone(), &state).await?;
+    set_state(transport.clone(), &state)?;
 
     let component = build_ui(&state);
     host::SetPage
-        .call(transport.clone(), (page_id, component))
+        .call_async(transport.clone(), (page_id, component))
         .await?;
 
     Ok(())
 }
 
 async fn on_update(
-    transport: Arc<JsonRpcTransport>,
+    transport: Transport,
     params: (PageId, page::PageEvent),
 ) -> Result<(), RpcError> {
     let (page_id, event) = params;
     info!("Page updated: {:?}", event);
 
-    let mut state: PluginState = try_get_state(transport.clone()).await?;
+    let mut state: PluginState = try_get_state(transport.clone())?;
 
     match event {
         page::PageEvent::FormSubmitted(form_id, form_data) if form_id == "swap_form" => {
@@ -206,11 +208,11 @@ async fn on_update(
         }
     }
 
-    set_state(transport.clone(), &state).await?;
+    set_state(transport.clone(), &state)?;
 
     let component = build_ui(&state);
     host::SetPage
-        .call(transport.clone(), (page_id, component))
+        .call_async(transport.clone(), (page_id, component))
         .await?;
 
     Ok(())
@@ -219,7 +221,7 @@ async fn on_update(
 // ---------- Event Handler Functions ----------
 
 async fn handle_swap_form_update(
-    transport: &Arc<JsonRpcTransport>,
+    transport: &Transport,
     state: &mut PluginState,
     form_data: HashMap<String, String>,
 ) -> Result<(), RpcError> {
@@ -272,7 +274,7 @@ async fn handle_swap_form_update(
 }
 
 async fn handle_refresh_quote(
-    transport: &Arc<JsonRpcTransport>,
+    transport: &Transport,
     state: &mut PluginState,
 ) -> Result<(), RpcError> {
     if state.selected_from_token.is_some()
@@ -287,10 +289,7 @@ async fn handle_refresh_quote(
     Ok(())
 }
 
-async fn calculate_quote(
-    transport: &Arc<JsonRpcTransport>,
-    state: &mut PluginState,
-) -> Result<(), RpcError> {
+async fn calculate_quote(transport: &Transport, state: &mut PluginState) -> Result<(), RpcError> {
     let Some(from_idx) = state.selected_from_token else {
         error!("From token not selected");
         return Ok(());
@@ -325,16 +324,8 @@ async fn calculate_quote(
     let from_token_contract = ERC20::new(from_token.address, &provider);
     let to_token_contract = ERC20::new(to_token.address, &provider);
 
-    let from_decimals = from_token_contract
-        .decimals()
-        .call()
-        .await
-        .map_err(to_rpc_err)?;
-    let to_decimals = to_token_contract
-        .decimals()
-        .call()
-        .await
-        .map_err(to_rpc_err)?;
+    let from_decimals = from_token_contract.decimals().call().await.rpc_err()?;
+    let to_decimals = to_token_contract.decimals().call().await.rpc_err()?;
 
     state.input_decimals = from_decimals;
     state.output_decimals = to_decimals;
@@ -346,7 +337,7 @@ async fn calculate_quote(
             .getPair(from_token.address, to_token.address)
             .call()
             .await
-            .map_err(to_rpc_err)?
+            .rpc_err()?
             .0,
     );
 
@@ -357,7 +348,7 @@ async fn calculate_quote(
 
     // Get reserves
     let pair = IUniswapV2Pair::new(pair_address, &provider);
-    let reserves = pair.getReserves().call().await.map_err(to_rpc_err)?;
+    let reserves = pair.getReserves().call().await.rpc_err()?;
     let (reserve0, reserve1) = (reserves.reserve0, reserves.reserve1);
 
     // Determine which reserve corresponds to which token
@@ -383,7 +374,7 @@ async fn calculate_quote(
 }
 
 async fn handle_execute_swap(
-    transport: &Arc<JsonRpcTransport>,
+    transport: &Transport,
     state: &mut PluginState,
 ) -> Result<(), RpcError> {
     state.last_message = Some("Preparing swap...".into());
@@ -412,7 +403,7 @@ async fn handle_execute_swap(
 
     // Get coordinator session
     let account_id = coordinator::GetSession
-        .call(
+        .call_async(
             transport.clone(),
             (coordinator_id, ChainId::new_evm(CHAIN_ID), None),
         )
@@ -450,7 +441,7 @@ async fn handle_execute_swap(
 
     // Propose to coordinator
     coordinator::Propose
-        .call(transport.clone(), (coordinator_id, account_id, bundle))
+        .call_async(transport.clone(), (coordinator_id, account_id, bundle))
         .await?;
 
     state.last_message = Some("Swap executed successfully!".into());
@@ -589,7 +580,7 @@ fn main() {
         .init();
     info!("Starting Uniswap V2 Plugin...");
 
-    PluginServer::new_with_transport()
+    PluginRunner::new()
         .with_method(plugin::Init, init)
         .with_method(global::Ping, ping)
         .with_method(page::OnLoad, on_load)

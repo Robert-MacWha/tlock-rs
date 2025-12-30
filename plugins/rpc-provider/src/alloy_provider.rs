@@ -1,4 +1,4 @@
-use std::{sync::Arc, task::Poll};
+use std::task::Poll;
 
 use alloy::{
     providers::ProviderBuilder,
@@ -10,16 +10,13 @@ use alloy::{
 };
 use tlock_pdk::{
     tlock_api::{RpcMethod, host},
-    wasmi_plugin_pdk::transport::JsonRpcTransport,
+    wasmi_plugin_pdk::transport::Transport,
 };
 use tower_service::Service;
 
 //? Helpers to create an alloy provider using the host transport and `Request`
 // instead of a  standard HTTP transport.
-pub fn create_alloy_provider(
-    transport: Arc<JsonRpcTransport>,
-    url: String,
-) -> impl alloy::providers::Provider {
+pub fn create_alloy_provider(transport: Transport, url: String) -> impl alloy::providers::Provider {
     let host_transport = HostTransportService::new(transport, url);
     let client = RpcClient::new(host_transport, false);
 
@@ -28,12 +25,12 @@ pub fn create_alloy_provider(
 
 #[derive(Clone)]
 struct HostTransportService {
-    transport: Arc<JsonRpcTransport>,
+    transport: Transport,
     rpc_url: String,
 }
 
 impl HostTransportService {
-    pub fn new(transport: Arc<JsonRpcTransport>, rpc_url: String) -> Self {
+    pub fn new(transport: Transport, rpc_url: String) -> Self {
         Self { transport, rpc_url }
     }
 }
@@ -63,7 +60,7 @@ impl Service<RequestPacket> for HostTransportService {
             ));
 
             let resp = host::Fetch
-                .call(transport, params)
+                .call_async(transport, params)
                 .await
                 .map_err(TransportErrorKind::custom)?;
 

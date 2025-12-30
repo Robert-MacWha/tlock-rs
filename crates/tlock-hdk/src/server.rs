@@ -1,21 +1,18 @@
 use serde_json::Value;
-use tlock_api::RpcMethod;
-use wasmi_plugin_hdk::{host_handler::HostHandler, plugin::PluginId};
-use wasmi_plugin_pdk::{
-    rpc_message::RpcError,
-    server::{BoxFuture, MaybeSend},
-};
+use tlock_api::{RpcMethod, alloy::transports::BoxFuture};
+use wasmi_plugin_hdk::{host_handler::HostHandler, plugin_id::PluginId};
+use wasmi_plugin_pdk::{router::MaybeSend, rpc_message::RpcError};
 
-/// Lightweight wrapper around wasmi_plugin_pdk::server::PluginServer that
-/// provides a typed interface for registering RPC methods from tlock_api.
+/// Lightweight HostServer wrapper that provides a typed interface for
+/// registering RPC methods from tlock_api.
 pub struct HostServer<S: Clone + Send + Sync + 'static> {
-    s: wasmi_plugin_hdk::server::HostServer<S>,
+    inner: wasmi_plugin_hdk::server::HostServer<S>,
 }
 
 impl<S: Default + Clone + Send + Sync + 'static> Default for HostServer<S> {
     fn default() -> Self {
         Self {
-            s: wasmi_plugin_hdk::server::HostServer::default(),
+            inner: wasmi_plugin_hdk::server::HostServer::default(),
         }
     }
 }
@@ -23,7 +20,7 @@ impl<S: Default + Clone + Send + Sync + 'static> Default for HostServer<S> {
 impl<S: Clone + Send + Sync + 'static> HostServer<S> {
     pub fn new(state: S) -> Self {
         Self {
-            s: wasmi_plugin_hdk::server::HostServer::new(state),
+            inner: wasmi_plugin_hdk::server::HostServer::new(state),
         }
     }
 
@@ -33,7 +30,7 @@ impl<S: Clone + Send + Sync + 'static> HostServer<S> {
         F: Fn((PluginId, S), M::Params) -> Fut + Send + Sync + 'static,
         Fut: Future<Output = Result<M::Output, RpcError>> + MaybeSend + 'static,
     {
-        self.s = self.s.with_method(M::NAME, func);
+        self.inner = self.inner.with_method(M::NAME, func);
         self
     }
 }
@@ -45,6 +42,6 @@ impl<S: Clone + Send + Sync + 'static> HostHandler for HostServer<S> {
         method: &'a str,
         params: Value,
     ) -> BoxFuture<'a, Result<Value, RpcError>> {
-        self.s.handle(plugin, method, params)
+        self.inner.handle(plugin, method, params)
     }
 }

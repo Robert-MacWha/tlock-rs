@@ -1,4 +1,4 @@
-use std::{sync::Arc, task::Poll};
+use std::task::Poll;
 
 use alloy::{
     eips::BlockId,
@@ -13,7 +13,7 @@ use serde::Deserialize;
 use serde_json::value::to_raw_value;
 use tlock_pdk::{
     tlock_api::{RpcMethod, entities::EthProviderId, eth},
-    wasmi_plugin_pdk::transport::JsonRpcTransport,
+    wasmi_plugin_pdk::transport::Transport,
 };
 use tower_service::Service;
 use tracing::{error, info};
@@ -36,13 +36,13 @@ mod serde_helpers;
 /// ```
 #[derive(Clone)]
 pub struct AlloyBridge {
-    transport: Arc<JsonRpcTransport>,
+    transport: Transport,
     provider_id: EthProviderId,
 }
 
 impl AlloyBridge {
     #[allow(clippy::new_ret_no_self)]
-    pub fn new(transport: Arc<JsonRpcTransport>, provider_id: EthProviderId) -> RpcClient {
+    pub fn new(transport: Transport, provider_id: EthProviderId) -> RpcClient {
         let transport = AlloyBridge {
             transport,
             provider_id,
@@ -100,7 +100,7 @@ impl Service<RequestPacket> for AlloyBridge {
 
 async fn call_req(
     req: &SerializedRequest,
-    transport: Arc<JsonRpcTransport>,
+    transport: Transport,
     provider_id: EthProviderId,
 ) -> Result<Response, TransportError> {
     let id = req.id().clone();
@@ -122,17 +122,17 @@ async fn call_req(
         EthRequest::EthChainId(()) => {
             info!("Fetching chain ID for provider {:?}", provider_id);
             let resp = eth::ChainId
-                .call(transport.clone(), provider_id)
+                .call_async(transport.clone(), provider_id)
                 .await
-                .map_err(|e| TransportErrorKind::custom_str(&e.message()))?;
+                .map_err(|e| TransportErrorKind::custom_str(&e.to_string()))?;
             info!("Chain ID for provider {:?}: {:?}", provider_id, resp);
             serde_json::to_value(resp).map_err(TransportError::ser_err)?
         }
         EthRequest::EthBlockNumber(()) => {
             let resp = eth::BlockNumber
-                .call(transport.clone(), provider_id)
+                .call_async(transport.clone(), provider_id)
                 .await
-                .map_err(|e| TransportErrorKind::custom_str(&e.message()))?;
+                .map_err(|e| TransportErrorKind::custom_str(&e.to_string()))?;
             serde_json::to_value(resp).map_err(TransportError::ser_err)?
         }
         EthRequest::EthCall(tx_request, block_id, state_override, block_override) => {
@@ -140,7 +140,7 @@ async fn call_req(
             let block_id = block_id.unwrap_or(BlockId::latest());
             let block_override = block_override.map(|b| *b);
             let resp = eth::Call
-                .call(
+                .call_async(
                     transport.clone(),
                     (
                         provider_id,
@@ -151,7 +151,7 @@ async fn call_req(
                     ),
                 )
                 .await
-                .map_err(|e| TransportErrorKind::custom_str(&e.message()))?;
+                .map_err(|e| TransportErrorKind::custom_str(&e.to_string()))?;
             serde_json::to_value(resp).map_err(TransportError::ser_err)?
         }
         EthRequest::EthGetBalance(address, block_id) => {
@@ -163,9 +163,9 @@ async fn call_req(
             );
 
             let resp = eth::GetBalance
-                .call(transport.clone(), (provider_id, address, block_id))
+                .call_async(transport.clone(), (provider_id, address, block_id))
                 .await
-                .map_err(|e| TransportErrorKind::custom_str(&e.message()))?;
+                .map_err(|e| TransportErrorKind::custom_str(&e.to_string()))?;
 
             info!("ETH balance for address {}: {:?}", address, resp);
 
@@ -173,9 +173,9 @@ async fn call_req(
         }
         EthRequest::EthGasPrice(_) => {
             let resp = eth::GasPrice
-                .call(transport.clone(), provider_id)
+                .call_async(transport.clone(), provider_id)
                 .await
-                .map_err(|e| TransportErrorKind::custom_str(&e.message()))?;
+                .map_err(|e| TransportErrorKind::custom_str(&e.to_string()))?;
             serde_json::to_value(resp).map_err(TransportError::ser_err)?
         }
         EthRequest::EthEstimateGas(
@@ -188,7 +188,7 @@ async fn call_req(
             let block_id = block_id.unwrap_or(BlockId::latest());
             let block_override = block_override.map(|b| *b);
             let resp = eth::EstimateGas
-                .call(
+                .call_async(
                     transport.clone(),
                     (
                         provider_id,
@@ -199,29 +199,29 @@ async fn call_req(
                     ),
                 )
                 .await
-                .map_err(|e| TransportErrorKind::custom_str(&e.message()))?;
+                .map_err(|e| TransportErrorKind::custom_str(&e.to_string()))?;
             serde_json::to_value(resp).map_err(TransportError::ser_err)?
         }
         EthRequest::EthGetTransactionCount(address, block_id) => {
             let block_id = block_id.unwrap_or(BlockId::latest());
             let resp = eth::GetTransactionCount
-                .call(transport.clone(), (provider_id, address, block_id))
+                .call_async(transport.clone(), (provider_id, address, block_id))
                 .await
-                .map_err(|e| TransportErrorKind::custom_str(&e.message()))?;
+                .map_err(|e| TransportErrorKind::custom_str(&e.to_string()))?;
             serde_json::to_value(resp).map_err(TransportError::ser_err)?
         }
         EthRequest::EthSendRawTransaction(bytes) => {
             let resp = eth::SendRawTransaction
-                .call(transport.clone(), (provider_id, bytes))
+                .call_async(transport.clone(), (provider_id, bytes))
                 .await
-                .map_err(|e| TransportErrorKind::custom_str(&e.message()))?;
+                .map_err(|e| TransportErrorKind::custom_str(&e.to_string()))?;
             serde_json::to_value(resp).map_err(TransportError::ser_err)?
         }
         EthRequest::EthGetTransactionReceipt(txhash) => {
             let resp = eth::GetTransactionReceipt
-                .call(transport.clone(), (provider_id, txhash))
+                .call_async(transport.clone(), (provider_id, txhash))
                 .await
-                .map_err(|e| TransportErrorKind::custom_str(&e.message()));
+                .map_err(|e| TransportErrorKind::custom_str(&e.to_string()));
             //? Map None responses to null JSON value since that's what's expected for getTransactionReceipt
             // TODO: Consider instead returning a Result<Option<Receipt>> to make this more explicit / correct.
             match resp {
@@ -236,28 +236,28 @@ async fn call_req(
                 BlockTransactionsKind::Hashes
             };
             let resp = eth::GetBlock
-                .call(
+                .call_async(
                     transport.clone(),
                     (provider_id, block_number.into(), transactions_kind),
                 )
                 .await
-                .map_err(|e| TransportErrorKind::custom_str(&e.message()))?;
+                .map_err(|e| TransportErrorKind::custom_str(&e.to_string()))?;
             serde_json::to_value(resp).map_err(TransportError::ser_err)?
         }
         EthRequest::EthGetCodeAt(address, block_id) => {
             let block_id = block_id.unwrap_or(BlockId::latest());
             let resp = eth::GetCode
-                .call(transport.clone(), (provider_id, address, block_id))
+                .call_async(transport.clone(), (provider_id, address, block_id))
                 .await
-                .map_err(|e| TransportErrorKind::custom_str(&e.message()))?;
+                .map_err(|e| TransportErrorKind::custom_str(&e.to_string()))?;
             serde_json::to_value(resp).map_err(TransportError::ser_err)?
         }
         EthRequest::EthGetStorageAt(address, slot, block_id) => {
             let block_id = block_id.unwrap_or(BlockId::latest());
             let resp = eth::GetStorageAt
-                .call(transport.clone(), (provider_id, address, slot, block_id))
+                .call_async(transport.clone(), (provider_id, address, slot, block_id))
                 .await
-                .map_err(|e| TransportErrorKind::custom_str(&e.message()))?;
+                .map_err(|e| TransportErrorKind::custom_str(&e.to_string()))?;
             serde_json::to_value(resp).map_err(TransportError::ser_err)?
         }
         _ => {

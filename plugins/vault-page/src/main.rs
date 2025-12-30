@@ -1,8 +1,8 @@
-use std::{collections::HashMap, io::stderr, sync::Arc};
+use std::{collections::HashMap, io::stderr};
 
 use serde::{Deserialize, Serialize};
 use tlock_pdk::{
-    server::PluginServer,
+    runner::PluginRunner,
     state::{get_state, set_state},
     tlock_api::{
         RpcMethod,
@@ -16,7 +16,10 @@ use tlock_pdk::{
         global, host, page, plugin,
         vault::{self},
     },
-    wasmi_plugin_pdk::{rpc_message::RpcError, transport::JsonRpcTransport},
+    wasmi_plugin_pdk::{
+        rpc_message::{RpcError, RpcErrorContext},
+        transport::Transport,
+    },
 };
 use tracing::{info, warn};
 use tracing_subscriber::fmt;
@@ -31,12 +34,12 @@ struct PluginState {
 
 // ---------- Plugin Handlers ----------
 
-async fn init(transport: Arc<JsonRpcTransport>, _params: ()) -> Result<(), RpcError> {
+async fn init(transport: Transport, _params: ()) -> Result<(), RpcError> {
     info!("Initializing Vault Page Plugin");
 
     // Register the vault page
     host::RegisterEntity
-        .call(transport.clone(), Domain::Page)
+        .call_async(transport.clone(), Domain::Page)
         .await?;
 
     handle_request_vault(&transport).await?;
@@ -44,35 +47,35 @@ async fn init(transport: Arc<JsonRpcTransport>, _params: ()) -> Result<(), RpcEr
     Ok(())
 }
 
-async fn ping(_: Arc<JsonRpcTransport>, _: ()) -> Result<String, RpcError> {
+async fn ping(_: Transport, _: ()) -> Result<String, RpcError> {
     Ok("pong".to_string())
 }
 
 // ---------- UI Handlers ----------
 
-async fn on_load(transport: Arc<JsonRpcTransport>, page_id: PageId) -> Result<(), RpcError> {
+async fn on_load(transport: Transport, page_id: PageId) -> Result<(), RpcError> {
     info!("Page loaded: {}", page_id);
 
-    let mut state: PluginState = get_state(transport.clone()).await;
+    let mut state: PluginState = get_state(transport.clone());
     state.page_id = Some(page_id);
-    set_state(transport.clone(), &state).await?;
+    set_state(transport.clone(), &state)?;
 
     let component = build_ui(&state);
     host::SetPage
-        .call(transport.clone(), (page_id, component))
+        .call_async(transport.clone(), (page_id, component))
         .await?;
 
     Ok(())
 }
 
 async fn on_update(
-    transport: Arc<JsonRpcTransport>,
+    transport: Transport,
     params: (PageId, page::PageEvent),
 ) -> Result<(), RpcError> {
     let (page_id, event) = params;
     info!("Page updated: {:?}", event);
 
-    let mut state: PluginState = get_state(transport.clone()).await;
+    let mut state: PluginState = get_state(transport.clone());
 
     match event {
         page::PageEvent::ButtonClicked(button_id) if button_id == "refresh_assets" => {
@@ -90,11 +93,11 @@ async fn on_update(
         }
     }
 
-    set_state(transport.clone(), &state).await?;
+    set_state(transport.clone(), &state)?;
 
     let component = build_ui(&state);
     host::SetPage
-        .call(transport.clone(), (page_id, component))
+        .call_async(transport.clone(), (page_id, component))
         .await?;
 
     Ok(())
@@ -102,18 +105,18 @@ async fn on_update(
 
 // ---------- Event Handlers ----------
 
-async fn handle_request_vault(transport: &Arc<JsonRpcTransport>) -> Result<(), RpcError> {
+async fn handle_request_vault(transport: &Transport) -> Result<(), RpcError> {
     info!("Requesting vault from host");
 
-    let vault_id = host::RequestVault.call(transport.clone(), ()).await?;
-    let mut state: PluginState = get_state(transport.clone()).await;
+    let vault_id = host::RequestVault.call_async(transport.clone(), ()).await?;
+    let mut state: PluginState = get_state(transport.clone());
     state.vault_id = Some(vault_id);
     state.last_message = Some(format!("Vault selected: {}", vault_id));
     info!("Vault selected: {}", vault_id);
 
-    set_state(transport.clone(), &state).await?;
+    set_state(transport.clone(), &state)?;
     host::SetPage
-        .call(
+        .call_async(
             transport.clone(),
             (state.page_id.unwrap(), build_ui(&state)),
         )
@@ -123,7 +126,7 @@ async fn handle_request_vault(transport: &Arc<JsonRpcTransport>) -> Result<(), R
 }
 
 async fn handle_refresh_assets(
-    transport: &Arc<JsonRpcTransport>,
+    transport: &Transport,
     state: &mut PluginState,
 ) -> Result<(), RpcError> {
     let Some(vault_id) = state.vault_id else {
@@ -134,12 +137,9 @@ async fn handle_refresh_assets(
     info!("Refreshing assets for vault: {}", vault_id);
 
     let assets = vault::GetAssets
-        .call(transport.clone(), vault_id)
+        .call_async(transport.clone(), vault_id)
         .await
-        .map_err(|e| {
-            warn!("Error fetching assets: {:?}", e);
-            e
-        })?;
+        .context("Error fetching assets")?;
 
     state.cached_assets = assets;
     state.last_message = Some(format!("Fetched {} assets", state.cached_assets.len()));
@@ -148,7 +148,7 @@ async fn handle_refresh_assets(
 }
 
 async fn handle_get_deposit(
-    transport: &Arc<JsonRpcTransport>,
+    transport: &Transport,
     state: &mut PluginState,
     form_data: HashMap<String, String>,
 ) -> Result<(), RpcError> {
@@ -162,19 +162,14 @@ async fn handle_get_deposit(
         return Ok(());
     };
 
-    let asset_id: AssetId = asset_str
-        .parse()
-        .map_err(|e| RpcError::Custom(format!("Invalid asset ID: {}", e)))?;
+    let asset_id: AssetId = asset_str.parse().context("Invalid Asset ID")?;
 
     info!("Getting deposit address for asset: {}", asset_id);
 
     let account_id = vault::GetDepositAddress
-        .call(transport.clone(), (vault_id, asset_id.clone()))
+        .call_async(transport.clone(), (vault_id, asset_id.clone()))
         .await
-        .map_err(|e| {
-            warn!("Error getting deposit address: {:?}", e);
-            e
-        })?;
+        .context("Error fetching deposit address")?;
 
     state.last_message = Some(format!("Deposit address for {}: {}", asset_id, account_id));
 
@@ -182,7 +177,7 @@ async fn handle_get_deposit(
 }
 
 async fn handle_withdraw(
-    transport: &Arc<JsonRpcTransport>,
+    transport: &Transport,
     state: &mut PluginState,
     form_data: HashMap<String, String>,
 ) -> Result<(), RpcError> {
@@ -208,15 +203,15 @@ async fn handle_withdraw(
 
     let to_address: AccountId = to_address_str
         .parse()
-        .map_err(|e| RpcError::Custom(format!("Invalid to_address: {}", e)))?;
+        .context(format!("Invalid to_address: {}", to_address_str))?;
 
     let asset_id: AssetId = asset_str
         .parse()
-        .map_err(|e| RpcError::Custom(format!("Invalid asset ID: {}", e)))?;
+        .context(format!("Invalid Asset ID: {}", asset_str))?;
 
     let amount: alloy::primitives::U256 = amount_str
         .parse()
-        .map_err(|_| RpcError::Custom("Invalid amount".to_string()))?;
+        .context(format!("Invalid amount: {}", amount_str))?;
 
     info!(
         "Withdrawing {} {} from vault {} to {}",
@@ -224,12 +219,9 @@ async fn handle_withdraw(
     );
 
     vault::Withdraw
-        .call(transport.clone(), (vault_id, to_address, asset_id, amount))
+        .call_async(transport.clone(), (vault_id, to_address, asset_id, amount))
         .await
-        .map_err(|e| {
-            warn!("Error withdrawing: {:?}", e);
-            e
-        })?;
+        .context("Withdrawal error")?;
 
     state.last_message = Some("Withdrawal successful".to_string());
 
@@ -312,7 +304,7 @@ fn main() {
         .init();
     info!("Starting Vault Page Plugin...");
 
-    PluginServer::new_with_transport()
+    PluginRunner::new()
         .with_method(plugin::Init, init)
         .with_method(global::Ping, ping)
         .with_method(page::OnLoad, on_load)

@@ -2,6 +2,7 @@ use std::{
     collections::HashMap,
     hash::{DefaultHasher, Hash, Hasher},
     sync::{Arc, Mutex, Weak},
+    time::Duration,
 };
 
 use alloy::{primitives::U256, transports::http::reqwest};
@@ -20,11 +21,8 @@ use tlock_hdk::{
         eth, global, host, page, plugin,
         vault::{self},
     },
-    wasmi_plugin_hdk::{
-        self,
-        plugin::{Plugin, PluginId},
-    },
-    wasmi_plugin_pdk::rpc_message::RpcError,
+    wasmi_plugin_hdk::{self, plugin::Plugin, plugin_id::PluginId},
+    wasmi_plugin_pdk::rpc_message::{RpcError, RpcErrorContext},
 };
 use tracing::{info, warn};
 use uuid::Uuid;
@@ -32,7 +30,7 @@ use uuid::Uuid;
 use crate::host_state::{HostState, PluginData, PluginSource};
 
 pub struct Host {
-    plugins: Mutex<HashMap<PluginId, Arc<Plugin>>>,
+    plugins: Mutex<HashMap<PluginId, Plugin>>,
     plugin_sources: Mutex<HashMap<PluginId, PluginSource>>,
     entities: Mutex<HashMap<EntityId, PluginId>>,
 
@@ -86,8 +84,10 @@ pub enum UserResponse {
 pub enum PluginError {
     #[error("reqwest error")]
     ReqwestError(#[from] reqwest::Error),
-    #[error(transparent)]
-    WasmiPdkError(#[from] wasmi_plugin_hdk::plugin::PluginError),
+    #[error("Pdk error")]
+    PdkError(#[from] wasmi_plugin_hdk::plugin::PluginError),
+    #[error("Rpc error")]
+    RpcError(#[from] RpcError),
 }
 
 impl Default for Host {
@@ -169,7 +169,7 @@ impl Host {
                 source: plugin_sources
                     .get(id)
                     .cloned()
-                    .expect("Plugin source not tracked"),
+                    .expect("Plugin source not found"),
             })
             .collect();
 
@@ -191,30 +191,21 @@ impl Host {
         source: PluginSource,
         name: &str,
     ) -> Result<PluginId, PluginError> {
-        let plugin_id = self.load_plugin(source, name).await?;
+        let plugin = self.load_plugin(source, name).await?;
+        info!("Initializing plugin {}", plugin.id());
 
-        info!("Initializing plugin {}", plugin_id);
-        let plugin = match self.get_plugin(&plugin_id) {
-            Some(plugin) => plugin,
-            None => {
-                warn!("Plugin {} not found during initialization", plugin_id);
-                return Err(PluginError::WasmiPdkError(RpcError::InvalidParams.into()));
-            }
-        };
-
-        match plugin::Init.call(plugin.clone(), ()).await {
-            Err(wasmi_plugin_hdk::plugin::PluginError::RpcError(RpcError::MethodNotFound)) => {
+        let plugin_id = plugin.id();
+        match plugin::Init.call_async(plugin.clone(), ()).await {
+            Err(RpcError::MethodNotFound) => {
                 info!("Plugin {} does not implement Init, skipping", plugin.id());
+
                 self.notify_observers();
                 Ok(plugin_id)
             }
-            Err(e) => {
-                warn!("Error calling Init on plugin {}: {:?}", plugin.id(), e);
-                self.notify_observers();
-                Err(e.into())
-            }
+            Err(e) => Err(e.into()),
             Ok(_) => {
                 info!("Plugin {} initialized", plugin.id());
+
                 self.notify_observers();
                 Ok(plugin_id)
             }
@@ -226,7 +217,7 @@ impl Host {
         self: &Arc<Host>,
         source: PluginSource,
         name: &str,
-    ) -> Result<PluginId, PluginError> {
+    ) -> Result<Plugin, PluginError> {
         let server = self.get_server();
         let server = Arc::new(server);
 
@@ -237,15 +228,21 @@ impl Host {
         wasm_bytes.hash(&mut s);
         let id: u128 = s.finish().into();
         let id = PluginId::from(id);
-        let plugin = Plugin::new(name, wasm_bytes, server)
-            .map_err(|e| wasmi_plugin_hdk::plugin::PluginError::SpawnError(e.into()))?
-            .with_id(id);
 
-        let plugin = Arc::new(plugin);
-        self.plugins.lock().unwrap().insert(plugin.id(), plugin);
+        let plugin = Plugin::builder(name, wasm_bytes, server)
+            .with_id(id)
+            .with_timeout(Duration::from_secs(60))
+            .build()
+            .await?;
+
+        self.plugins
+            .lock()
+            .unwrap()
+            .insert(plugin.id(), plugin.clone());
+
         self.plugin_sources.lock().unwrap().insert(id, source);
         info!("Loaded plugin '{}'", name);
-        Ok(id)
+        Ok(plugin)
     }
 
     pub fn get_server(self: &Arc<Host>) -> HostServer<Weak<Host>> {
@@ -293,9 +290,8 @@ impl Host {
         plugins.keys().cloned().collect()
     }
 
-    pub fn get_plugin(&self, plugin_id: &PluginId) -> Option<Arc<Plugin>> {
-        let plugins = self.plugins.lock().unwrap();
-        plugins.get(plugin_id).cloned()
+    pub fn get_plugin(&self, plugin_id: &PluginId) -> Option<Plugin> {
+        self.plugins.lock().unwrap().get(plugin_id).cloned()
     }
 
     pub fn get_entity_plugin_id(&self, entity_id: impl Into<EntityId>) -> Option<PluginId> {
@@ -305,7 +301,7 @@ impl Host {
         entities.get(&entity_id).cloned()
     }
 
-    pub fn get_entity_plugin(&self, entity_id: impl Into<EntityId>) -> Option<Arc<Plugin>> {
+    pub fn get_entity_plugin(&self, entity_id: impl Into<EntityId>) -> Option<Plugin> {
         let entity_id = entity_id.into();
         info!("Getting plugin for entity {:?}", entity_id);
         let plugin_id = self.get_entity_plugin_id(entity_id)?;
@@ -412,29 +408,24 @@ impl Host {
     }
 
     /// ? Helper to get the plugin or return an RpcError if not found
-    fn get_entity_plugin_error(
-        &self,
-        entity_id: impl Into<EntityId>,
-    ) -> Result<Arc<Plugin>, RpcError> {
+    fn get_entity_plugin_error(&self, entity_id: impl Into<EntityId>) -> Result<Plugin, RpcError> {
         let entity_id = entity_id.into();
         let plugin = self
             .get_entity_plugin(entity_id)
-            .ok_or_else(|| RpcError::Custom(format!("Entity {:?} not found", entity_id)))?;
+            .context(format!("Entity {:?} not found", entity_id))?;
+
         Ok(plugin)
     }
 
     pub async fn ping_plugin(&self, plugin_id: &PluginId) -> Result<String, RpcError> {
-        let plugin = if let Some(plugin) = self.get_plugin(plugin_id) {
-            plugin
-        } else {
-            warn!("Plugin {} not found", plugin_id);
-            return Err(RpcError::InvalidParams);
-        };
+        let plugin = self
+            .get_plugin(plugin_id)
+            .context(format!("Plugin {} not found", plugin_id))?;
 
-        let resp = global::Ping.call(plugin, ()).await.map_err(|e| {
-            warn!("Error calling Ping on plugin {}: {:?}", plugin_id, e);
-            e.as_rpc_code()
-        })?;
+        let resp = global::Ping
+            .call_async(plugin, ())
+            .await
+            .context(format!("Error calling Ping on plugin {}", plugin_id))?;
         Ok(resp)
     }
 
@@ -605,10 +596,10 @@ impl Host {
     ) -> Result<Vec<(AssetId, U256)>, RpcError> {
         let plugin = self.get_entity_plugin_error(vault_id)?;
 
-        let balance = vault::GetAssets.call(plugin, vault_id).await.map_err(|e| {
-            warn!("Error calling BalanceOf: {:?}", e);
-            e.as_rpc_code()
-        })?;
+        let balance = vault::GetAssets
+            .call_async(plugin, vault_id)
+            .await
+            .context("Error calling BalanceOf")?;
         Ok(balance)
     }
 
@@ -620,12 +611,9 @@ impl Host {
         let plugin = self.get_entity_plugin_error(vault_id)?;
 
         vault::Withdraw
-            .call(plugin, (vault_id, to, asset, amount))
+            .call_async(plugin, (vault_id, to, asset, amount))
             .await
-            .map_err(|e| {
-                warn!("Error calling Transfer: {:?}", e);
-                e.as_rpc_code()
-            })?;
+            .context("Error calling Withdraw")?;
         Ok(())
     }
 
@@ -637,12 +625,9 @@ impl Host {
         let plugin = self.get_entity_plugin_error(vault_id)?;
 
         let result = vault::GetDepositAddress
-            .call(plugin, (vault_id, asset))
+            .call_async(plugin, (vault_id, asset))
             .await
-            .map_err(|e| {
-                warn!("Error calling GetReceiptAddress: {:?}", e);
-                e.as_rpc_code()
-            })?;
+            .context("Error calling GetDepositAddress")?;
         Ok(result)
     }
 
@@ -662,10 +647,10 @@ impl Host {
     pub async fn page_on_load(&self, page_id: PageId) -> Result<(), RpcError> {
         let plugin = self.get_entity_plugin_error(page_id)?;
 
-        page::OnLoad.call(plugin, page_id).await.map_err(|e| {
-            warn!("Error calling OnPageLoad: {:?}", e);
-            e.as_rpc_code()
-        })?;
+        page::OnLoad
+            .call_async(plugin, page_id)
+            .await
+            .context("Error calling OnPageLoad")?;
         Ok(())
     }
 
@@ -674,12 +659,9 @@ impl Host {
         let plugin = self.get_entity_plugin_error(page_id)?;
 
         page::OnUpdate
-            .call(plugin, (page_id, event))
+            .call_async(plugin, (page_id, event))
             .await
-            .map_err(|e| {
-                warn!("Error calling OnPageUpdate: {:?}", e);
-                e.as_rpc_code()
-            })?;
+            .context("Error calling OnPageUpdate")?;
         Ok(())
     }
 
@@ -689,10 +671,10 @@ impl Host {
     ) -> Result<U256, RpcError> {
         let plugin = self.get_entity_plugin_error(provider_id)?;
 
-        let chain_id = eth::ChainId.call(plugin, provider_id).await.map_err(|e| {
-            warn!("Error calling ChainId: {:?}", e);
-            e.as_rpc_code()
-        })?;
+        let chain_id = eth::ChainId
+            .call_async(plugin, provider_id)
+            .await
+            .context("Error calling ChainId")?;
         Ok(chain_id)
     }
 
@@ -703,12 +685,9 @@ impl Host {
         let plugin = self.get_entity_plugin_error(provider_id)?;
 
         let block_number = eth::BlockNumber
-            .call(plugin, provider_id)
+            .call_async(plugin, provider_id)
             .await
-            .map_err(|e| {
-                warn!("Error calling BlockNumber: {:?}", e);
-                e.as_rpc_code()
-            })?;
+            .context("Error calling BlockNumber")?;
         Ok(block_number)
     }
 
@@ -718,10 +697,10 @@ impl Host {
     ) -> Result<<eth::Call as RpcMethod>::Output, RpcError> {
         let plugin = self.get_entity_plugin_error(params.0)?;
 
-        let resp = eth::Call.call(plugin, params).await.map_err(|e| {
-            warn!("Error calling Call: {:?}", e);
-            e.as_rpc_code()
-        })?;
+        let resp = eth::Call
+            .call_async(plugin, params)
+            .await
+            .context("Error calling Call")?;
         Ok(resp)
     }
 
@@ -731,10 +710,10 @@ impl Host {
     ) -> Result<<eth::GetBalance as RpcMethod>::Output, RpcError> {
         let plugin = self.get_entity_plugin_error(params.0)?;
 
-        let resp = eth::GetBalance.call(plugin, params).await.map_err(|e| {
-            warn!("Error calling GetBalance: {:?}", e);
-            e.as_rpc_code()
-        })?;
+        let resp = eth::GetBalance
+            .call_async(plugin, params)
+            .await
+            .context("Error calling GetBalance")?;
         Ok(resp)
     }
 
@@ -744,10 +723,10 @@ impl Host {
     ) -> Result<u128, RpcError> {
         let plugin = self.get_entity_plugin_error(provider_id)?;
 
-        let gas_price = eth::GasPrice.call(plugin, provider_id).await.map_err(|e| {
-            warn!("Error calling GasPrice: {:?}", e);
-            e.as_rpc_code()
-        })?;
+        let gas_price = eth::GasPrice
+            .call_async(plugin, provider_id)
+            .await
+            .context("Error calling GasPrice")?;
         Ok(gas_price)
     }
 
@@ -758,12 +737,9 @@ impl Host {
         let plugin = self.get_entity_plugin_error(params.0)?;
 
         let resp = eth::GetTransactionCount
-            .call(plugin, params)
+            .call_async(plugin, params)
             .await
-            .map_err(|e| {
-                warn!("Error calling GetTransactionCount: {:?}", e);
-                e.as_rpc_code()
-            })?;
+            .context("Error calling GetTransactionCount")?;
         Ok(resp)
     }
 
@@ -774,12 +750,9 @@ impl Host {
         let plugin = self.get_entity_plugin_error(params.0)?;
 
         let tx_hash = eth::SendRawTransaction
-            .call(plugin, params)
+            .call_async(plugin, params)
             .await
-            .map_err(|e| {
-                warn!("Error calling SendRawTransaction: {:?}", e);
-                e.as_rpc_code()
-            })?;
+            .context("Error calling SendRawTransaction")?;
         Ok(tx_hash)
     }
 
@@ -789,10 +762,10 @@ impl Host {
     ) -> Result<<eth::EstimateGas as RpcMethod>::Output, RpcError> {
         let plugin = self.get_entity_plugin_error(params.0)?;
 
-        let gas_estimate = eth::EstimateGas.call(plugin, params).await.map_err(|e| {
-            warn!("Error calling EstimateGas: {:?}", e);
-            e.as_rpc_code()
-        })?;
+        let gas_estimate = eth::EstimateGas
+            .call_async(plugin, params)
+            .await
+            .context("Error calling EstimateGas")?;
         Ok(gas_estimate)
     }
 
@@ -803,12 +776,9 @@ impl Host {
         let plugin = self.get_entity_plugin_error(params.0)?;
 
         let receipt = eth::GetTransactionReceipt
-            .call(plugin, params)
+            .call_async(plugin, params)
             .await
-            .map_err(|e| {
-                warn!("Error calling GetTransactionReceipt: {:?}", e);
-                e.as_rpc_code()
-            })?;
+            .context("Error calling GetTransactionReceipt")?;
         Ok(receipt)
     }
 
@@ -818,10 +788,10 @@ impl Host {
     ) -> Result<<eth::GetBlock as RpcMethod>::Output, RpcError> {
         let plugin = self.get_entity_plugin_error(params.0)?;
 
-        let block = eth::GetBlock.call(plugin, params).await.map_err(|e| {
-            warn!("Error calling GetBlock: {:?}", e);
-            e.as_rpc_code()
-        })?;
+        let block = eth::GetBlock
+            .call_async(plugin, params)
+            .await
+            .context("Error calling GetBlock")?;
         Ok(block)
     }
 
@@ -831,10 +801,10 @@ impl Host {
     ) -> Result<<eth::GetCode as RpcMethod>::Output, RpcError> {
         let plugin = self.get_entity_plugin_error(params.0)?;
 
-        let code = eth::GetCode.call(plugin, params).await.map_err(|e| {
-            warn!("Error calling GetCode: {:?}", e);
-            e.as_rpc_code()
-        })?;
+        let code = eth::GetCode
+            .call_async(plugin, params)
+            .await
+            .context("Error calling GetCode")?;
         Ok(code)
     }
 
@@ -844,10 +814,10 @@ impl Host {
     ) -> Result<<eth::GetStorageAt as RpcMethod>::Output, RpcError> {
         let plugin = self.get_entity_plugin_error(params.0)?;
 
-        let storage = eth::GetStorageAt.call(plugin, params).await.map_err(|e| {
-            warn!("Error calling GetStorageAt: {:?}", e);
-            e.as_rpc_code()
-        })?;
+        let storage = eth::GetStorageAt
+            .call_async(plugin, params)
+            .await
+            .context("Error calling GetStorageAt")?;
         Ok(storage)
     }
 
@@ -858,12 +828,9 @@ impl Host {
         let plugin = self.get_entity_plugin_error(params.0)?;
 
         let assets = coordinator::GetAssets
-            .call(plugin, params)
+            .call_async(plugin, params)
             .await
-            .map_err(|e| {
-                warn!("Error calling GetAssets: {:?}", e);
-                e.as_rpc_code()
-            })?;
+            .context("Error calling GetAssets")?;
         Ok(assets)
     }
 
@@ -874,12 +841,9 @@ impl Host {
         let plugin = self.get_entity_plugin_error(params.0)?;
 
         let session = coordinator::GetSession
-            .call(plugin, params)
+            .call_async(plugin, params)
             .await
-            .map_err(|e| {
-                warn!("Error calling GetSession: {:?}", e);
-                e.as_rpc_code()
-            })?;
+            .context("Error calling GetSession")?;
         Ok(session)
     }
 
@@ -890,12 +854,9 @@ impl Host {
         let plugin = self.get_entity_plugin_error(params.0)?;
 
         let result = coordinator::Propose
-            .call(plugin, params)
+            .call_async(plugin, params)
             .await
-            .map_err(|e| {
-                warn!("Error calling Propose: {:?}", e);
-                e.as_rpc_code()
-            })?;
+            .context("Error calling Propose")?;
         Ok(result)
     }
 }

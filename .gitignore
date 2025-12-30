@@ -4,3 +4,4 @@ profile.json.gz
 .direnv
 .claude
 .vscode
+.chrome-unsafe-profile

@@ -6,7 +6,7 @@
 //! stores its private key in memory and in plaintext host storage, does not
 //! authenticate requests, and does not do any validation of incoming data. It
 //! is intended purely for demonstration and testing.
-use std::{io::stderr, sync::Arc};
+use std::io::stderr;
 
 use alloy::{
     hex,
@@ -19,7 +19,7 @@ use alloy::{
 use serde::{Deserialize, Serialize};
 use tlock_alloy::AlloyBridge;
 use tlock_pdk::{
-    server::PluginServer,
+    runner::PluginRunner,
     state::{set_state, try_get_state},
     tlock_api::{
         RpcMethod,
@@ -34,8 +34,8 @@ use tlock_pdk::{
         plugin, vault,
     },
     wasmi_plugin_pdk::{
-        rpc_message::{RpcError, to_rpc_err},
-        transport::JsonRpcTransport,
+        rpc_message::{RpcError, RpcErrorContext, ToRpcResult},
+        transport::Transport,
     },
 };
 use tracing::{info, trace};
@@ -72,21 +72,21 @@ enum EvmAsset {
     Erc20(Address),
 }
 
-async fn ping(transport: Arc<JsonRpcTransport>, _: ()) -> Result<String, RpcError> {
-    global::Ping.call(transport, ()).await?;
+async fn ping(transport: Transport, _: ()) -> Result<String, RpcError> {
+    global::Ping.call_async(transport, ()).await?;
     Ok("pong".to_string())
 }
 
-async fn init(transport: Arc<JsonRpcTransport>, _: ()) -> Result<(), RpcError> {
-    let vault_id = host::RequestVault.call(transport.clone(), ()).await?;
+async fn init(transport: Transport, _: ()) -> Result<(), RpcError> {
+    let vault_id = host::RequestVault.call_async(transport.clone(), ()).await?;
     info!("Obtained vault ID: {}", vault_id);
 
     let provider_id = host::RequestEthProvider
-        .call(transport.clone(), ChainId::new_evm(CHAIN_ID))
+        .call_async(transport.clone(), ChainId::new_evm(CHAIN_ID))
         .await?;
 
     host::RegisterEntity
-        .call(transport.clone(), Domain::Page)
+        .call_async(transport.clone(), Domain::Page)
         .await?;
 
     let state = State {
@@ -97,15 +97,15 @@ async fn init(transport: Arc<JsonRpcTransport>, _: ()) -> Result<(), RpcError> {
         account: None,
     };
 
-    set_state(transport.clone(), &state).await?;
+    set_state(transport.clone(), &state)?;
     Ok(())
 }
 
 async fn get_session(
-    transport: Arc<JsonRpcTransport>,
+    transport: Transport,
     params: (CoordinatorId, ChainId, Option<AccountId>),
 ) -> Result<AccountId, RpcError> {
-    let state: State = try_get_state(transport.clone()).await?;
+    let state: State = try_get_state(transport.clone())?;
     let (coordinator_id, chain_id, maybe_account_id) = params;
 
     if Some(coordinator_id.into()) != state.coordinator_id {
@@ -131,10 +131,10 @@ async fn get_session(
 }
 
 async fn get_assets(
-    transport: Arc<JsonRpcTransport>,
+    transport: Transport,
     params: (CoordinatorId, AccountId),
 ) -> Result<Vec<(AssetId, U256)>, RpcError> {
-    let state: State = try_get_state(transport.clone()).await?;
+    let state: State = try_get_state(transport.clone())?;
     let (coordinator_id, account_id) = params;
 
     if Some(coordinator_id.into()) != state.coordinator_id {
@@ -150,41 +150,41 @@ async fn get_assets(
     }
 
     // TODO: Filter assets by those on the same chain as the account
-    vault::GetAssets
-        .call(transport.clone(), state.vault_id)
-        .await
+    Ok(vault::GetAssets
+        .call_async(transport.clone(), state.vault_id)
+        .await?)
 }
 
 async fn propose(
-    transport: Arc<JsonRpcTransport>,
+    transport: Transport,
     params: (CoordinatorId, AccountId, coordinator::EvmBundle),
 ) -> Result<(), RpcError> {
     info!("Received proposal: {:#?}", params);
 
-    let state: State = try_get_state(transport.clone()).await?;
+    let state: State = try_get_state(transport.clone())?;
     let (coordinator_id, account_id, bundle) = params;
 
     if Some(coordinator_id.into()) != state.coordinator_id {
-        return Err(RpcError::Custom("Invalid CoordinatorId".into()));
+        return Err(RpcError::custom("Invalid CoordinatorId"));
     }
 
     let Some(state_account_id) = state.account.clone() else {
-        return Err(RpcError::Custom("No Account configured".into()));
+        return Err(RpcError::custom("No Account configured"));
     };
 
     let Some(state_account_address) = state_account_id.as_evm_address() else {
-        return Err(RpcError::Custom("Account is not an EVM account".into()));
+        return Err(RpcError::custom("Account is not an EVM account"));
     };
 
     let Some(state_private_key) = state.private_key else {
-        return Err(RpcError::Custom("No Private Key configured".into()));
+        return Err(RpcError::custom("No Private Key configured"));
     };
 
     if account_id != state_account_id {
-        return Err(RpcError::Custom("Invalid AccountId".into()));
+        return Err(RpcError::custom("Invalid AccountId"));
     }
 
-    let signer = PrivateKeySigner::from_bytes(&state_private_key).map_err(to_rpc_err)?;
+    let signer = PrivateKeySigner::from_bytes(&state_private_key).context("Invalid private key")?;
     let provider = ProviderBuilder::new()
         .wallet(signer)
         .connect_client(AlloyBridge::new(
@@ -195,12 +195,12 @@ async fn propose(
     let initial_native_balance = provider
         .get_balance(state_account_address)
         .await
-        .map_err(to_rpc_err)?;
+        .rpc_err()?;
 
     verify_vault_balance(&transport, &state, &bundle).await?;
 
-    let return_assets = validate_and_get_return_assets(&transport, &state, &bundle).await?;
-    withdraw_assets(transport, state, &state_account_id, &bundle).await?;
+    let return_assets = validate_and_get_return_assets(transport.clone(), &state, &bundle).await?;
+    withdraw_assets(transport.clone(), state, &state_account_id, &bundle).await?;
     execute_bundle(&provider, bundle).await?;
     return_outstanding_assets(
         &provider,
@@ -214,12 +214,12 @@ async fn propose(
 }
 
 async fn verify_vault_balance(
-    transport: &Arc<JsonRpcTransport>,
+    transport: &Transport,
     state: &State,
     bundle: &coordinator::EvmBundle,
 ) -> Result<(), RpcError> {
     let vault_assets = vault::GetAssets
-        .call(transport.clone(), state.vault_id)
+        .call_async(transport.clone(), state.vault_id)
         .await?;
 
     for (asset_id, amount) in &bundle.inputs {
@@ -239,7 +239,7 @@ async fn verify_vault_balance(
 }
 
 async fn validate_and_get_return_assets(
-    transport: &Arc<JsonRpcTransport>,
+    transport: Transport,
     state: &State,
     bundle: &coordinator::EvmBundle,
 ) -> Result<Vec<ReturnAsset>, RpcError> {
@@ -279,7 +279,7 @@ async fn validate_and_get_return_assets(
         };
 
         let deposit_address = vault::GetDepositAddress
-            .call(transport.clone(), (state.vault_id, asset_id.clone()))
+            .call_async(transport.clone(), (state.vault_id, asset_id.clone()))
             .await?;
 
         let Some(deposit_address) = deposit_address.as_evm_address() else {
@@ -298,7 +298,7 @@ async fn validate_and_get_return_assets(
 }
 
 async fn withdraw_assets(
-    transport: Arc<JsonRpcTransport>,
+    transport: Transport,
     state: State,
     state_account_id: &AccountId,
     bundle: &coordinator::EvmBundle,
@@ -306,7 +306,7 @@ async fn withdraw_assets(
     for (asset_id, amount) in &bundle.inputs {
         info!("Transferring asset {} amount {}", asset_id, amount);
         vault::Withdraw
-            .call(
+            .call_async(
                 transport.clone(),
                 (
                     state.vault_id,
@@ -334,10 +334,10 @@ async fn execute_bundle<T: Provider>(
         let tx_hash = provider
             .send_transaction(tx)
             .await
-            .map_err(to_rpc_err)?
+            .rpc_err()?
             .watch()
             .await
-            .map_err(to_rpc_err)?;
+            .rpc_err()?;
         info!("Submitted operation with tx_hash {}", tx_hash);
     }
 
@@ -386,7 +386,7 @@ async fn return_eth<T: Provider>(
     let balance = provider
         .get_balance(state_account_address)
         .await
-        .map_err(to_rpc_err)?;
+        .rpc_err()?;
 
     //? Return only the excess balance above the initial balance
     //? This means that any ETH remaining will first be used to cover gas costs,
@@ -404,10 +404,10 @@ async fn return_eth<T: Provider>(
                 .value(return_amount),
         )
         .await
-        .map_err(to_rpc_err)?
+        .rpc_err()?
         .watch()
         .await
-        .map_err(to_rpc_err)?;
+        .rpc_err()?;
     info!("Returned ETH to vault with tx_hash {}", tx_hash);
     Ok(())
 }
@@ -423,7 +423,7 @@ async fn return_erc20<T: Provider>(
         .balanceOf(state_account_address)
         .call()
         .await
-        .map_err(to_rpc_err)?;
+        .rpc_err()?;
 
     if balance == U256::ZERO {
         trace!("No balance for ERC20 {}, skipping return", erc20_address);
@@ -434,10 +434,10 @@ async fn return_erc20<T: Provider>(
         .transfer(deposit_address, balance)
         .send()
         .await
-        .map_err(to_rpc_err)?
+        .rpc_err()?
         .watch()
         .await
-        .map_err(to_rpc_err)?;
+        .rpc_err()?;
     info!(
         "Returned ERC20 {} to vault with tx_hash {}",
         erc20_address, tx_hash
@@ -447,7 +447,7 @@ async fn return_erc20<T: Provider>(
 }
 
 // ---------- UI Handlers ----------
-async fn on_load(transport: Arc<JsonRpcTransport>, page_id: PageId) -> Result<(), RpcError> {
+async fn on_load(transport: Transport, page_id: PageId) -> Result<(), RpcError> {
     let component = container(vec![
         heading("EOA Coordinator"),
         text("This is an example dev coordinator plugin."),
@@ -462,16 +462,13 @@ async fn on_load(transport: Arc<JsonRpcTransport>, page_id: PageId) -> Result<()
     ]);
 
     host::SetPage
-        .call(transport.clone(), (page_id, component))
+        .call_async(transport.clone(), (page_id, component))
         .await?;
 
     Ok(())
 }
 
-async fn on_update(
-    transport: Arc<JsonRpcTransport>,
-    props: (PageId, PageEvent),
-) -> Result<(), RpcError> {
+async fn on_update(transport: Transport, props: (PageId, PageEvent)) -> Result<(), RpcError> {
     let (page_id, event) = props;
 
     let private_key_hex = match event {
@@ -491,21 +488,19 @@ async fn on_update(
         }
     };
 
-    let signer: PrivateKeySigner = private_key_hex
-        .parse()
-        .map_err(|_| RpcError::Custom("Invalid private key".into()))?;
+    let signer: PrivateKeySigner = private_key_hex.parse().context("Invalid private key")?;
     let address = signer.address();
     let account_id = AccountId::new_evm(CHAIN_ID, address);
 
     let coordinator_id = host::RegisterEntity
-        .call(transport.clone(), Domain::Coordinator)
+        .call_async(transport.clone(), Domain::Coordinator)
         .await?;
 
-    let mut state: State = try_get_state(transport.clone()).await?;
+    let mut state: State = try_get_state(transport.clone())?;
     state.coordinator_id = Some(coordinator_id);
     state.private_key = Some(signer.to_bytes());
     state.account = Some(account_id.clone());
-    set_state(transport.clone(), &state).await?;
+    set_state(transport.clone(), &state)?;
 
     let component = container(vec![
         heading("Coordinator"),
@@ -513,7 +508,7 @@ async fn on_update(
         text(&format!("Private Key: {}", private_key_hex)),
     ]);
     host::SetPage
-        .call(transport.clone(), (page_id, component))
+        .call_async(transport.clone(), (page_id, component))
         .await?;
 
     Ok(())
@@ -528,7 +523,7 @@ fn main() {
         .init();
     info!("Starting plugin...");
 
-    PluginServer::new_with_transport()
+    PluginRunner::new()
         .with_method(global::Ping, ping)
         .with_method(plugin::Init, init)
         .with_method(coordinator::GetSession, get_session)

@@ -1,18 +1,18 @@
 [workspace]
 members = [
-    "frontend",
     "crates/host",
-    "plugins/eoa-vault",
-    "plugins/rpc-provider",
-    "plugins/plugin-template",
-    "plugins/revm-provider",
-    "plugins/vault-page",
-    "plugins/eoa-coordinator",
-    "plugins/uniswap-v2",
     "crates/tlock-alloy",
     "crates/tlock-api",
     "crates/tlock-hdk",
     "crates/tlock-pdk",
+    "frontend",
+    "plugins/eoa-coordinator",
+    "plugins/eoa-vault",
+    "plugins/plugin-template",
+    "plugins/revm-provider",
+    "plugins/rpc-provider",
+    "plugins/uniswap-v2",
+    "plugins/vault-page",
 ]
 
 resolver = "2"
@@ -23,12 +23,14 @@ pedantic = { level = "warn", priority = -1 }
 [workspace.dependencies]
 alloy = { version = "1.1", features = ["wasm-bindgen", "json-rpc", "rpc-types-trace", "eip712"] }
 async-trait = "0.1"
+base64 = "0.22"
 dioxus = { version = "=0.7.1" }
 futures = "0.3"
 gloo-timers = { version = "0.3", features = ["futures"] }
 host = { path = "./crates/host" }
 rand = "0.9"
 reqwest = "0.12"
+revm = { version = "33.1.0", default-features = false }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
@@ -40,12 +42,10 @@ tower-service = "0.3"
 tracing = "0.1"
 tracing-subscriber = "0.3"
 uuid = { version = "1", features = [ "v4", "serde", "js" ] } 
+wasm-bindgen = "0.2"
 wasmi-plugin-hdk = "0.1"
 wasmi-plugin-pdk = "0.1"
-wasm-bindgen = "0.2"
 web-sys = "0.3"
-base64 = "0.22"
-revm = { version = "33.1.0", default-features = false }
 
 [profile.release]
 lto = true
@@ -61,7 +61,7 @@ inherits = "dev"
 inherits = "dev"
 
 [patch.crates-io]
-wasmi-plugin-hdk = { git = "https://github.com/Robert-MacWha/wasmi-plugin-framework", commit = "860243ad7ecbc98f4016c1733dfcca3c2bb3d05b" }
-wasmi-plugin-pdk = { git = "https://github.com/Robert-MacWha/wasmi-plugin-framework", commit = "860243ad7ecbc98f4016c1733dfcca3c2bb3d05b" }
-# wasmi-plugin-hdk = { path = "../wasmi-plugin-framework/crates/wasmi-plugin-hdk" }
-# wasmi-plugin-pdk = { path = "../wasmi-plugin-framework/crates/wasmi-plugin-pdk" }
+# wasmi-plugin-hdk = { git = "https://github.com/Robert-MacWha/wasmi-plugin-framework", branch = "wasmer-shared-memory-test" }
+# wasmi-plugin-pdk = { git = "https://github.com/Robert-MacWha/wasmi-plugin-framework", branch = "wasmer-shared-memory-test" }
+wasmi-plugin-hdk = { path = "../wasmi-plugin-framework/crates/wasmi-plugin-hdk" }
+wasmi-plugin-pdk = { path = "../wasmi-plugin-framework/crates/wasmi-plugin-pdk" }

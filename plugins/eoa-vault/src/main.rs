@@ -4,7 +4,7 @@
 //! Account (EOA) using a private key provided by the user. It supports
 //! operations for native ETH and a predefined set of ERC20 tokens.
 
-use std::{collections::HashMap, io::stderr, sync::Arc};
+use std::{collections::HashMap, io::stderr};
 
 use alloy::{
     hex,
@@ -18,7 +18,7 @@ use alloy::{
 use serde::{Deserialize, Serialize};
 use tlock_alloy::AlloyBridge;
 use tlock_pdk::{
-    server::PluginServer,
+    runner::PluginRunner,
     state::{get_state, set_state, try_get_state},
     tlock_api::{
         RpcMethod,
@@ -30,8 +30,8 @@ use tlock_pdk::{
         global, host, page, plugin, vault,
     },
     wasmi_plugin_pdk::{
-        rpc_message::{RpcError, to_rpc_err},
-        transport::JsonRpcTransport,
+        rpc_message::{RpcError, RpcErrorContext, ToRpcResult},
+        transport::Transport,
     },
 };
 use tracing::{info, warn};
@@ -67,53 +67,52 @@ const ERC20S: [Address; 2] = [
 
 // ---------- Plugin Handlers ----------
 
-async fn init(transport: Arc<JsonRpcTransport>, _params: ()) -> Result<(), RpcError> {
+async fn init(transport: Transport, _params: ()) -> Result<(), RpcError> {
     info!("Calling Init on Vault Plugin");
 
     // ? Register the vault's page
     let provider_id = host::RequestEthProvider
-        .call(transport.clone(), ChainId::Evm(Some(CHAIN_ID)))
+        .call_async(transport.clone(), ChainId::Evm(Some(CHAIN_ID)))
         .await?;
     let state = PluginState {
         vaults: HashMap::new(),
         provider_id,
     };
-    set_state(transport.clone(), &state).await?;
+    set_state(transport.clone(), &state)?;
 
     host::RegisterEntity
-        .call(transport.clone(), Domain::Page)
+        .call_async(transport.clone(), Domain::Page)
         .await?;
 
     Ok(())
 }
 
-async fn ping(transport: Arc<JsonRpcTransport>, _params: ()) -> Result<String, RpcError> {
-    let state: PluginState = try_get_state(transport.clone()).await?;
+async fn ping(transport: Transport, _params: ()) -> Result<String, RpcError> {
+    let state: PluginState = try_get_state(transport.clone())?;
 
-    let chain_id = eth::ChainId.call(transport, state.provider_id).await?;
+    let chain_id = eth::ChainId
+        .call_async(transport, state.provider_id)
+        .await?;
     Ok(format!("Pong! Connected to chain: {}", chain_id))
 }
 
 // ---------- Vault Handlers ----------
 
 async fn get_assets(
-    transport: Arc<JsonRpcTransport>,
+    transport: Transport,
     params: VaultId,
 ) -> Result<Vec<(AssetId, U256)>, RpcError> {
     let vault_id = params;
     info!("Received get_assets request for vault: {}", vault_id);
 
-    let vault = get_vault(&transport, vault_id).await?;
+    let vault = get_vault(transport.clone(), vault_id)?;
 
-    let state: PluginState = try_get_state(transport.clone()).await?;
+    let state: PluginState = try_get_state(transport.clone())?;
     let provider = ProviderBuilder::new()
         .connect_client(AlloyBridge::new(transport.clone(), state.provider_id));
 
     // Fetch native ETH balance
-    let balance = provider
-        .get_balance(vault.address)
-        .await
-        .map_err(to_rpc_err)?;
+    let balance = provider.get_balance(vault.address).await.rpc_err()?;
 
     info!("ETH balance for vault {}: {}", vault_id, balance);
     let mut balances = vec![(AssetId::eth(CHAIN_ID), balance)];
@@ -122,11 +121,7 @@ async fn get_assets(
     //? We could choose to filter out zero balances here if desired.
     for &erc20_address in ERC20S.iter() {
         let contract = ERC20::new(erc20_address, &provider);
-        let balance = contract
-            .balanceOf(vault.address)
-            .call()
-            .await
-            .map_err(to_rpc_err)?;
+        let balance = contract.balanceOf(vault.address).call().await.rpc_err()?;
 
         info!(
             "ERC20 balance for vault {}, token {}: {}",
@@ -139,7 +134,7 @@ async fn get_assets(
 }
 
 async fn get_deposit_address(
-    transport: Arc<JsonRpcTransport>,
+    transport: Transport,
     params: (VaultId, AssetId),
 ) -> Result<AccountId, RpcError> {
     let (vault_id, asset_id) = params;
@@ -147,7 +142,7 @@ async fn get_deposit_address(
 
     validate_chain_id(asset_id.chain_id())?;
 
-    let vault = get_vault(&transport, vault_id).await?;
+    let vault = get_vault(transport.clone(), vault_id)?;
     let account_id = AccountId::new_evm(CHAIN_ID, vault.address);
 
     // If the asset is supported, we MUST return a valid address.
@@ -161,7 +156,7 @@ async fn get_deposit_address(
 }
 
 async fn withdraw(
-    transport: Arc<JsonRpcTransport>,
+    transport: Transport,
     params: (VaultId, AccountId, AssetId, U256),
 ) -> Result<(), RpcError> {
     let (vault_id, to_address, asset_id, amount) = params;
@@ -177,9 +172,9 @@ async fn withdraw(
         .as_evm_address()
         .ok_or_else(|| RpcError::Custom("Invalid to address".into()))?;
 
-    let vault = get_vault(&transport, vault_id).await?;
-    let signer: PrivateKeySigner = vault.private_key.parse().map_err(to_rpc_err)?;
-    let state: PluginState = try_get_state(transport.clone()).await?;
+    let vault = get_vault(transport.clone(), vault_id)?;
+    let signer: PrivateKeySigner = vault.private_key.parse().rpc_err()?;
+    let state: PluginState = try_get_state(transport.clone())?;
     let provider = ProviderBuilder::new()
         .wallet(signer)
         .connect_client(AlloyBridge::new(transport.clone(), state.provider_id));
@@ -198,10 +193,10 @@ async fn withdraw_eth(provider: impl Provider, to: Address, amount: U256) -> Res
     let tx_hash = provider
         .send_transaction(tx)
         .await
-        .map_err(to_rpc_err)?
+        .rpc_err()?
         .watch()
         .await
-        .map_err(to_rpc_err)?;
+        .rpc_err()?;
     info!("ETH withdrawal transaction sent with hash: {}", tx_hash);
     Ok(())
 }
@@ -222,17 +217,17 @@ async fn withdraw_erc20(
         .transfer(to, amount)
         .send()
         .await
-        .map_err(to_rpc_err)?
+        .rpc_err()?
         .watch()
         .await
-        .map_err(to_rpc_err)?;
+        .rpc_err()?;
     info!("ERC20 withdrawal transaction sent with hash: {}", tx_hash);
     Ok(())
 }
 
 // ---------- UI Handlers ----------
 
-async fn on_load(transport: Arc<JsonRpcTransport>, page_id: PageId) -> Result<(), RpcError> {
+async fn on_load(transport: Transport, page_id: PageId) -> Result<(), RpcError> {
     info!("OnPageLoad called for page: {}", page_id);
 
     let component = container(vec![
@@ -249,14 +244,14 @@ async fn on_load(transport: Arc<JsonRpcTransport>, page_id: PageId) -> Result<()
     ]);
 
     host::SetPage
-        .call(transport.clone(), (page_id, component))
+        .call_async(transport.clone(), (page_id, component))
         .await?;
 
     Ok(())
 }
 
 async fn on_update(
-    transport: Arc<JsonRpcTransport>,
+    transport: Transport,
     params: (PageId, page::PageEvent),
 ) -> Result<(), RpcError> {
     let (page_id, event) = params;
@@ -268,28 +263,24 @@ async fn on_update(
             let private_key = signer.to_bytes();
             hex::encode(private_key)
         }
-        page::PageEvent::FormSubmitted(_, form_data) => {
-            let Some(pk) = form_data.get("dev_private_key") else {
-                return Err(RpcError::Custom("Private key not found in form".into()));
-            };
-            pk.clone()
-        }
+        page::PageEvent::FormSubmitted(_, form_data) => form_data
+            .get("dev_private_key")
+            .context("No private key in form")?
+            .clone(),
         _ => {
             warn!("Unhandled page event: {:?}", event);
             return Ok(());
         }
     };
 
-    let signer: PrivateKeySigner = private_key_hex
-        .parse()
-        .map_err(|_| RpcError::Custom("Invalid private key".into()))?;
+    let signer: PrivateKeySigner = private_key_hex.parse().context("Invalid private key")?;
     let address = signer.address();
 
     let entity_id = host::RegisterEntity
-        .call(transport.clone(), Domain::Vault)
+        .call_async(transport.clone(), Domain::Vault)
         .await?;
 
-    let mut state: PluginState = get_state(transport.clone()).await;
+    let mut state: PluginState = get_state(transport.clone());
     state.vaults.insert(
         entity_id,
         Vault {
@@ -297,7 +288,7 @@ async fn on_update(
             address,
         },
     );
-    set_state(transport.clone(), &state).await?;
+    set_state(transport.clone(), &state)?;
 
     let component = container(vec![
         heading("EOA Vault"),
@@ -305,7 +296,7 @@ async fn on_update(
         text(&format!("Private Key: {}", private_key_hex)),
     ]);
     host::SetPage
-        .call(transport.clone(), (page_id, component))
+        .call_async(transport.clone(), (page_id, component))
         .await?;
 
     Ok(())
@@ -320,8 +311,8 @@ fn validate_chain_id(chain_id: &ChainId) -> Result<(), RpcError> {
     }
 }
 
-async fn get_vault(transport: &Arc<JsonRpcTransport>, id: VaultId) -> Result<Vault, RpcError> {
-    let state: PluginState = get_state(transport.clone()).await;
+fn get_vault(transport: Transport, id: VaultId) -> Result<Vault, RpcError> {
+    let state: PluginState = get_state(transport.clone());
     let vault = state.vaults.get(&id.into()).ok_or_else(|| {
         warn!("vaults: {:?}", state.vaults.keys());
         RpcError::Custom(format!("Vault ID not found: {}", id))
@@ -370,7 +361,7 @@ fn main() {
     // - Sets up async runtime
     // - Reads initial host request and routes to handler
     // - Handles bidirectional RPC until final response
-    PluginServer::new_with_transport()
+    PluginRunner::new()
         .with_method(plugin::Init, init)
         .with_method(global::Ping, ping)
         .with_method(vault::GetAssets, get_assets)

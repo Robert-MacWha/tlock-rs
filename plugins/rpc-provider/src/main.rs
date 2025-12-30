@@ -1,4 +1,4 @@
-use std::{io::stderr, sync::Arc};
+use std::io::stderr;
 
 use alloy::{
     eips::BlockId,
@@ -11,12 +11,12 @@ use alloy::{
 };
 use serde::{Deserialize, Serialize};
 use tlock_pdk::{
-    server::PluginServer,
+    runner::PluginRunner,
     state::{set_state, try_get_state},
     tlock_api::{RpcMethod, domains::Domain, entities::EthProviderId, eth, global, host, plugin},
     wasmi_plugin_pdk::{
-        rpc_message::{RpcError, to_rpc_err},
-        transport::JsonRpcTransport,
+        rpc_message::{RpcError, ToRpcResult},
+        transport::Transport,
     },
 };
 use tracing::info;
@@ -31,52 +31,46 @@ struct ProviderState {
     rpc_url: String,
 }
 
-async fn ping(transport: Arc<JsonRpcTransport>, _params: ()) -> Result<String, RpcError> {
-    global::Ping.call(transport.clone(), ()).await?;
+async fn ping(transport: Transport, _params: ()) -> Result<String, RpcError> {
+    global::Ping.call_async(transport.clone(), ()).await?;
     Ok("pong".to_string())
 }
 
-async fn init(transport: Arc<JsonRpcTransport>, _params: ()) -> Result<(), RpcError> {
+async fn init(transport: Transport, _params: ()) -> Result<(), RpcError> {
     info!("Initializing Ethereum Provider Plugin...");
 
     let state = ProviderState {
         rpc_url: "https://1rpc.io/sepolia".to_string(),
     };
-    set_state(transport.clone(), &state).await?;
+    set_state(transport.clone(), &state)?;
 
     host::RegisterEntity
-        .call(transport.clone(), Domain::EthProvider)
+        .call_async(transport.clone(), Domain::EthProvider)
         .await?;
 
     Ok(())
 }
 
-async fn chain_id(
-    transport: Arc<JsonRpcTransport>,
-    _params: EthProviderId,
-) -> Result<U256, RpcError> {
-    let state: ProviderState = try_get_state(transport.clone()).await?;
+async fn chain_id(transport: Transport, _params: EthProviderId) -> Result<U256, RpcError> {
+    let state: ProviderState = try_get_state(transport.clone())?;
 
     let provider = create_alloy_provider(transport.clone(), state.rpc_url);
-    let chain_id = provider.get_chain_id().await.map_err(to_rpc_err)?;
+    let chain_id = provider.get_chain_id().await.rpc_err()?;
     let chain_id = U256::from(chain_id);
 
     Ok(chain_id)
 }
 
-async fn block_number(
-    transport: Arc<JsonRpcTransport>,
-    _params: EthProviderId,
-) -> Result<u64, RpcError> {
-    let state: ProviderState = try_get_state(transport.clone()).await?;
+async fn block_number(transport: Transport, _params: EthProviderId) -> Result<u64, RpcError> {
+    let state: ProviderState = try_get_state(transport.clone())?;
 
     let provider = create_alloy_provider(transport.clone(), state.rpc_url);
-    let block_number = provider.get_block_number().await.map_err(to_rpc_err)?;
+    let block_number = provider.get_block_number().await.rpc_err()?;
     Ok(block_number)
 }
 
 async fn call(
-    transport: Arc<JsonRpcTransport>,
+    transport: Transport,
     params: (
         EthProviderId,
         TransactionRequest,
@@ -85,7 +79,7 @@ async fn call(
         Option<BlockOverrides>,
     ),
 ) -> Result<Bytes, RpcError> {
-    let state: ProviderState = try_get_state(transport.clone()).await?;
+    let state: ProviderState = try_get_state(transport.clone())?;
 
     let (_provider_id, tx, block, state_overrides, block_overrides) = params;
 
@@ -96,28 +90,25 @@ async fn call(
         .overrides_opt(state_overrides)
         .with_block_overrides_opt(block_overrides)
         .await
-        .map_err(to_rpc_err)?;
+        .rpc_err()?;
 
     Ok(resp)
 }
 
-async fn gas_price(
-    transport: Arc<JsonRpcTransport>,
-    _provider_id: EthProviderId,
-) -> Result<u128, RpcError> {
-    let state: ProviderState = try_get_state(transport.clone()).await?;
+async fn gas_price(transport: Transport, _provider_id: EthProviderId) -> Result<u128, RpcError> {
+    let state: ProviderState = try_get_state(transport.clone())?;
 
     let provider = create_alloy_provider(transport.clone(), state.rpc_url);
-    let gas_price = provider.get_gas_price().await.map_err(to_rpc_err)?;
+    let gas_price = provider.get_gas_price().await.rpc_err()?;
 
     Ok(gas_price)
 }
 
 async fn get_balance(
-    transport: Arc<JsonRpcTransport>,
+    transport: Transport,
     params: (EthProviderId, Address, BlockId),
 ) -> Result<U256, RpcError> {
-    let state: ProviderState = try_get_state(transport.clone()).await?;
+    let state: ProviderState = try_get_state(transport.clone())?;
     let (_provider_id, address, block) = params;
 
     let provider = create_alloy_provider(transport.clone(), state.rpc_url);
@@ -125,15 +116,15 @@ async fn get_balance(
         .get_balance(address)
         .block_id(block)
         .await
-        .map_err(to_rpc_err)?;
+        .rpc_err()?;
     Ok(balance)
 }
 
 async fn get_block(
-    transport: Arc<JsonRpcTransport>,
+    transport: Transport,
     params: (EthProviderId, BlockId, BlockTransactionsKind),
 ) -> Result<Block, RpcError> {
-    let state: ProviderState = try_get_state(transport.clone()).await?;
+    let state: ProviderState = try_get_state(transport.clone())?;
     let (_provider_id, block_id, include_transactions) = params;
 
     let provider = create_alloy_provider(transport.clone(), state.rpc_url);
@@ -141,7 +132,7 @@ async fn get_block(
         .get_block(block_id)
         .kind(include_transactions)
         .await
-        .map_err(to_rpc_err)?;
+        .rpc_err()?;
 
     match block {
         Some(b) => Ok(b),
@@ -150,17 +141,14 @@ async fn get_block(
 }
 
 async fn get_block_receipts(
-    transport: Arc<JsonRpcTransport>,
+    transport: Transport,
     params: (EthProviderId, BlockId),
 ) -> Result<Vec<TransactionReceipt>, RpcError> {
-    let state: ProviderState = try_get_state(transport.clone()).await?;
+    let state: ProviderState = try_get_state(transport.clone())?;
     let (_provider_id, block_id) = params;
 
     let provider = create_alloy_provider(transport.clone(), state.rpc_url);
-    let receipts = provider
-        .get_block_receipts(block_id)
-        .await
-        .map_err(to_rpc_err)?;
+    let receipts = provider.get_block_receipts(block_id).await.rpc_err()?;
 
     match receipts {
         Some(r) => Ok(r),
@@ -169,10 +157,10 @@ async fn get_block_receipts(
 }
 
 async fn get_code(
-    transport: Arc<JsonRpcTransport>,
+    transport: Transport,
     params: (EthProviderId, Address, BlockId),
 ) -> Result<Bytes, RpcError> {
-    let state: ProviderState = try_get_state(transport.clone()).await?;
+    let state: ProviderState = try_get_state(transport.clone())?;
     let (_provider_id, address, block_id) = params;
 
     let provider = create_alloy_provider(transport.clone(), state.rpc_url);
@@ -180,36 +168,33 @@ async fn get_code(
         .get_code_at(address)
         .block_id(block_id)
         .await
-        .map_err(to_rpc_err)?;
+        .rpc_err()?;
 
     Ok(code)
 }
 
 async fn get_logs(
-    transport: Arc<JsonRpcTransport>,
+    transport: Transport,
     params: (EthProviderId, Filter),
 ) -> Result<Vec<Log>, RpcError> {
-    let state: ProviderState = try_get_state(transport.clone()).await?;
+    let state: ProviderState = try_get_state(transport.clone())?;
     let (_provider_id, filter) = params;
 
     let provider = create_alloy_provider(transport.clone(), state.rpc_url);
-    let logs = provider.get_logs(&filter).await.map_err(to_rpc_err)?;
+    let logs = provider.get_logs(&filter).await.rpc_err()?;
 
     Ok(logs)
 }
 
 async fn get_transaction_by_hash(
-    transport: Arc<JsonRpcTransport>,
+    transport: Transport,
     params: (EthProviderId, TxHash),
 ) -> Result<Transaction, RpcError> {
-    let state: ProviderState = try_get_state(transport.clone()).await?;
+    let state: ProviderState = try_get_state(transport.clone())?;
     let (_provider_id, tx_hash) = params;
 
     let provider = create_alloy_provider(transport.clone(), state.rpc_url);
-    let tx = provider
-        .get_transaction_by_hash(tx_hash)
-        .await
-        .map_err(to_rpc_err)?;
+    let tx = provider.get_transaction_by_hash(tx_hash).await.rpc_err()?;
 
     match tx {
         Some(t) => Ok(t),
@@ -218,17 +203,14 @@ async fn get_transaction_by_hash(
 }
 
 async fn get_transaction_receipt(
-    transport: Arc<JsonRpcTransport>,
+    transport: Transport,
     params: (EthProviderId, TxHash),
 ) -> Result<TransactionReceipt, RpcError> {
-    let state: ProviderState = try_get_state(transport.clone()).await?;
+    let state: ProviderState = try_get_state(transport.clone())?;
     let (_provider_id, tx_hash) = params;
 
     let provider = create_alloy_provider(transport.clone(), state.rpc_url);
-    let receipt = provider
-        .get_transaction_receipt(tx_hash)
-        .await
-        .map_err(to_rpc_err)?;
+    let receipt = provider.get_transaction_receipt(tx_hash).await.rpc_err()?;
 
     match receipt {
         Some(r) => Ok(r),
@@ -237,10 +219,10 @@ async fn get_transaction_receipt(
 }
 
 async fn get_transaction_count(
-    transport: Arc<JsonRpcTransport>,
+    transport: Transport,
     params: (EthProviderId, Address, BlockId),
 ) -> Result<u64, RpcError> {
-    let state: ProviderState = try_get_state(transport.clone()).await?;
+    let state: ProviderState = try_get_state(transport.clone())?;
     let (_provider_id, address, block_id) = params;
 
     let provider = create_alloy_provider(transport.clone(), state.rpc_url);
@@ -248,30 +230,27 @@ async fn get_transaction_count(
         .get_transaction_count(address)
         .block_id(block_id)
         .await
-        .map_err(to_rpc_err)?;
+        .rpc_err()?;
 
     Ok(tx_count)
 }
 
 async fn send_raw_transaction(
-    transport: Arc<JsonRpcTransport>,
+    transport: Transport,
     params: (EthProviderId, Bytes),
 ) -> Result<TxHash, RpcError> {
-    let state: ProviderState = try_get_state(transport.clone()).await?;
+    let state: ProviderState = try_get_state(transport.clone())?;
     let (_provider_id, raw_tx) = params;
 
     let provider = create_alloy_provider(transport.clone(), state.rpc_url);
-    let tx = provider
-        .send_raw_transaction(&raw_tx)
-        .await
-        .map_err(to_rpc_err)?;
+    let tx = provider.send_raw_transaction(&raw_tx).await.rpc_err()?;
     let tx_hash = tx.tx_hash();
 
     Ok(*tx_hash)
 }
 
 async fn estimate_gas(
-    transport: Arc<JsonRpcTransport>,
+    transport: Transport,
     params: (
         EthProviderId,
         TransactionRequest,
@@ -280,7 +259,7 @@ async fn estimate_gas(
         Option<BlockOverrides>,
     ),
 ) -> Result<u64, RpcError> {
-    let state: ProviderState = try_get_state(transport.clone()).await?;
+    let state: ProviderState = try_get_state(transport.clone())?;
     let (_provider_id, transaction_request, block_id, state_override, block_override) = params;
 
     let provider = create_alloy_provider(transport.clone(), state.rpc_url);
@@ -290,16 +269,16 @@ async fn estimate_gas(
         .overrides_opt(state_override)
         .with_block_overrides_opt(block_override)
         .await
-        .map_err(to_rpc_err)?;
+        .rpc_err()?;
 
     Ok(gas_estimate)
 }
 
 async fn get_storage_at(
-    transport: Arc<JsonRpcTransport>,
+    transport: Transport,
     params: (EthProviderId, Address, U256, BlockId),
 ) -> Result<U256, RpcError> {
-    let state: ProviderState = try_get_state(transport.clone()).await?;
+    let state: ProviderState = try_get_state(transport.clone())?;
     let (_provider_id, address, slot, block_id) = params;
 
     let provider = create_alloy_provider(transport.clone(), state.rpc_url);
@@ -307,7 +286,7 @@ async fn get_storage_at(
         .get_storage_at(address, slot)
         .block_id(block_id)
         .await
-        .map_err(to_rpc_err)?;
+        .rpc_err()?;
 
     Ok(storage_value)
 }
@@ -321,7 +300,7 @@ fn main() {
         .init();
     info!("Starting plugin...");
 
-    PluginServer::new_with_transport()
+    PluginRunner::new()
         .with_method(global::Ping, ping)
         .with_method(plugin::Init, init)
         .with_method(eth::ChainId, chain_id)
