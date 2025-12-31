@@ -2,4 +2,6 @@
 target = "wasm32-wasip1"
 
 [target.wasm32-wasip1]
-# Additional wasm-specific configuration can go here if needed
+rustflags = [
+  "-C", "link-arg=--export=memory",
+]

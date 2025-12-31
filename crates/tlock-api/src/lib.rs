@@ -7,6 +7,7 @@ pub mod component;
 pub mod domains;
 pub mod entities;
 pub use alloy;
+pub mod rpc_batch;
 
 // TODO: Add a signer trait just for signing raw messages? Not sure if it'd work
 // - we might end up with too many types requiring user authentication.
@@ -37,6 +38,29 @@ pub trait RpcMethod: Send + Sync {
         let resp = transport.call(Self::NAME, raw_params).map_err(Into::into)?;
         let result = serde_json::from_value(resp.result).context("Deserialization Error")?;
         Ok(result)
+    }
+
+    fn call_many<T, E>(
+        &self,
+        transport: T,
+        params: Vec<Self::Params>,
+    ) -> Result<Vec<Self::Output>, RpcError>
+    where
+        T: wasmi_plugin_pdk::transport::SyncManyTransport<E> + Send + Sync + 'static,
+        E: Into<RpcError>,
+    {
+        let raw_params: Vec<(&str, serde_json::Value)> = params
+            .into_iter()
+            .map(|p| serde_json::to_value(p).map_err(|_| RpcError::InvalidParams))
+            .map(|res| res.map(|v| (Self::NAME, v)))
+            .collect::<Result<_, _>>()?;
+        let responses = transport.call_many(raw_params).map_err(Into::into)?;
+        let mut results = Vec::with_capacity(responses.len());
+        for resp in responses {
+            let result = serde_json::from_value(resp.result).context("Deserialization Error")?;
+            results.push(result);
+        }
+        Ok(results)
     }
 
     async fn call_async<T, E>(

@@ -15,6 +15,7 @@ use tlock_pdk::{
         },
         entities::EthProviderId,
         eth,
+        rpc_batch::RpcBatch,
     },
     wasmi_plugin_pdk::{rpc_message::RpcError, transport::Transport},
 };
@@ -51,19 +52,14 @@ impl<N: Network> DatabaseRef for AlloyDb<N> {
     type Error = DBTransportError;
 
     fn basic_ref(&self, address: Address) -> Result<Option<AccountInfo>, Self::Error> {
-        let nonce = eth::GetTransactionCount.call(
+        type AccountStateBatch = (eth::GetTransactionCount, eth::GetBalance, eth::GetCode);
+        let (nonce, balance, code) = AccountStateBatch::execute(
             self.transport.clone(),
-            (self.provider_id, address, self.block_number),
-        )?;
-
-        let balance = eth::GetBalance.call(
-            self.transport.clone(),
-            (self.provider_id, address, self.block_number),
-        )?;
-
-        let code = eth::GetCode.call(
-            self.transport.clone(),
-            (self.provider_id, address, self.block_number),
+            (
+                (self.provider_id, address, self.block_number),
+                (self.provider_id, address, self.block_number),
+                (self.provider_id, address, self.block_number),
+            ),
         )?;
 
         let code = Bytecode::new_raw(code.0.into());

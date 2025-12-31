@@ -119,16 +119,20 @@ async fn get_assets(
 
     // Fetch ERC20 balances
     //? We could choose to filter out zero balances here if desired.
-    for &erc20_address in ERC20S.iter() {
+    let erc20_futures = ERC20S.iter().map(|&erc20_address| {
         let contract = ERC20::new(erc20_address, &provider);
-        let balance = contract.balanceOf(vault.address).call().await.rpc_err()?;
+        async move {
+            let balance = contract.balanceOf(vault.address).call().await.rpc_err()?;
+            info!(
+                "ERC20 balance for vault {}, token {}: {}",
+                vault_id, erc20_address, balance
+            );
+            Ok::<_, RpcError>((AssetId::erc20(CHAIN_ID, erc20_address), balance))
+        }
+    });
 
-        info!(
-            "ERC20 balance for vault {}, token {}: {}",
-            vault_id, erc20_address, balance
-        );
-        balances.push((AssetId::erc20(CHAIN_ID, erc20_address), balance));
-    }
+    let erc20_balances = futures::future::try_join_all(erc20_futures).await?;
+    balances.extend(erc20_balances);
 
     Ok(balances)
 }

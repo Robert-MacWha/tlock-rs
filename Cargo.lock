@@ -3448,6 +3448,7 @@ name = "eoa-vault"
 version = "0.1.0"
 dependencies = [
  "alloy",
+ "futures",
  "serde",
  "tlock-alloy",
  "tlock-pdk",
@@ -7181,6 +7182,7 @@ dependencies = [
 name = "revm-provider"
 version = "0.1.0"
 dependencies = [
+ "alloy-consensus",
  "revm",
  "serde",
  "thiserror 2.0.17",
@@ -9448,6 +9450,7 @@ version = "0.1.0"
 dependencies = [
  "getrandom 0.3.4",
  "serde",
+ "thiserror 2.0.17",
 ]
 
 [[package]]

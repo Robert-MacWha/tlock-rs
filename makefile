@@ -11,6 +11,9 @@ plugins:
 			plugin_name=$$(basename $$dir); \
 			echo "Building plugin: $$plugin_name"; \
 			cargo build --target wasm32-wasip1 -p $$plugin_name; \
+			wasm-tools demangle \
+				target/wasm32-wasip1/debug/$$plugin_name.wasm \
+				-o target/wasm32-wasip1/debug/$$plugin_name.wasm; \
 		fi \
 	done
 
@@ -20,6 +23,13 @@ plugins-release:
 			plugin_name=$$(basename $$dir); \
 			echo "Building plugin: $$plugin_name"; \
 			cargo build --target wasm32-wasip1 -p $$plugin_name --release; \
+			wasm-opt -O3 --debuginfo \
+				--zero-filled-memory \
+				target/wasm32-wasip1/release/$$plugin_name.wasm \
+				-o target/wasm32-wasip1/release/$$plugin_name.wasm; \
+			wasm-tools demangle \
+				target/wasm32-wasip1/release/$$plugin_name.wasm \
+				-o target/wasm32-wasip1/release/$$plugin_name.wasm; \
 		fi \
 	done
 
