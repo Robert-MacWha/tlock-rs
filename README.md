@@ -1,4 +1,104 @@
 
+# Lodgelock
+
+Lodgelock is designed as a modular-first wallet framework. It aims to empower users, developers, and the broader web3 ecosystem by providing a secure, extensible, and user-centric wallet platform.
+
+Lodgelock is designed around three core ideals:
+
+1. **Wallets for self-sovereignty**: Wallets are tools for users to manage their money, identity, and data. They should empower users to hold ownership over their digital lives, providing full control and autonomy.
+2. **Wallets for security**: Wallets act as guardians of users' assets and information. They are a critical single point of failure and must prioritize security, ensuring that funds, privacy, and integrity are maintained at all times.
+3. **Wallets for modularity**: Wallets should act as the kernel for web3 applications. They should provide a secure and unopinionated platform that manages security and resources, leaving the 'user-space' features entirely implemented by modular plugins to the user's discretion.
+
+## Status Quo
+
+The current wallet landscape is dominated by monolithic walled gardens that bundle a fixed set of features and applications. Defi's origin as websites has been a saving grace, allowing users to access a broader ecosystem of applications. However, wallets have not embraced this modularity, instead opting for closed systems that limit user choice and stifle innovation.
+
+This lack of modularity has created a dangerous example of the **Power of Defaults**. Wallets decree what features and applications are present within their walls, shaping behavior and experience for millions. For a prime example, simply look at the exchange rates provided by Metamask's built-in swap versus uniswap or 1inch. When the gateway to web3 is a profit-seeking entity, the default becomes a toll-bridge rather than an open road.
+
+Wallets also suffer from **Extractive Incentives**. When the wallet controls the default experience, it is incentivised to prioritize features that enrich itself over those that benefit users. Consider Polymarket integrating kalshi prediction markets into their app, adding gambling features to the homepage of a financial application without user consent, warning, age verification, or an option to disable it. While users should undoubtedly have the freedom to have such features, they should not be forced upon them.
+
+## Architecture Overview
+
+The primary architectural goals were security and a 90/10 implementation rule. It is architected with three core components: the Host, Plugins, and Frontend.
+
+- The **Host** is the secure, stable 'kernel' that manages plugins, routes requests, and provides core services like storage and networking.
+- **Plugins** are modulare implementations of wallet functionality. They implement defined domains (Vault, Provider, Coordinator, Page) and communicate through the host.
+- The **Frontend** is the user interface layer that interacts with users and presents data from plugins
+
+The architecture is designed to implement 90% of the wallet's functionality through plugins. This rule means that:
+
+**Plugin-only updates**:
+- New chains using existing models (EVM variants reusing Ethereum types)
+- New signature generation methods (MPC, multi-sig wallets)
+- New key management approach
+- Complex workflows (bridging, social recovery, DeFi protocols)
+- UI enhancements and analysis features
+
+**Host updates required**:
+- New domains
+- New host functions / services
+
+## Core Concepts
+
+### Domains
+
+Domains are semantic categories that define what an entity does. Each domain has a fixed set of interfaces all implementations must follow. Domains include:
+
+| Domain      | Purpose                             | Example Methods                                                       |
+| ----------- | ----------------------------------- | --------------------------------------------------------------------- |
+| Vault       | Custody and transfer of assets      | `GetAssets`, `Withdraw`, `GetDepositAddress`                          |
+| Provider    | Blockchain interfacing              | `BlockNumber`, `GetBalance`, `GetBlock`, `Call`, `SendRawTransaction` |
+| Coordinator | Safe on-chain transaction execution | `GetSession` `GetAssets` `Propose`                                    |
+| Page        | UI Rendering                        | `OnLoad` `OnUpdate`                                                   |
+
+Domains are designed to be as generic as possible while providing useful abstractions. A vault may be a simple private key manager on ethereum or a multisig, a hardware wallet, an MPC signer, a privacy pool account, a dapp's internal custodial ledger, or a CEX with an API. So long as it can custody and transfer assets, it can implement the vault domain.
+
+### Entities
+
+Entities are implementations of domains. Each entity implements a single domain and is managed by a plugin which provides its code and metadata. A single plugin may register multiple entities across multiple domains.
+
+```
+Plugin: eoa-vault
+  Entity: vault:abc123 (Vault domain)
+  Entity: page:def456 (Page domain)
+Plugin: eoa-coordinator
+  Entity: coordinator:ghi789 (Coordinator domain)
+  Entity: vault:jkl012 (Vault domain)
+  Entity: page:mno345 (Page domain)
+```
+
+Entities are designed as black boxes. The host and other plugins do not know nor care about their internal implementations. They only care what domain they implement. As such, entities communicate securely through their domain-defined interfaces and different entities may rely on each other to provide complex functionality.
+
+### Plugins
+
+Plugins are packages of code that provide entities. Plugins are implemented as WASM modules that the host loads and manages. During execution, plugins are entirely sandboxed and stateless, only able to communicate externally or store data through host calls. Like regular Dapps, 
+
+Plugins are untrusted code - the host must assume they are malicious and enforce strict security boundaries. However, unlike regular Dapps, plugins are installed once by a user after which they are static, locally stored, and can be run entirely offline (assuming the plugin does not require network access).
+
+
+#### Plugin Lifecycle
+```
+1. Host loads WASM binary
+2. Host calls plugin's `initialize` function (first load only)
+3. Plugin registers entities via host::RegisterEntity
+4. Host routes incoming requests to registered handlers
+5. Plugin makes host calls as needed (storage, network, other entities)
+6. Plugin returns response
+7. WASM instance terminates (stateless between requests)
+```
+
+### 
+
+ - Vision
+ - Problem
+ - Tlock core features
+   - Plugin-only evolution
+   - Hard sandboxing
+   - Domain system
+ -  
+
+---
+
 # Tlock-rs
 
 Tlock is designed as a modular-focused wallet framework.  It is designed to, as much as possible, get out of the way while providing a framework that allows plugins to securely and effectively perform tasks.  Its priorities are:
