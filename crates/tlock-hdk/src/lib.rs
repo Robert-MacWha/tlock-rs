@@ -40,6 +40,11 @@ macro_rules! impl_host_rpc {
             |host: ::std::sync::Arc<$host_ty>,
              plugin_id: $crate::wasmi_plugin_hdk::plugin_id::PluginId,
              params: <$method as $crate::tlock_api::RpcMethod>::Params| async move {
+                let span = ::tracing::info_span!(
+                    <$method>::NAME,
+                    plugin = %plugin_id,
+                );
+                let _enter = span.enter();
                 host.$host_fn(&plugin_id, params).await
             }
         );
@@ -54,9 +59,14 @@ macro_rules! impl_host_rpc_no_id {
             $method,
             $host_fn,
             |host: ::std::sync::Arc<$host_ty>,
-             _plugin_id: $crate::wasmi_plugin_hdk::plugin_id::PluginId,
+             plugin_id: $crate::wasmi_plugin_hdk::plugin_id::PluginId,
              params: <$method as $crate::tlock_api::RpcMethod>::Params| async move {
-                host.log_event(format!("[{}] {}", _plugin_id, <$method>::NAME));
+                let span = ::tracing::info_span!(
+                    <$method>::NAME,
+                    plugin = %plugin_id,
+                );
+                let _enter = span.enter();
+                host.log_event(format!("[{}] {}", plugin_id, <$method>::NAME));
                 host.$host_fn(params).await
             }
         );

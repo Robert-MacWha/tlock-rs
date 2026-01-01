@@ -428,7 +428,6 @@ impl Host {
     }
 
     pub fn notify_observers(&self) {
-        info!("Notifying observers of host state change");
         let observers = self.observers.lock().unwrap();
         for observer in observers.iter() {
             let _ = observer.unbounded_send(());
