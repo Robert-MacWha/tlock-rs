@@ -1,14 +1,13 @@
-use std::sync::Arc;
-
 use async_trait::async_trait;
 use serde::{Serialize, de::DeserializeOwned};
-use wasmi_plugin_pdk::{api::ApiError, rpc_message::RpcError, transport::Transport};
+use wasmi_plugin_pdk::rpc_message::{RpcError, RpcErrorContext};
 
 pub mod caip;
 pub mod component;
 pub mod domains;
 pub mod entities;
 pub use alloy;
+pub mod rpc_batch;
 
 // TODO: Add a signer trait just for signing raw messages? Not sure if it'd work
 // - we might end up with too many types requiring user authentication.
@@ -30,15 +29,55 @@ pub trait RpcMethod: Send + Sync {
 
     const NAME: &'static str;
 
-    /// Call this RPC method on the given transport with the provided params.
-    async fn call<E, T>(&self, transport: Arc<T>, params: Self::Params) -> Result<Self::Output, E>
+    fn call<T, E>(&self, transport: T, params: Self::Params) -> Result<Self::Output, RpcError>
     where
-        E: ApiError,
-        T: Transport<E> + Send + Sync + 'static,
+        T: wasmi_plugin_pdk::transport::SyncTransport<E> + Send + Sync + 'static,
+        E: Into<RpcError>,
     {
         let raw_params = serde_json::to_value(params).map_err(|_| RpcError::InvalidParams)?;
-        let resp = transport.call(Self::NAME, raw_params).await?;
-        let result = serde_json::from_value(resp.result).map_err(|_| RpcError::InternalError)?;
+        let resp = transport.call(Self::NAME, raw_params).map_err(Into::into)?;
+        let result = serde_json::from_value(resp.result).context("Deserialization Error")?;
+        Ok(result)
+    }
+
+    fn call_many<T, E>(
+        &self,
+        transport: T,
+        params: Vec<Self::Params>,
+    ) -> Result<Vec<Self::Output>, RpcError>
+    where
+        T: wasmi_plugin_pdk::transport::SyncManyTransport<E> + Send + Sync + 'static,
+        E: Into<RpcError>,
+    {
+        let raw_params: Vec<(&str, serde_json::Value)> = params
+            .into_iter()
+            .map(|p| serde_json::to_value(p).map_err(|_| RpcError::InvalidParams))
+            .map(|res| res.map(|v| (Self::NAME, v)))
+            .collect::<Result<_, _>>()?;
+        let responses = transport.call_many(raw_params).map_err(Into::into)?;
+        let mut results = Vec::with_capacity(responses.len());
+        for resp in responses {
+            let result = serde_json::from_value(resp.result).context("Deserialization Error")?;
+            results.push(result);
+        }
+        Ok(results)
+    }
+
+    async fn call_async<T, E>(
+        &self,
+        transport: T,
+        params: Self::Params,
+    ) -> Result<Self::Output, RpcError>
+    where
+        T: wasmi_plugin_pdk::transport::AsyncTransport<E> + Send + Sync + 'static,
+        E: Into<RpcError>,
+    {
+        let raw_params = serde_json::to_value(params).map_err(|_| RpcError::InvalidParams)?;
+        let resp = transport
+            .call_async(Self::NAME, raw_params)
+            .await
+            .map_err(Into::into)?;
+        let result = serde_json::from_value(resp.result).context("Deserialization Error")?;
         Ok(result)
     }
 }
@@ -73,6 +112,8 @@ pub mod global {
 /// The host namespace contains methods for interacting with the host and
 /// performing privileged operations.
 pub mod host {
+    use std::fmt;
+
     use serde::{Deserialize, Serialize};
 
     use crate::{
@@ -82,12 +123,31 @@ pub mod host {
         entities::{CoordinatorId, EntityId, EthProviderId, PageId, VaultId},
     };
 
-    #[derive(Serialize, Deserialize, Clone, Debug)]
+    #[derive(Serialize, Deserialize, Clone)]
     pub struct Request {
         pub url: String,
         pub method: String,
         pub headers: Vec<(String, Vec<u8>)>,
         pub body: Option<Vec<u8>>,
+    }
+
+    impl fmt::Debug for Request {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            let headers_debug: Vec<_> = self
+                .headers
+                .iter()
+                .map(|(k, v)| (k, String::from_utf8_lossy(v)))
+                .collect();
+
+            let body_debug = self.body.as_ref().map(|b| String::from_utf8_lossy(b));
+
+            f.debug_struct("Request")
+                .field("url", &self.url)
+                .field("method", &self.method)
+                .field("headers", &headers_debug)
+                .field("body", &body_debug)
+                .finish()
+        }
     }
 
     rpc_method!(
@@ -166,12 +226,12 @@ pub mod eth {
 
     use crate::entities::EthProviderId;
 
-    rpc_method!(eth_chainId, ChainId, EthProviderId, U256);
-
     rpc_method!(
         /// Get the current block number.
         eth_blockNumber, BlockNumber, EthProviderId, u64
     );
+
+    rpc_method!(eth_chainId, ChainId, EthProviderId, U256);
 
     rpc_method!(
         /// Executes a new message call immediately without creating a transaction on the block chain.
@@ -208,6 +268,11 @@ pub mod eth {
     rpc_method!(
         /// Gets the compiled bytecode of a smart contract.
         eth_getCode, GetCode, (EthProviderId, Address, BlockId), Bytes
+    );
+
+    rpc_method!(
+        /// Gets the storage value at a particular index of a smart contract.
+        eth_getStorageAt, GetStorageAt, (EthProviderId, Address, U256, BlockId), U256
     );
 
     rpc_method!(
@@ -370,6 +435,7 @@ pub mod page {
 
     use crate::entities::PageId;
 
+    #[non_exhaustive]
     #[derive(Serialize, Deserialize, Debug)]
     pub enum PageEvent {
         ButtonClicked(String),                          // (button_id)

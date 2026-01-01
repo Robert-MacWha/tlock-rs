@@ -4,12 +4,9 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-alloy = { workspace = true }
+alloy = { workspace = true, features = ["k256"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tlock-pdk = { workspace = true }
 tower-service = { workspace = true }
 tracing = { workspace = true }
-
-[build]
-target = "wasm32-wasip1"

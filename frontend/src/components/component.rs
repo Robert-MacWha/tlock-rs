@@ -29,9 +29,23 @@ pub fn RenderComponent(props: ComponentProps) -> Element {
                 h1 { "{text}" }
             }
         }
+        Component::Heading2 { text } => {
+            rsx! {
+                h2 { "{text}" }
+            }
+        }
         Component::Text { text } => {
             rsx! {
                 p { "{text}" }
+            }
+        }
+        Component::UnorderedList { items } => {
+            rsx! {
+                ul {
+                    for (key, item) in items {
+                        li { key: "{key}", RenderComponent { component: item.clone(), on_event: props.on_event } }
+                    }
+                }
             }
         }
         Component::ButtonInput { text, id } => {

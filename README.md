@@ -1,9 +1,3 @@
-// TODO: Implement basic evm json-rpc plugin so the vault can access eth_balance and calls
-  // TODO: Implement request func on the host
-// TODO: Pass a reference of the ethProvider plugin to the vault plugin cleanly (ideally semi-automatically, perhaps using caip-10 style resource identifiers) 
-// TODO: Make the vault plugin able to query the chain for information
-// TODO: Make the vault plugin report actual on-chain state
-// TODO: Transfer funds into the vault, then back out
 
 # Tlock-rs
 
@@ -15,9 +9,12 @@ Tlock is designed as a modular-focused wallet framework.  It is designed to, as 
 
 3. Portability. Tlock should be usable across arbitrary platforms, with arbitrary public interfaces.
 
+4. Extensibility. New chains, new applications, and new workflows should be easy to add without requiring host updates.
+
 This document contains a system overview.
 - See [status-quo.md](./docs/status-quo.md) for problems I have with the current status quo.
 - See [design-considerations.md](./docs/design-considerations.md) for problems I have this this proposal.
+- See the remainder of the docs/ folder for additional design documents
 
 ## Name
 

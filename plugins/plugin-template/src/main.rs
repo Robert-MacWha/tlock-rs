@@ -1,15 +1,15 @@
-use std::{io::stderr, sync::Arc};
+use std::io::stderr;
 
 use tlock_pdk::{
-    server::PluginServer,
+    runner::PluginRunner,
     tlock_api::{RpcMethod, global},
-    wasmi_plugin_pdk::{rpc_message::RpcError, transport::JsonRpcTransport},
+    wasmi_plugin_pdk::{rpc_message::RpcError, transport::Transport},
 };
 use tracing::info;
 use tracing_subscriber::fmt;
 
-async fn ping(transport: Arc<JsonRpcTransport>, _: ()) -> Result<String, RpcError> {
-    global::Ping.call(transport, ()).await?;
+async fn ping(transport: Transport, _: ()) -> Result<String, RpcError> {
+    global::Ping.call_async(transport, ()).await?;
     Ok("pong".to_string())
 }
 
@@ -22,7 +22,5 @@ fn main() {
         .init();
     info!("Starting plugin...");
 
-    PluginServer::new_with_transport()
-        .with_method(global::Ping, ping)
-        .run();
+    PluginRunner::new().with_method(global::Ping, ping).run();
 }

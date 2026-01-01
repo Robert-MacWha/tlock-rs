@@ -10,6 +10,4 @@ tlock-alloy = { workspace = true }
 tlock-pdk = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
-
-[build]
-target = "wasm32-wasip1"
+futures = { workspace = true }

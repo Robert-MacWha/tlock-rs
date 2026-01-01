@@ -1,50 +1,40 @@
-use std::{fmt::Debug, sync::Arc};
+use std::fmt::Debug;
 
 use serde::{Serialize, de::DeserializeOwned};
 use tlock_api::{RpcMethod, host};
-use tracing::error;
-use wasmi_plugin_pdk::{api::ApiError, rpc_message::RpcError, transport::Transport};
+use wasmi_plugin_pdk::{
+    rpc_message::{RpcError, RpcErrorContext},
+    transport::SyncTransport,
+};
 
-pub async fn get_state<T, R, E>(transport: Arc<T>) -> R
+pub fn get_state<T, R, E>(transport: T) -> R
 where
-    T: Transport<E> + Send + Sync + 'static,
+    T: SyncTransport<E> + Send + Sync + 'static,
     R: DeserializeOwned + Default,
-    E: ApiError + From<RpcError>,
+    E: Into<RpcError>,
 {
-    try_get_state::<T, R, E>(transport)
-        .await
-        .unwrap_or_default()
+    try_get_state::<T, R, E>(transport).unwrap_or_default()
 }
 
-pub async fn try_get_state<T, R, E>(transport: Arc<T>) -> Result<R, E>
+pub fn try_get_state<T, R, E>(transport: T) -> Result<R, RpcError>
 where
-    T: Transport<E> + Send + Sync + 'static,
+    T: SyncTransport<E> + Send + Sync + 'static,
     R: DeserializeOwned,
-    E: ApiError + From<RpcError>,
+    E: Into<RpcError>,
 {
-    let state_bytes = host::GetState.call(transport, ()).await?.ok_or_else(|| {
-        error!("State is empty");
-        E::from(RpcError::InternalError)
-    })?;
-
-    let state: R = serde_json::from_slice(&state_bytes).map_err(|e| {
-        error!("Failed to deserialize state: {}", e);
-        E::from(RpcError::InternalError)
-    })?;
-
+    let state_bytes = host::GetState.call(transport, ())?.context("Empty state")?;
+    let state = serde_json::from_slice(&state_bytes)
+        .with_context(|| format!("Failed to deserialize state from bytes: {:?}", state_bytes))?;
     Ok(state)
 }
 
-pub async fn set_state<T, S, E>(transport: Arc<T>, state: &S) -> Result<(), E>
+pub fn set_state<T, S, E>(transport: T, state: &S) -> Result<(), RpcError>
 where
-    T: Transport<E> + Send + Sync + 'static,
+    T: SyncTransport<E> + Send + Sync + 'static,
     S: Debug + Serialize,
-    E: ApiError + From<RpcError>,
+    E: Into<RpcError>,
 {
-    let state_bytes = serde_json::to_vec(state).map_err(|e| {
-        error!("Failed to serialize state {:?}: {}", state, e);
-        E::from(RpcError::InternalError)
-    })?;
-
-    host::SetState.call(transport, state_bytes).await
+    let state_bytes = serde_json::to_vec(state)
+        .with_context(|| format!("Failed to serialize state {:?}", state))?;
+    host::SetState.call(transport, state_bytes)
 }
