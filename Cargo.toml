@@ -67,7 +67,7 @@ inherits = "dev"
 inherits = "dev"
 
 [patch.crates-io]
-# wasmi-plugin-hdk = { git = "https://github.com/Robert-MacWha/wasmi-plugin-framework", branch = "wasmer-shared-memory-test" }
-# wasmi-plugin-pdk = { git = "https://github.com/Robert-MacWha/wasmi-plugin-framework", branch = "wasmer-shared-memory-test" }
-wasmi-plugin-hdk = { path = "../wasmi-plugin-framework/crates/wasmi-plugin-hdk" }
-wasmi-plugin-pdk = { path = "../wasmi-plugin-framework/crates/wasmi-plugin-pdk" }
+wasmi-plugin-hdk = { git = "https://github.com/Robert-MacWha/wasmi-plugin-framework", branch = "wasmer-shared-memory-test" }
+wasmi-plugin-pdk = { git = "https://github.com/Robert-MacWha/wasmi-plugin-framework", branch = "wasmer-shared-memory-test" }
+# wasmi-plugin-hdk = { path = "../wasmi-plugin-framework/crates/wasmi-plugin-hdk" }
+# wasmi-plugin-pdk = { path = "../wasmi-plugin-framework/crates/wasmi-plugin-pdk" }
