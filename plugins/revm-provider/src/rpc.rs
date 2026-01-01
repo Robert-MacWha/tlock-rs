@@ -90,9 +90,15 @@ pub fn tx_request_to_tx_env(tx_request: rpc::types::TransactionRequest) -> TxEnv
     if let Some(from) = tx_request.from {
         tx_env = tx_env.caller(from);
     }
-    tx_env = tx_env.gas_limit(tx_request.gas.unwrap_or(21_000_000));
-    tx_env = tx_env.gas_price(tx_request.gas_price.unwrap_or(1));
-    tx_env = tx_env.gas_priority_fee(tx_request.max_priority_fee_per_gas);
+    if let Some(gas) = tx_request.gas {
+        tx_env = tx_env.gas_limit(gas);
+    }
+    if let Some(gas_price) = tx_request.gas_price {
+        tx_env = tx_env.gas_price(gas_price);
+    }
+    if let Some(max_priority_fee_per_gas) = tx_request.max_priority_fee_per_gas {
+        tx_env = tx_env.gas_priority_fee(Some(max_priority_fee_per_gas));
+    }
     if let Some(to) = tx_request.to {
         tx_env = tx_env.kind(to);
     }

@@ -11,7 +11,7 @@ use tlock_pdk::{
     tlock_api::{
         RpcMethod,
         alloy::{
-            eips::BlockId,
+            eips::{BlockId, BlockNumberOrTag},
             network::Ethereum,
             primitives::U256,
             rpc::types::{
@@ -19,7 +19,6 @@ use tlock_pdk::{
                 TransactionReceipt, TransactionRequest, state::StateOverride,
             },
         },
-        caip::ChainId,
         component::{
             Component, button_input, container, form, heading, heading2, submit_input, text,
             text_input, unordered_list,
@@ -50,48 +49,20 @@ mod rpc;
 
 #[derive(Debug, Serialize, Deserialize)]
 struct State {
-    alloy_provider_id: EthProviderId,
     fork_block: BlockId,
 
     fork_snapshot: ProviderSnapshot,
 }
 
 const CHAIN_ID: u64 = 11155111u64;
+const RPC_URL: &str = "https://1rpc.io/sepolia";
 
 async fn init(transport: Transport, _params: ()) -> Result<(), RpcError> {
-    // TODO: Consider embedding the alloy instance in this plugin rather than using
-    // an eth provider. Saves the cost of inter-plugin calls.
-    let provider_id = host::RequestEthProvider
-        .call_async(transport.clone(), ChainId::new_evm(CHAIN_ID))
-        .await?;
-
-    //? Setup the forked provider
-    let block = eth::GetBlock
-        .call_async(
-            transport.clone(),
-            (
-                provider_id,
-                BlockId::latest(),
-                BlockTransactionsKind::Hashes,
-            ),
-        )
-        .await?;
-
-    let fork_block_id = BlockId::number(block.number());
-    let db: AlloyDb<Ethereum> = AlloyDb::new(transport.clone(), provider_id, fork_block_id);
-
-    let parent_hash = block.header.parent_hash;
-    let block_env = header_to_block_env(block.header);
-
-    let fork = Provider::new(db, block_env, parent_hash);
-    let fork_snapshot = fork.snapshot();
-
-    //? Save setup snapshot
-    let state = State {
-        alloy_provider_id: provider_id,
-        fork_block: fork_block_id,
-        fork_snapshot,
+    let mut state = State {
+        fork_block: BlockId::number(0),
+        fork_snapshot: ProviderSnapshot::default(),
     };
+    handle_reset_fork(transport.clone(), &mut state).await?;
     set_state(transport.clone(), &state)?;
 
     //? Register the revm entities
@@ -133,9 +104,6 @@ async fn on_update(
         }
         page::PageEvent::FormSubmitted(form_id, form_data) if form_id == "deal_form" => {
             handle_deal(transport.clone(), &mut state, form_data)?;
-        }
-        page::PageEvent::FormSubmitted(form_id, form_data) if form_id == "deal_erc20_form" => {
-            handle_deal_erc20(transport.clone(), &mut state, form_data)?;
         }
         _ => {
             warn!("Unhandled page event: {:?}", event);
@@ -252,10 +220,11 @@ async fn call(
     ),
 ) -> Result<Bytes, RpcError> {
     let (_, tx_request, block_id, state_override, block_override) = params;
-    let fork = get_fork_provider(transport.clone())?;
-
+    let mut fork = get_fork_provider(transport.clone())?;
+    let resp = fork.call(tx_request, block_id, state_override, block_override)?;
     set_snapshot(transport.clone(), fork.snapshot())?;
-    Ok(fork.call(tx_request, block_id, state_override, block_override)?)
+
+    Ok(resp)
 }
 
 async fn estimate_gas(
@@ -269,10 +238,11 @@ async fn estimate_gas(
     ),
 ) -> Result<u64, RpcError> {
     let (_, tx_request, block_id, state_override, block_override) = params;
-    let fork = get_fork_provider(transport.clone())?;
+    let mut fork = get_fork_provider(transport.clone())?;
+    let resp = fork.estimate_gas(tx_request, block_id, state_override, block_override)?;
 
     set_snapshot(transport.clone(), fork.snapshot())?;
-    Ok(fork.estimate_gas(tx_request, block_id, state_override, block_override)?)
+    Ok(resp)
 }
 
 async fn send_raw_transaction(
@@ -310,11 +280,10 @@ fn get_fork_provider(
     transport: Transport,
 ) -> Result<Provider<impl DatabaseRef + std::fmt::Debug>, RpcError> {
     let state: State = try_get_state(transport.clone())?;
-    let eth_provider_id = state.alloy_provider_id;
     let fork_block = state.fork_block;
     let fork_snapshot = state.fork_snapshot;
 
-    let db: AlloyDb<Ethereum> = AlloyDb::new(transport.clone(), eth_provider_id, fork_block);
+    let db: AlloyDb<Ethereum> = AlloyDb::new(transport.clone(), RPC_URL.to_string(), fork_block);
     let fork_provider = Provider::from_snapshot(db, fork_snapshot);
     Ok(fork_provider)
 }
@@ -353,17 +322,6 @@ fn build_ui(state: &State) -> Component {
                 submit_input("Execute Deal"),
             ],
         ),
-        heading2("Deal ERC20"),
-        text("Set ERC20 token balance for an address"),
-        form(
-            "deal_erc20_form",
-            vec![
-                text_input("address", "Holder Address (hex)"),
-                text_input("erc20", "ERC20 Contract Address (hex)"),
-                text_input("amount", "Amount (wei)"),
-                submit_input("Execute Deal ERC20"),
-            ],
-        ),
     ]);
 
     // Transactions section
@@ -398,26 +356,20 @@ fn build_ui(state: &State) -> Component {
 async fn handle_reset_fork(transport: Transport, state: &mut State) -> Result<(), RpcError> {
     info!("Resetting fork to chain head");
 
-    let block = eth::GetBlock
-        .call_async(
-            transport.clone(),
-            (
-                state.alloy_provider_id,
-                BlockId::latest(),
-                BlockTransactionsKind::Hashes,
-            ),
-        )
-        .await?;
-    let fork_block_id = BlockId::number(block.number());
-
     let db: AlloyDb<Ethereum> =
-        AlloyDb::new(transport.clone(), state.alloy_provider_id, fork_block_id);
-    let parent_hash = block.header.parent_hash;
-    let block_env = header_to_block_env(block.header);
+        AlloyDb::new(transport.clone(), RPC_URL.to_string(), BlockId::number(0));
+    let header = db
+        .get_block(BlockNumberOrTag::Latest)
+        .context("Failed to get latest block")?;
+
+    let block_id = BlockId::number(header.number);
+    let db: AlloyDb<Ethereum> = AlloyDb::new(transport.clone(), RPC_URL.to_string(), block_id);
+    let parent_hash = header.parent_hash;
+    let block_env = header_to_block_env(header);
     let fork = Provider::new(db, block_env, parent_hash);
     let fork_snapshot = fork.snapshot();
 
-    state.fork_block = fork_block_id;
+    state.fork_block = block_id;
     state.fork_snapshot = fork_snapshot;
 
     Ok(())
@@ -455,41 +407,6 @@ fn handle_deal(
 
     let mut fork = get_fork_provider(transport.clone())?;
     fork.deal(address, amount)?;
-    state.fork_snapshot = fork.snapshot();
-
-    Ok(())
-}
-
-fn handle_deal_erc20(
-    transport: Transport,
-    state: &mut State,
-    form_data: HashMap<String, String>,
-) -> Result<(), RpcError> {
-    let address: Address = form_data
-        .get("address")
-        .context("Missing address")?
-        .parse()
-        .context("Invalid address")?;
-
-    let erc20: Address = form_data
-        .get("erc20")
-        .context("Missing erc20 contract address")?
-        .parse()
-        .context("Invalid erc20 address")?;
-
-    let amount: U256 = form_data
-        .get("amount")
-        .context("Missing amount")?
-        .parse()
-        .context("Invalid amount")?;
-
-    info!(
-        "Executing deal_erc20 for address {} with erc20 {} and amount {}",
-        address, erc20, amount
-    );
-
-    let mut fork = get_fork_provider(transport.clone())?;
-    fork.deal_erc20(address, erc20, amount)?;
     state.fork_snapshot = fork.snapshot();
 
     Ok(())

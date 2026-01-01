@@ -7,8 +7,7 @@ use revm::{
     primitives::{
         Address, Bytes, HashMap, U256,
         alloy_primitives::{BlockHash, TxHash},
-        hex::ToHexExt,
-        keccak256,
+        hex::{self},
     },
 };
 use thiserror::Error;
@@ -24,7 +23,6 @@ use tlock_pdk::{
                 BlockOverrides, BlockTransactions, BlockTransactionsKind, state::StateOverride,
             },
         },
-        sol_types::SolValue,
     },
     wasmi_plugin_pdk::rpc_message::RpcError,
 };
@@ -231,7 +229,7 @@ impl<DB: DatabaseRef> Provider<DB> {
     }
 
     pub fn call(
-        &self,
+        &mut self,
         tx_request: rpc::types::TransactionRequest,
         block_id: BlockId,
         state_override: Option<StateOverride>,
@@ -241,7 +239,7 @@ impl<DB: DatabaseRef> Provider<DB> {
 
         let result = self
             .chain
-            .call(tx_env, block_id, state_override, block_override)?;
+            .call(tx_env, block_id, state_override, block_override, true)?;
 
         match result {
             ExecutionResult::Success { output, .. } => match output {
@@ -249,14 +247,14 @@ impl<DB: DatabaseRef> Provider<DB> {
                 Output::Create(bytes, _) => Ok(bytes),
             },
             ExecutionResult::Revert { output, .. } => Err(
-                ProviderError::<DB>::TransactionReverted(output.encode_hex()),
+                ProviderError::<DB>::TransactionReverted(decode_revert_reason(&output)),
             ),
             ExecutionResult::Halt { reason, .. } => Err(ProviderError::<DB>::ChainHalted(reason)),
         }
     }
 
     pub fn estimate_gas(
-        &self,
+        &mut self,
         tx_request: rpc::types::TransactionRequest,
         block_id: BlockId,
         state_override: Option<StateOverride>,
@@ -266,12 +264,12 @@ impl<DB: DatabaseRef> Provider<DB> {
 
         let result = self
             .chain
-            .call(tx_env, block_id, state_override, block_override)?;
+            .call(tx_env, block_id, state_override, block_override, false)?;
 
         match result {
             ExecutionResult::Success { gas_used, .. } => Ok(gas_used),
             ExecutionResult::Revert { output, .. } => Err(
-                ProviderError::<DB>::TransactionReverted(output.encode_hex()),
+                ProviderError::<DB>::TransactionReverted(decode_revert_reason(&output)),
             ),
             ExecutionResult::Halt { reason, .. } => Err(ProviderError::<DB>::ChainHalted(reason)),
         }
@@ -354,41 +352,10 @@ impl<DB: DatabaseRef> Provider<DB> {
         Ok(())
     }
 
-    /// Sets the ERC20 token balance for a given address by directly modifying
-    /// the storage slot corresponding to the balance mapping.
-    ///
-    /// Uses the standard Solidity storage layout for mappings, where the slot
-    /// is calculated as keccak256(abi.encode(address, slot_number)). Will
-    /// not work for non-standard address mappings, viper contracts, etc.
-    pub fn deal_erc20(
-        &mut self,
-        address: Address,
-        erc20: Address,
-        amount: U256,
-    ) -> Result<(), ProviderError<DB>> {
-        let slot = self.erc_address_storage(address);
-        let mut storage = HashMap::default();
-        storage.insert(slot, amount);
-
-        self.chain
-            .db()
-            .replace_account_storage(erc20, storage)
-            .map_err(|e| ChainError::Db(e.to_string()))?;
-
-        Ok(())
-    }
-
     /// Mines a new block.
     pub fn mine(&mut self) -> Result<(), ProviderError<DB>> {
         self.chain.mine()?;
         Ok(())
-    }
-
-    /// Calculates the storage slot for an ERC20 balance mapping.
-    /// This implements the standard Solidity mapping storage layout where
-    /// slot = keccak256(abi.encode(address, slot_number))
-    fn erc_address_storage(&self, address: Address) -> U256 {
-        keccak256((address, U256::from(4)).abi_encode()).into()
     }
 }
 
@@ -399,5 +366,33 @@ impl<DB: DatabaseRef> Provider<DB> {
             BlockId::Number(num) => num == BlockNumberOrTag::Number(self.chain.latest()),
             _ => false,
         }
+    }
+}
+
+fn decode_revert_reason(bytes: &[u8]) -> String {
+    // 0x08c379a0 is the selector for Error(string)
+    if bytes.len() < 4 || bytes[0..4] != [0x08, 0xc3, 0x79, 0xa0] {
+        return format!("Raw Revert: 0x{}", hex::encode(bytes));
+    }
+
+    // Standard ABI encoding for strings:
+    // [0:4] Selector
+    // [4:36] Offset to string data (usually 0x20)
+    // [36:68] Length of string
+    // [68..] String data
+    if bytes.len() < 68 {
+        return format!("Malformed Revert: 0x{}", hex::encode(bytes));
+    }
+
+    let length = u32::from_be_bytes(bytes[64..68].try_into().unwrap_or([0; 4])) as usize;
+    let data_end = 68 + length;
+
+    if bytes.len() < data_end {
+        return format!("Truncated Revert: 0x{}", hex::encode(bytes));
+    }
+
+    match String::from_utf8(bytes[68..data_end].to_vec()) {
+        Ok(s) => s,
+        Err(_) => format!("Hex Revert: 0x{}", hex::encode(bytes)),
     }
 }

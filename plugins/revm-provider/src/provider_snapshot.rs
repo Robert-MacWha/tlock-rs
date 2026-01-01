@@ -9,14 +9,14 @@ use tlock_pdk::tlock_api::alloy::rpc::{self};
 
 use crate::chain::{PendingBlock, SimulatedBlock};
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Default)]
 pub struct ProviderSnapshot {
     pub chain: ChainSnapshot,
     pub transactions: HashMap<u64, Vec<rpc::types::Transaction>>,
     pub receipts: HashMap<TxHash, rpc::types::TransactionReceipt>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Default)]
 pub struct ChainSnapshot {
     pub cache: Cache,
     pub pending: PendingBlock,

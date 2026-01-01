@@ -302,7 +302,6 @@ fn main() {
         .with_ansi(false)
         .compact()
         .init();
-    info!("Starting Vault Page Plugin...");
 
     PluginRunner::new()
         .with_method(plugin::Init, init)

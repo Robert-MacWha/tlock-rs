@@ -8,7 +8,7 @@ use revm::{
         result::{EVMError, ExecutionResult, TransactionIndexedError},
     },
     database::CacheDB,
-    primitives::{B256, U256, keccak256},
+    primitives::{Address, B256, U256, address, keccak256},
 };
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -86,7 +86,9 @@ impl<DB: DatabaseRef + std::fmt::Debug> Chain<DB> {
 
     pub fn from_snapshot(db: DB, snapshot: ChainSnapshot) -> Self {
         let mut db = CacheDB::new(db);
+        info!("Restored chain from snapshot: {:?}", snapshot);
         db.cache = snapshot.cache;
+
         Self {
             db,
             pending: snapshot.pending,
@@ -127,12 +129,16 @@ impl<DB: DatabaseRef> Chain<DB> {
     /// optional state and block overrides. The call does not modify the
     /// chain state and any state overrides are temporary for the duration
     /// of the call.
+    ///
+    /// The `unconstrained` flag, when set to true, allows the call to bypass
+    /// certain constraints such as gas limits and balance checks.
     pub fn call(
-        &self,
-        tx: TxEnv,
+        &mut self,
+        mut tx: TxEnv,
         block_id: BlockId,
         state_override: Option<StateOverride>,
         block_override: Option<BlockOverrides>,
+        unconstrained: bool,
     ) -> Result<ExecutionResult, ChainError<DB>> {
         info!("Calling tx {:?} at block {:?}", tx, block_id);
 
@@ -150,15 +156,33 @@ impl<DB: DatabaseRef> Chain<DB> {
 
         //? Stack a new CacheDB to apply state overrides without modifying
         //? the underlying chain state
-        let mut db = CacheDB::new(&self.db);
+        let mut overlay_db = CacheDB::new(&self.db);
         if let Some(overrides) = state_override {
-            apply_state_overrides(&mut db, overrides).map_err(|e| ChainError::Db(e.to_string()))?;
+            apply_state_overrides(&mut overlay_db, overrides)
+                .map_err(|e| ChainError::Db(e.to_string()))?;
+        }
+
+        if unconstrained {
+            tx.gas_price = 0;
+            tx.gas_priority_fee = None;
+            tx.gas_limit = u64::MAX;
+        }
+
+        if unconstrained && tx.caller == Address::ZERO {
+            tx.caller = address!("0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef");
         }
 
         let mut evm = Context::mainnet()
-            .with_ref_db(db)
+            .with_db(overlay_db)
             .with_block(block_env)
             .build_mainnet();
+
+        if unconstrained {
+            evm.cfg.disable_balance_check = true;
+            evm.cfg.disable_base_fee = true;
+            evm.cfg.disable_block_gas_limit = true;
+        }
+
         let result = evm.transact(tx)?;
 
         Ok(result.result)
@@ -189,7 +213,7 @@ impl<DB: DatabaseRef> Chain<DB> {
         let db = &mut self.db;
         let block_env = self.pending.env.clone();
         let mut evm = Context::mainnet()
-            .with_ref_db(db)
+            .with_db(db)
             .with_block(block_env)
             .build_mainnet();
 
