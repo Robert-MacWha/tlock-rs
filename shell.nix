@@ -13,22 +13,23 @@ let
   };
   wasm-bindgen-cli_0_2_106 = pkgs.callPackage ./flakes/wasm-bindgen-cli.nix { };
   devServer = pkgs.writeShellScriptBin "dev" ''
-    trap "kill 0" EXIT
-
-    # Start Chrome-unsafe in background (keep logs visible for debugging)
-    chrome-unsafe &
-
-    # Start Dioxus in foreground
-    dx serve --port 8080 --platform web
+    concurrently \
+      --names "chrome,tailwnid,dx" \
+      --prefix-colors "blue,green,magenta" \
+      --kill-others-on-fail \
+      "chrome-unsafe" \
+      "tailwindcss -i ./input.css -o ./assets/tailwind.css --watch" \
+      "dx serve --platform web"
   '';
   releaseServer = pkgs.writeShellScriptBin "release" ''
-    trap "kill 0" EXIT
 
-    # Start Chrome-unsafe in background (keep logs visible for debugging)
-    chrome-unsafe &
-
-    # Start Dioxus in foreground
-    dx serve --port 8080 --platform web --release
+    concurrently \
+      --names "chrome,tailwind,dx" \
+      --prefix-colors "blue,green,magenta" \
+      --kill-others-on-fail \
+      "chrome-unsafe" \
+      "tailwindcss -i ./input.css -o ./assets/tailwind.css --watch" \
+      "dx serve --platform web --release"
   '';
   # Unsafe Chrome for testing COOP/COEP locally.
   unsafeChromium = pkgs.writeShellScriptBin "chrome-unsafe" ''
@@ -56,10 +57,13 @@ pkgs.mkShell {
     cargo-machete
     samply
     dioxus-cli
+    concurrently
 
     devServer
     releaseServer
     unsafeChromium
+    tailwindcss_4
+    watchman
 
     wabt
     wasm-tools

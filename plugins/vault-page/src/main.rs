@@ -8,11 +8,11 @@ use tlock_pdk::{
         RpcMethod,
         caip::{AccountId, AssetId},
         component::{
-            Component, button_input, container, dropdown, form, heading, heading2, submit_input,
-            text, text_input, unordered_list,
+            Component, asset, button_input, container, dropdown, entity_id, form, heading,
+            heading2, submit_input, text, text_input, unordered_list,
         },
         domains::Domain,
-        entities::{PageId, VaultId},
+        entities::{EntityId, PageId, VaultId},
         global, host, page, plugin,
         vault::{self},
     },
@@ -26,8 +26,8 @@ use tracing_subscriber::fmt;
 
 #[derive(Serialize, Deserialize, Default, Debug)]
 struct PluginState {
-    page_id: Option<PageId>,
-    vault_id: Option<VaultId>,
+    page_id: PageId,
+    vault_id: VaultId,
     cached_assets: Vec<(AssetId, alloy::primitives::U256)>,
     last_message: Option<String>,
 }
@@ -37,12 +37,25 @@ struct PluginState {
 async fn init(transport: Transport, _params: ()) -> Result<(), RpcError> {
     info!("Initializing Vault Page Plugin");
 
-    // Register the vault page
-    host::RegisterEntity
+    let vault_id: VaultId = host::RequestVault.call_async(transport.clone(), ()).await?;
+
+    let page_id = host::RegisterEntity
         .call_async(transport.clone(), Domain::Page)
         .await?;
+    let page_id: PageId = match page_id {
+        EntityId::Page(id) => id,
+        _ => {
+            return Err(RpcError::custom("Did not receive PageId"));
+        }
+    };
 
-    handle_request_vault(&transport).await?;
+    let state = PluginState {
+        page_id,
+        vault_id,
+        cached_assets: vec![],
+        last_message: Some(format!("Vault selected: {}", vault_id)),
+    };
+    set_state(transport.clone(), &state)?;
 
     Ok(())
 }
@@ -55,10 +68,7 @@ async fn ping(_: Transport, _: ()) -> Result<String, RpcError> {
 
 async fn on_load(transport: Transport, page_id: PageId) -> Result<(), RpcError> {
     info!("Page loaded: {}", page_id);
-
-    let mut state: PluginState = get_state(transport.clone());
-    state.page_id = Some(page_id);
-    set_state(transport.clone(), &state)?;
+    let state: PluginState = get_state(transport.clone());
 
     let component = build_ui(&state);
     host::SetPage
@@ -105,35 +115,11 @@ async fn on_update(
 
 // ---------- Event Handlers ----------
 
-async fn handle_request_vault(transport: &Transport) -> Result<(), RpcError> {
-    info!("Requesting vault from host");
-
-    let vault_id = host::RequestVault.call_async(transport.clone(), ()).await?;
-    let mut state: PluginState = get_state(transport.clone());
-    state.vault_id = Some(vault_id);
-    state.last_message = Some(format!("Vault selected: {}", vault_id));
-    info!("Vault selected: {}", vault_id);
-
-    set_state(transport.clone(), &state)?;
-    host::SetPage
-        .call_async(
-            transport.clone(),
-            (state.page_id.unwrap(), build_ui(&state)),
-        )
-        .await?;
-
-    Ok(())
-}
-
 async fn handle_refresh_assets(
     transport: &Transport,
     state: &mut PluginState,
 ) -> Result<(), RpcError> {
-    let Some(vault_id) = state.vault_id else {
-        state.last_message = Some("No vault selected".to_string());
-        return Ok(());
-    };
-
+    let vault_id = state.vault_id;
     info!("Refreshing assets for vault: {}", vault_id);
 
     let assets = vault::GetAssets
@@ -152,10 +138,7 @@ async fn handle_get_deposit(
     state: &mut PluginState,
     form_data: HashMap<String, String>,
 ) -> Result<(), RpcError> {
-    let Some(vault_id) = state.vault_id else {
-        state.last_message = Some("No vault selected".to_string());
-        return Ok(());
-    };
+    let vault_id = state.vault_id;
 
     let Some(asset_str) = form_data.get("asset") else {
         state.last_message = Some("No asset selected".to_string());
@@ -181,10 +164,7 @@ async fn handle_withdraw(
     state: &mut PluginState,
     form_data: HashMap<String, String>,
 ) -> Result<(), RpcError> {
-    let Some(vault_id) = state.vault_id else {
-        state.last_message = Some("No vault selected".to_string());
-        return Ok(());
-    };
+    let vault_id = state.vault_id;
 
     let Some(to_address_str) = form_data.get("to_address") else {
         state.last_message = Some("Missing to_address".to_string());
@@ -231,19 +211,13 @@ async fn handle_withdraw(
 // ---------- UI Builders ----------
 
 fn build_ui(state: &PluginState) -> Component {
-    let mut sections = vec![
-        heading("Vault Page"),
-        text("A simple UI for interacting with vault plugins"),
-    ];
+    let vault_id = state.vault_id;
 
-    // Status section
-    let Some(vault_id) = &state.vault_id else {
-        sections.push(text("No vault selected"));
-        return container(sections);
-    };
+    let mut sections = vec![heading("Vault Page"), text("Basic vault management page")];
 
     sections.extend(vec![
-        text(format!("Current vault: {}", vault_id)),
+        text("Underlying vault"),
+        entity_id(vault_id.into()),
         text(format!(
             "Status: {}",
             state.last_message.as_deref().unwrap_or("OK")
@@ -261,7 +235,7 @@ fn build_ui(state: &PluginState) -> Component {
     let balances = state
         .cached_assets
         .iter()
-        .map(|(id, bal)| (id.to_string(), text(format!("{}: {}", id, bal))));
+        .map(|(id, bal)| (id.to_string(), asset(id.clone(), Some(bal.clone()))));
 
     let asset_options = state.cached_assets.iter().map(|(id, _)| id.to_string());
 
@@ -273,7 +247,7 @@ fn build_ui(state: &PluginState) -> Component {
         form(
             "get_deposit_form",
             vec![
-                dropdown("asset", asset_options.clone(), None),
+                dropdown("asset", "Asset", asset_options.clone(), None),
                 submit_input("Get Address"),
             ],
         ),
@@ -282,9 +256,9 @@ fn build_ui(state: &PluginState) -> Component {
         form(
             "withdraw_form",
             vec![
-                text_input("to_address", "Recipient address (CAIP-10)"),
-                dropdown("asset", asset_options, None),
-                text_input("amount", "Amount (wei)"),
+                text_input("to_address", "Recipient Address", "eip155:1:0xabc123..."),
+                dropdown("asset", "Asset", asset_options, None),
+                text_input("amount", "Amount (wei)", "1500"),
                 submit_input("Withdraw"),
             ],
         ),

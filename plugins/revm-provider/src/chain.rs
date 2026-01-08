@@ -32,6 +32,7 @@ pub struct Chain<DB: DatabaseRef> {
 
     /// Pending block environment and transactions
     pending: PendingBlock,
+    chain_id: u64,
     blocks: BTreeMap<u64, SimulatedBlock>,
     block_time: u64,
 }
@@ -49,6 +50,7 @@ pub struct SimulatedBlock {
     pub hash: B256,
     pub parent_hash: B256,
     pub results: Vec<ExecutionResult>,
+    pub transactions: Vec<TxEnv>,
 }
 
 #[derive(Error, Debug)]
@@ -68,9 +70,10 @@ pub enum ChainError<DB: DatabaseRef> {
 }
 
 impl<DB: DatabaseRef + std::fmt::Debug> Chain<DB> {
-    pub fn new(db: DB, block_env: BlockEnv, parent_hash: Option<B256>) -> Self {
+    pub fn new(db: DB, chain_id: u64, block_env: BlockEnv, parent_hash: Option<B256>) -> Self {
         let mut chain = Self {
             db: CacheDB::new(db),
+            chain_id,
             pending: PendingBlock {
                 env: block_env,
                 parent_hash: parent_hash.unwrap_or(B256::ZERO),
@@ -86,11 +89,11 @@ impl<DB: DatabaseRef + std::fmt::Debug> Chain<DB> {
 
     pub fn from_snapshot(db: DB, snapshot: ChainSnapshot) -> Self {
         let mut db = CacheDB::new(db);
-        info!("Restored chain from snapshot: {:?}", snapshot);
         db.cache = snapshot.cache;
 
         Self {
             db,
+            chain_id: snapshot.chain_id,
             pending: snapshot.pending,
             blocks: snapshot.blocks,
             block_time: snapshot.block_time,
@@ -100,6 +103,7 @@ impl<DB: DatabaseRef + std::fmt::Debug> Chain<DB> {
     pub fn snapshot(&self) -> ChainSnapshot {
         ChainSnapshot {
             cache: self.db.cache.clone(),
+            chain_id: self.chain_id,
             pending: self.pending.clone(),
             blocks: self.blocks.clone(),
             block_time: self.block_time,
@@ -173,6 +177,10 @@ impl<DB: DatabaseRef> Chain<DB> {
         }
 
         let mut evm = Context::mainnet()
+            .modify_cfg_chained(|cfg| {
+                cfg.tx_chain_id_check = false;
+                cfg.chain_id = self.chain_id;
+            })
             .with_db(overlay_db)
             .with_block(block_env)
             .build_mainnet();
@@ -192,6 +200,10 @@ impl<DB: DatabaseRef> Chain<DB> {
     /// committing the block to the chain. The chain state is updated to reflect
     /// the changes made by the transaction.
     pub fn transact_commit(&mut self, tx: TxEnv) -> Result<ExecutionResult, ChainError<DB>> {
+        info!(
+            "Transacting tx {:?} at block {:?}",
+            tx, self.pending.env.number
+        );
         let tx_idx = self.pending.transactions.len();
 
         self.pending.transactions.push(tx);
@@ -213,6 +225,9 @@ impl<DB: DatabaseRef> Chain<DB> {
         let db = &mut self.db;
         let block_env = self.pending.env.clone();
         let mut evm = Context::mainnet()
+            .modify_cfg_chained(|cfg| {
+                cfg.chain_id = self.chain_id;
+            })
             .with_db(db)
             .with_block(block_env)
             .build_mainnet();
@@ -231,6 +246,7 @@ impl<DB: DatabaseRef> Chain<DB> {
                 parent_hash,
                 hash: block_hash,
                 results: results.clone(),
+                transactions: self.pending.transactions.clone(),
             },
         );
         self.db

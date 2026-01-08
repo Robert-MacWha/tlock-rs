@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use crate::caip::{AccountId, AssetId, ChainId};
+
 /// Basic UI component templates that can be used by plugins to build pages
 /// and other UI custom elements.
 #[derive(PartialEq, Clone, Serialize, Deserialize, Debug)]
@@ -28,16 +30,34 @@ pub enum Component {
         id: String,
     },
     TextInput {
+        label: String,
         placeholder: String,
+        id: String,
+    },
+    DropdownInput {
+        label: String,
+        options: Vec<String>,
+        selected: Option<String>,
         id: String,
     },
     SubmitInput {
         text: String,
     },
-    Dropdown {
-        id: String,
-        options: Vec<String>,
-        selected: Option<String>,
+    Chain {
+        id: ChainId,
+    },
+    Account {
+        id: AccountId,
+    },
+    Asset {
+        id: AssetId,
+        balance: Option<alloy::primitives::U256>,
+    },
+    EntityId {
+        id: crate::entities::EntityId,
+    },
+    Hex {
+        data: Vec<u8>,
     },
 }
 
@@ -108,9 +128,14 @@ where
     }
 }
 
-pub fn text_input(id: impl Into<String>, placeholder: impl Into<String>) -> Component {
+pub fn text_input(
+    id: impl Into<String>,
+    label: impl Into<String>,
+    placeholder: impl Into<String>,
+) -> Component {
     Component::TextInput {
         id: id.into(),
+        label: label.into(),
         placeholder: placeholder.into(),
     }
 }
@@ -119,16 +144,44 @@ pub fn submit_input(text: impl Into<String>) -> Component {
     Component::SubmitInput { text: text.into() }
 }
 
-pub fn dropdown<I, S>(id: impl Into<String>, options: I, selected: Option<S>) -> Component
+pub fn dropdown<I, S>(
+    id: impl Into<String>,
+    label: impl Into<String>,
+    options: I,
+    selected: Option<S>,
+) -> Component
 where
     I: IntoIterator<Item = S>,
     S: Into<String>,
 {
     let options = options.into_iter().map(|s| s.into()).collect();
     let selected = selected.map(|s| s.into());
-    Component::Dropdown {
+    Component::DropdownInput {
         id: id.into(),
+        label: label.into(),
         options,
         selected,
+    }
+}
+
+pub fn chain(id: ChainId) -> Component {
+    Component::Chain { id }
+}
+
+pub fn account(id: AccountId) -> Component {
+    Component::Account { id }
+}
+
+pub fn asset(id: AssetId, balance: Option<alloy::primitives::U256>) -> Component {
+    Component::Asset { id, balance }
+}
+
+pub fn entity_id(id: crate::entities::EntityId) -> Component {
+    Component::EntityId { id }
+}
+
+pub fn hex(data: &[u8]) -> Component {
+    Component::Hex {
+        data: data.to_vec(),
     }
 }

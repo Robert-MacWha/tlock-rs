@@ -4,7 +4,7 @@
 //! Account (EOA) using a private key provided by the user. It supports
 //! operations for native ETH and a predefined set of ERC20 tokens.
 
-use std::{collections::HashMap, io::stderr};
+use std::io::stderr;
 
 use alloy::{
     hex,
@@ -23,7 +23,10 @@ use tlock_pdk::{
     tlock_api::{
         RpcMethod,
         caip::{AccountId, AssetId, AssetType, ChainId},
-        component::{button_input, container, form, heading, submit_input, text, text_input},
+        component::{
+            Component, account, button_input, container, form, heading, heading2, hex,
+            submit_input, text, text_input,
+        },
         domains::Domain,
         entities::{EntityId, EthProviderId, PageId, VaultId},
         eth::{self},
@@ -34,17 +37,18 @@ use tlock_pdk::{
         transport::Transport,
     },
 };
-use tracing::{info, warn};
+use tracing::{error, info, warn};
 use tracing_subscriber::fmt;
 
 #[derive(Serialize, Deserialize, Default, Debug)]
 struct PluginState {
-    vaults: HashMap<EntityId, Vault>,
+    vault: Option<Vault>,
     provider_id: EthProviderId,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct Vault {
+    entity_id: EntityId,
     private_key: String,
     address: Address,
 }
@@ -60,9 +64,11 @@ sol! {
 }
 
 const CHAIN_ID: u64 = 11155111; // Sepolia
-const ERC20S: [Address; 2] = [
+const ERC20S: [Address; 4] = [
     address!("0x1c7d4b196cb0c7b01d743fbc6116a902379c7238"), // USDC
     address!("0xfff9976782d46cc05630d1f6ebab18b2324d6b14"), // WETH
+    address!("0xFF34B3d4Aee8ddCd6F9AFFFB6Fe49bD371b8a357"), // DAI
+    address!("0x779877A7B0D9E8603169DdbD7836e478b4624789"), // LINK
 ];
 
 // ---------- Plugin Handlers ----------
@@ -75,7 +81,7 @@ async fn init(transport: Transport, _params: ()) -> Result<(), RpcError> {
         .call_async(transport.clone(), ChainId::Evm(Some(CHAIN_ID)))
         .await?;
     let state = PluginState {
-        vaults: HashMap::new(),
+        vault: None,
         provider_id,
     };
     set_state(transport.clone(), &state)?;
@@ -234,19 +240,8 @@ async fn withdraw_erc20(
 async fn on_load(transport: Transport, page_id: PageId) -> Result<(), RpcError> {
     info!("OnPageLoad called for page: {}", page_id);
 
-    let component = container(vec![
-        heading("EOA Vault"),
-        text("This is an example vault plugin. Please enter a dev private key."),
-        form(
-            "private_key_form",
-            vec![
-                text_input("dev_private_key", "Enter your private key"),
-                submit_input("Update"),
-            ],
-        ),
-        button_input("generate_dev_key", "Generate Dev Key"),
-    ]);
-
+    let state: PluginState = get_state(transport.clone());
+    let component = build_ui(&state);
     host::SetPage
         .call_async(transport.clone(), (page_id, component))
         .await?;
@@ -277,6 +272,7 @@ async fn on_update(
         }
     };
 
+    let private_key_hex = private_key_hex.trim().trim_start_matches("0x").to_string();
     let signer: PrivateKeySigner = private_key_hex.parse().context("Invalid private key")?;
     let address = signer.address();
 
@@ -285,25 +281,47 @@ async fn on_update(
         .await?;
 
     let mut state: PluginState = get_state(transport.clone());
-    state.vaults.insert(
+    state.vault = Some(Vault {
         entity_id,
-        Vault {
-            private_key: private_key_hex.clone(),
-            address,
-        },
-    );
+        private_key: private_key_hex.clone(),
+        address,
+    });
     set_state(transport.clone(), &state)?;
 
-    let component = container(vec![
-        heading("EOA Vault"),
-        text(&format!("Address: {}", address)),
-        text(&format!("Private Key: {}", private_key_hex)),
-    ]);
+    let component = build_ui(&state);
     host::SetPage
         .call_async(transport.clone(), (page_id, component))
         .await?;
 
     Ok(())
+}
+
+fn build_ui(state: &PluginState) -> Component {
+    let mut sections = vec![
+        heading("EOA Vault"),
+        text("Example vault plugin managing an externally owned account using a private key"),
+    ];
+
+    let Some(vault) = &state.vault else {
+        sections.push(heading2("Create EOA"));
+        sections.push(form(
+            "private_key_form",
+            vec![
+                text_input("dev_private_key", "Private Key", "0xabc123"),
+                submit_input("Create Vault"),
+            ],
+        ));
+        sections.push(button_input("generate_dev_key", "Random Vault"));
+        return container(sections);
+    };
+
+    sections.push(heading2("Vault Info"));
+    sections.push(text("Vault Address:"));
+    sections.push(account(AccountId::new_evm(CHAIN_ID, vault.address)));
+    sections.push(text("Private Key:"));
+    sections.push(hex(vault.private_key.as_bytes()));
+
+    return container(sections);
 }
 
 // ---------- Helpers ----------
@@ -315,14 +333,14 @@ fn validate_chain_id(chain_id: &ChainId) -> Result<(), RpcError> {
     }
 }
 
-fn get_vault(transport: Transport, id: VaultId) -> Result<Vault, RpcError> {
+fn get_vault(transport: Transport, _id: VaultId) -> Result<Vault, RpcError> {
     let state: PluginState = get_state(transport.clone());
-    let vault = state.vaults.get(&id.into()).ok_or_else(|| {
-        warn!("vaults: {:?}", state.vaults.keys());
-        RpcError::Custom(format!("Vault ID not found: {}", id))
-    })?;
+    let vault = state
+        .vault
+        .clone()
+        .ok_or_else(|| RpcError::Custom("No vault configured in plugin state".to_string()))?;
 
-    Ok(vault.clone())
+    Ok(vault)
 }
 
 /// Plugin entrypoint where the host initiates communication.
@@ -350,6 +368,20 @@ fn get_vault(transport: Transport, id: VaultId) -> Result<Vault, RpcError> {
 /// On first plugin load, the host calls `plugin::Init` for setup.
 /// Subsequent requests skip init and directly invoke registered methods.
 fn main() {
+    std::panic::set_hook(Box::new(|panic_info| {
+        let location = panic_info.location().unwrap();
+        let message = panic_info
+            .payload()
+            .downcast_ref::<&str>()
+            .unwrap_or(&"unknown");
+        error!(
+            "Panic occurred in file '{}' at line {}: {}",
+            location.file(),
+            location.line(),
+            message
+        );
+    }));
+
     // Setup logging - host captures stderr and forwards to its logging system
     fmt()
         .with_writer(stderr)

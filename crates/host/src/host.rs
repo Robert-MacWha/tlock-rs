@@ -42,8 +42,8 @@ pub struct Host {
     user_requests: Mutex<Vec<UserRequest>>,
     user_request_senders: Mutex<HashMap<Uuid, oneshot::Sender<UserResponse>>>,
 
+    events: Mutex<Vec<Event>>,
     observers: Mutex<Vec<UnboundedSender<()>>>,
-    event_log: Mutex<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -63,12 +63,29 @@ pub enum UserRequest {
     },
 }
 
+#[derive(Debug, Clone)]
+pub struct Event {
+    pub id: Uuid,
+    pub message: String,
+    pub timestamp: chrono::DateTime<chrono::Local>,
+}
+
+const PLUGIN_TIMEOUT_SECS: u64 = 300;
+
 impl UserRequest {
     pub fn id(&self) -> Uuid {
         match self {
             UserRequest::EthProviderSelection { id, .. } => id.clone(),
             UserRequest::VaultSelection { id, .. } => id.clone(),
             UserRequest::CoordinatorSelection { id, .. } => id.clone(),
+        }
+    }
+
+    pub fn plugin_id(&self) -> PluginId {
+        match self {
+            UserRequest::EthProviderSelection { plugin_id, .. } => *plugin_id,
+            UserRequest::VaultSelection { plugin_id, .. } => *plugin_id,
+            UserRequest::CoordinatorSelection { plugin_id, .. } => *plugin_id,
         }
     }
 }
@@ -106,8 +123,8 @@ impl Host {
             interfaces: Mutex::new(HashMap::new()),
             user_requests: Mutex::new(Vec::new()),
             user_request_senders: Mutex::new(HashMap::new()),
+            events: Mutex::new(Vec::new()),
             observers: Mutex::new(Vec::new()),
-            event_log: Mutex::new(Vec::new()),
         }
     }
 
@@ -144,8 +161,8 @@ impl Host {
             interfaces: Mutex::new(HashMap::new()),
             user_requests: Mutex::new(Vec::new()),
             user_request_senders: Mutex::new(HashMap::new()),
+            events: Mutex::new(Vec::new()),
             observers: Mutex::new(Vec::new()),
-            event_log: Mutex::new(Vec::new()),
         };
         let host = Arc::new(host);
 
@@ -180,9 +197,13 @@ impl Host {
         }
     }
 
-    pub fn subscribe(&self, observer: UnboundedSender<()>) {
+    pub fn subscribe(&self, tx: UnboundedSender<()>) {
+        self.observers.lock().unwrap().push(tx);
+    }
+
+    fn notify(&self) {
         let mut observers = self.observers.lock().unwrap();
-        observers.push(observer);
+        observers.retain(|tx| tx.unbounded_send(()).is_ok());
     }
 
     /// Creates a plugin from its source, register it, and calls its Init method
@@ -198,15 +219,13 @@ impl Host {
         match plugin::Init.call_async(plugin.clone(), ()).await {
             Err(RpcError::MethodNotFound) => {
                 info!("Plugin {} does not implement Init, skipping", plugin.id());
-
-                self.notify_observers();
+                self.log_event(format!("[{}] Initialized", name));
                 Ok(plugin_id)
             }
             Err(e) => Err(e.into()),
             Ok(_) => {
                 info!("Plugin {} initialized", plugin.id());
-
-                self.notify_observers();
+                self.log_event(format!("[{}] Initialized", name));
                 Ok(plugin_id)
             }
         }
@@ -231,7 +250,7 @@ impl Host {
 
         let plugin = Plugin::builder(name, wasm_bytes, server)
             .with_id(id)
-            .with_timeout(Duration::from_secs(60))
+            .with_timeout(Duration::from_secs(PLUGIN_TIMEOUT_SECS))
             .build()
             .await?;
 
@@ -275,6 +294,7 @@ impl Host {
             .with_method(eth::GetBlock, eth_get_block)
             .with_method(eth::GetCode, eth_get_code)
             .with_method(eth::GetStorageAt, eth_get_storage_at)
+            .with_method(eth::FeeHistory, eth_fee_history)
             .with_method(coordinator::GetAssets, coordinator_get_assets)
             .with_method(coordinator::GetSession, coordinator_get_session)
             .with_method(coordinator::Propose, coordinator_propose)
@@ -297,7 +317,6 @@ impl Host {
     pub fn get_entity_plugin_id(&self, entity_id: impl Into<EntityId>) -> Option<PluginId> {
         let entity_id = entity_id.into();
         let entities = self.entities.lock().unwrap();
-        info!("Getting plugin ID for entity {:?}", entity_id);
         entities.get(&entity_id).cloned()
     }
 
@@ -322,9 +341,9 @@ impl Host {
         requests.clone()
     }
 
-    pub fn get_event_log(&self) -> Vec<String> {
-        let log = self.event_log.lock().unwrap();
-        log.clone()
+    pub fn get_events(&self) -> Vec<Event> {
+        let events = self.events.lock().unwrap();
+        events.clone()
     }
 
     pub fn resolve_eth_provider_request(&self, request_id: Uuid, provider_id: EthProviderId) {
@@ -367,7 +386,7 @@ impl Host {
             .unwrap()
             .insert(request_id.clone(), sender);
 
-        self.notify_observers();
+        self.notify();
         let resp = receiver.await;
 
         // Remove the request from the list
@@ -375,8 +394,6 @@ impl Host {
             .lock()
             .unwrap()
             .retain(|req| req.id() != request_id);
-
-        self.notify_observers();
 
         let Ok(resp) = resp else {
             return Err(RpcError::Custom("Request Dropped".into()));
@@ -427,17 +444,13 @@ impl Host {
         Ok(resp)
     }
 
-    pub fn notify_observers(&self) {
-        let observers = self.observers.lock().unwrap();
-        for observer in observers.iter() {
-            let _ = observer.unbounded_send(());
-        }
-    }
-
     pub fn log_event(&self, event: String) {
-        let mut log = self.event_log.lock().unwrap();
-        log.push(event);
-        self.notify_observers();
+        let mut log = self.events.lock().unwrap();
+        log.push(Event {
+            id: Uuid::new_v4(),
+            message: event,
+            timestamp: chrono::Local::now(),
+        });
     }
 }
 
@@ -462,8 +475,6 @@ impl Host {
 
         let mut entities = self.entities.lock().unwrap();
         entities.insert(entity_id, *plugin_id);
-
-        self.notify_observers();
         Ok(entity_id)
     }
 
@@ -578,9 +589,10 @@ impl Host {
         _plugin_id: &PluginId,
         params: (PageId, Component),
     ) -> Result<(), RpcError> {
+        info!("Setting interface for page {}", params.0);
         let (page_id, component) = params;
         self.interfaces.lock().unwrap().insert(page_id, component);
-        self.notify_observers();
+        self.notify();
         Ok(())
     }
 
@@ -815,6 +827,19 @@ impl Host {
         Ok(storage)
     }
 
+    pub async fn eth_fee_history(
+        &self,
+        params: <eth::FeeHistory as RpcMethod>::Params,
+    ) -> Result<<eth::FeeHistory as RpcMethod>::Output, RpcError> {
+        let plugin = self.get_entity_plugin_error(params.0)?;
+
+        let history = eth::FeeHistory
+            .call_async(plugin, params)
+            .await
+            .context("Error calling FeeHistory")?;
+        Ok(history)
+    }
+
     pub async fn coordinator_get_assets(
         &self,
         params: <coordinator::GetAssets as RpcMethod>::Params,
@@ -892,6 +917,7 @@ impl_host_rpc_no_id!(
 impl_host_rpc_no_id!(Host, eth::GetBlock, eth_get_block);
 impl_host_rpc_no_id!(Host, eth::GetCode, eth_get_code);
 impl_host_rpc_no_id!(Host, eth::GetStorageAt, eth_get_storage_at);
+impl_host_rpc_no_id!(Host, eth::FeeHistory, eth_fee_history);
 impl_host_rpc_no_id!(Host, coordinator::GetAssets, coordinator_get_assets);
 impl_host_rpc_no_id!(Host, coordinator::GetSession, coordinator_get_session);
 impl_host_rpc_no_id!(Host, coordinator::Propose, coordinator_propose);

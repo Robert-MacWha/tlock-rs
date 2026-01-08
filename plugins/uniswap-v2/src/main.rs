@@ -525,12 +525,14 @@ fn build_ui(state: &PluginState) -> tlock_pdk::tlock_api::component::Component {
     sections.push(form(
         "swap_form",
         vec![
-            text("From Token:"),
-            dropdown("from_token", token_options.clone(), from_selected),
-            text("To Token:"),
-            dropdown("to_token", token_options, to_selected),
-            text("Amount (in wei):"),
-            text_input("amount", "Enter amount"),
+            dropdown(
+                "from_token",
+                "From Token:",
+                token_options.clone(),
+                from_selected,
+            ),
+            dropdown("to_token", "To Token:", token_options, to_selected),
+            text_input("amount", "Amount (wei)", "1500"),
             submit_input("Update Quote"),
         ],
     ));

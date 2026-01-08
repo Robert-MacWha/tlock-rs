@@ -1,3 +1,4 @@
+use alloy_consensus::transaction::Recovered;
 use revm::{
     Database, DatabaseRef,
     context::{
@@ -86,8 +87,8 @@ impl<DB: DatabaseRef> From<ProviderError<DB>> for RpcError {
 }
 
 impl<DB: DatabaseRef + std::fmt::Debug> Provider<DB> {
-    pub fn new(db: DB, block_env: BlockEnv, parent_hash: BlockHash) -> Self {
-        let chain = Chain::new(db, block_env, Some(parent_hash));
+    pub fn new(db: DB, chain_id: u64, block_env: BlockEnv, parent_hash: BlockHash) -> Self {
+        let chain = Chain::new(db, chain_id, block_env, Some(parent_hash));
         Self {
             chain,
             transactions: HashMap::default(),
@@ -279,19 +280,36 @@ impl<DB: DatabaseRef> Provider<DB> {
     pub fn send_raw_transaction(&mut self, raw_tx: Bytes) -> Result<TxHash, ProviderError<DB>> {
         let tx_envelope = TxEnvelope::decode(&mut raw_tx.as_ref())?;
         let from = tx_envelope.recover_signer()?;
+        let tx_hash = tx_envelope.hash().clone();
 
         let tx_env = signed_tx_to_tx_env(&tx_envelope, from);
         let result = self.chain.transact_commit(tx_env)?;
 
         //? Should always have a block since we just committed a transaction
+        let block_number = self.chain.latest();
         let block = self
             .chain
-            .block(self.chain.latest())
+            .block(block_number)
             .ok_or(ProviderError::BlockNotFound)?;
 
-        let receipt = result_to_tx_receipt(block, tx_envelope, from, &result);
-        let tx_hash = receipt.transaction_hash.clone();
+        let receipt = result_to_tx_receipt(block, tx_envelope.clone(), from, &result);
         self.receipts.insert(tx_hash, receipt);
+
+        let rpc_tx = rpc::types::Transaction {
+            inner: Recovered::new_unchecked(tx_envelope, from),
+            block_hash: Some(block.hash),
+            block_number: Some(block_number),
+            transaction_index: Some(
+                self.transactions
+                    .get(&block_number)
+                    .map_or(0, |v| v.len() as u64),
+            ),
+            effective_gas_price: Some(self.chain.pending().env.basefee as u128),
+        };
+        self.transactions
+            .entry(block_number)
+            .or_insert_with(Vec::new)
+            .push(rpc_tx);
 
         Ok(tx_hash)
     }
@@ -331,6 +349,43 @@ impl<DB: DatabaseRef> Provider<DB> {
     ) -> Result<Vec<rpc::types::Log>, ProviderError<DB>> {
         // TODO: Impl get_logs
         return Err(ProviderError::NotImplemented);
+    }
+
+    pub fn fee_history(
+        &self,
+        block_count: u64,
+        newest_block: BlockNumberOrTag,
+        reward_percentiles: Vec<f64>,
+    ) -> Result<alloy::rpc::types::FeeHistory, ProviderError<DB>> {
+        let count: usize = block_count as usize;
+        let current_base_fee: u128 = self.chain.pending().env.basefee.into();
+        let blob_excess_gas_and_price: u128 = self
+            .chain
+            .pending()
+            .env
+            .blob_excess_gas_and_price
+            .map(|b| b.blob_gasprice)
+            .unwrap_or(1u128);
+
+        let newest_num: u64 = match newest_block {
+            BlockNumberOrTag::Number(n) => n,
+            BlockNumberOrTag::Latest => self.chain.latest(),
+            BlockNumberOrTag::Pending => self.chain.latest(),
+            _ => return Err(ProviderError::BlockNotFound),
+        };
+        let oldest_block = newest_num.saturating_sub(block_count);
+
+        Ok(alloy::rpc::types::FeeHistory {
+            oldest_block,
+            base_fee_per_gas: vec![current_base_fee; count + 1],
+            gas_used_ratio: vec![0.1; count as usize],
+            reward: Some(vec![
+                vec![1_000_000_000u128; reward_percentiles.len()];
+                count
+            ]),
+            base_fee_per_blob_gas: vec![blob_excess_gas_and_price; count + 1],
+            blob_gas_used_ratio: vec![0.1; count as usize],
+        })
     }
 }
 

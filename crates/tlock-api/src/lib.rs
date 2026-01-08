@@ -216,7 +216,7 @@ pub mod plugin {
 /// It aims to be fully compatible with standard Ethereum JSON-RPC methods.
 pub mod eth {
     use alloy::{
-        eips::BlockId,
+        eips::{BlockId, BlockNumberOrTag},
         primitives::{Address, Bytes, TxHash, U256},
         rpc::types::{
             Block, BlockOverrides, BlockTransactionsKind, Filter, Log, Transaction,
@@ -273,6 +273,11 @@ pub mod eth {
     rpc_method!(
         /// Gets the storage value at a particular index of a smart contract.
         eth_getStorageAt, GetStorageAt, (EthProviderId, Address, U256, BlockId), U256
+    );
+
+    rpc_method!(
+        /// Returns the historic gas fee for a given block range
+        eth_feeHistory, FeeHistory, (EthProviderId, u64, BlockNumberOrTag, Vec<f64>), alloy::rpc::types::FeeHistory
     );
 
     rpc_method!(
@@ -443,9 +448,8 @@ pub mod page {
     }
 
     rpc_method!(
-        /// Called by the host when a registered page is loaded in the frontend. The
-        /// plugin should setup any necessary interfaces with `host::SetInterface` here,
-        /// dependant on the plugin's internal state.
+        /// Called by the host when a registered page is loaded in the frontend. This function
+        /// MAY be called multiple times for the same page if the user navigates away and back.
         page_on_load, OnLoad, PageId, ()
     );
 

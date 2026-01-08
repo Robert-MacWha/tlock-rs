@@ -258,6 +258,17 @@ async fn call_req(
                 .map_err(|e| TransportErrorKind::custom_str(&e.to_string()))?;
             serde_json::to_value(resp).map_err(TransportError::ser_err)?
         }
+        EthRequest::EthFeeHistory(block_count, newest_block, reward_percentiles) => {
+            let block_count: u64 = block_count.saturating_to();
+            let resp = eth::FeeHistory
+                .call_async(
+                    transport.clone(),
+                    (provider_id, block_count, newest_block, reward_percentiles),
+                )
+                .await
+                .map_err(|e| TransportErrorKind::custom_str(&e.to_string()))?;
+            serde_json::to_value(resp).map_err(TransportError::ser_err)?
+        }
         _ => {
             return Err(TransportErrorKind::custom_str(
                 format!(

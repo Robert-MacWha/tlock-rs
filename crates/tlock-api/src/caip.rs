@@ -369,15 +369,7 @@ impl FromStr for AssetId {
 
 impl Display for AssetId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let asset_str = match &self.asset {
-            AssetType::Slip44(coin) => format!("slip44:{}", coin),
-            AssetType::Erc20(addr) => format!("erc20:{:#x}", addr),
-            AssetType::Custom {
-                namespace,
-                reference,
-            } => format!("{}:{}", namespace, reference),
-        };
-        write!(f, "{}/{}", self.chain_id, asset_str)
+        write!(f, "{}/{}", self.chain_id, self.asset)
     }
 }
 
@@ -397,6 +389,19 @@ impl<'de> Deserialize<'de> for AssetId {
     {
         let s = String::deserialize(deserializer)?;
         AssetId::from_str(&s).map_err(serde::de::Error::custom)
+    }
+}
+
+impl Display for AssetType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            AssetType::Slip44(coin) => write!(f, "slip44:{}", coin),
+            AssetType::Erc20(addr) => write!(f, "erc20:{:#x}", addr),
+            AssetType::Custom {
+                namespace,
+                reference,
+            } => write!(f, "{}:{}", namespace, reference),
+        }
     }
 }
 

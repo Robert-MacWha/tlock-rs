@@ -1941,8 +1941,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "145052bdd345b87320e369255277e3fb5152762ad123a901ef5c262dd38fe8d2"
 dependencies = [
  "iana-time-zone",
+ "js-sys",
  "num-traits",
  "serde",
+ "wasm-bindgen",
  "windows-link 0.2.1",
 ]
 
@@ -2079,6 +2081,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4ca0197aee26d1ae37445ee532fefce43251d24cc7c166799f4d46817f1d3973"
 dependencies = [
  "crossbeam-utils",
+]
+
+[[package]]
+name = "console_error_panic_hook"
+version = "0.1.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a06aeb73f470f66dcdbf7223caeebb85984942f22f1adb2a088cf9668146bbbc"
+dependencies = [
+ "cfg-if",
+ "wasm-bindgen",
 ]
 
 [[package]]
@@ -3679,12 +3691,16 @@ dependencies = [
 name = "frontend"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
+ "console_error_panic_hook",
  "dioxus",
  "futures",
  "gloo-timers",
+ "hex",
  "host",
  "serde_json",
  "tlock-hdk",
+ "uuid",
  "wasm-bindgen",
  "web-sys",
 ]
@@ -4413,6 +4429,7 @@ version = "0.1.0"
 dependencies = [
  "alloy",
  "base64",
+ "chrono",
  "futures",
  "serde",
  "thiserror 2.0.17",
@@ -9448,7 +9465,6 @@ dependencies = [
 [[package]]
 name = "wasmi-plugin-coordinator-protocol"
 version = "0.1.0"
-source = "git+https://github.com/Robert-MacWha/wasmi-plugin-framework?branch=wasmer-shared-memory-test#aae13f39ac5b3dd910e9ae8aef52283baacba953"
 dependencies = [
  "getrandom 0.3.4",
  "serde",
@@ -9458,7 +9474,6 @@ dependencies = [
 [[package]]
 name = "wasmi-plugin-hdk"
 version = "0.1.0"
-source = "git+https://github.com/Robert-MacWha/wasmi-plugin-framework?branch=wasmer-shared-memory-test#aae13f39ac5b3dd910e9ae8aef52283baacba953"
 dependencies = [
  "futures",
  "gloo-timers",
@@ -9483,12 +9498,12 @@ dependencies = [
 [[package]]
 name = "wasmi-plugin-pdk"
 version = "0.1.0"
-source = "git+https://github.com/Robert-MacWha/wasmi-plugin-framework?branch=wasmer-shared-memory-test#aae13f39ac5b3dd910e9ae8aef52283baacba953"
 dependencies = [
  "futures",
  "serde",
  "serde_json",
  "thiserror 2.0.17",
+ "tokio",
  "tracing",
  "wasmi-plugin-rt",
 ]
@@ -9496,7 +9511,6 @@ dependencies = [
 [[package]]
 name = "wasmi-plugin-rt"
 version = "0.1.0"
-source = "git+https://github.com/Robert-MacWha/wasmi-plugin-framework?branch=wasmer-shared-memory-test#aae13f39ac5b3dd910e9ae8aef52283baacba953"
 dependencies = [
  "gloo-timers",
  "tokio",
@@ -9507,7 +9521,6 @@ dependencies = [
 [[package]]
 name = "wasmi-plugin-wasi"
 version = "0.1.0"
-source = "git+https://github.com/Robert-MacWha/wasmi-plugin-framework?branch=wasmer-shared-memory-test#aae13f39ac5b3dd910e9ae8aef52283baacba953"
 dependencies = [
  "futures",
  "getrandom 0.3.4",

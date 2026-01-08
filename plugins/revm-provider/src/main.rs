@@ -11,6 +11,7 @@ use tlock_pdk::{
     tlock_api::{
         RpcMethod,
         alloy::{
+            self,
             eips::{BlockId, BlockNumberOrTag},
             network::Ethereum,
             primitives::U256,
@@ -19,12 +20,13 @@ use tlock_pdk::{
                 TransactionReceipt, TransactionRequest, state::StateOverride,
             },
         },
+        caip::AccountId,
         component::{
             Component, button_input, container, form, heading, heading2, submit_input, text,
             text_input, unordered_list,
         },
         domains::Domain,
-        entities::{EthProviderId, PageId},
+        entities::{EntityId, EthProviderId, PageId},
         eth::{self},
         host, page, plugin,
     },
@@ -50,17 +52,20 @@ mod rpc;
 #[derive(Debug, Serialize, Deserialize)]
 struct State {
     fork_block: BlockId,
-
+    chain_id: u64,
     fork_snapshot: ProviderSnapshot,
+
+    page_id: Option<PageId>,
 }
 
-const CHAIN_ID: u64 = 11155111u64;
 const RPC_URL: &str = "https://1rpc.io/sepolia";
 
 async fn init(transport: Transport, _params: ()) -> Result<(), RpcError> {
     let mut state = State {
         fork_block: BlockId::number(0),
+        chain_id: 0,
         fork_snapshot: ProviderSnapshot::default(),
+        page_id: None,
     };
     handle_reset_fork(transport.clone(), &mut state).await?;
     set_state(transport.clone(), &state)?;
@@ -69,9 +74,15 @@ async fn init(transport: Transport, _params: ()) -> Result<(), RpcError> {
     host::RegisterEntity
         .call_async(transport.clone(), Domain::EthProvider)
         .await?;
-    host::RegisterEntity
+    let page_id = host::RegisterEntity
         .call_async(transport.clone(), Domain::Page)
         .await?;
+
+    state.page_id = match page_id {
+        EntityId::Page(id) => Some(id),
+        _ => None,
+    };
+    set_state(transport.clone(), &state)?;
 
     Ok(())
 }
@@ -121,8 +132,9 @@ async fn on_update(
     Ok(())
 }
 
-async fn chain_id(_: Transport, _: EthProviderId) -> Result<U256, RpcError> {
-    Ok(U256::from(CHAIN_ID))
+async fn chain_id(transport: Transport, _: EthProviderId) -> Result<U256, RpcError> {
+    let state: State = try_get_state(transport.clone())?;
+    Ok(U256::from(state.chain_id))
 }
 
 async fn block_number(transport: Transport, _: EthProviderId) -> Result<u64, RpcError> {
@@ -254,6 +266,17 @@ async fn send_raw_transaction(
     let tx = fork.send_raw_transaction(raw_tx)?;
 
     set_snapshot(transport.clone(), fork.snapshot())?;
+
+    info!("Transaction sent");
+    let state: State = try_get_state(transport.clone())?;
+    if let Some(page_id) = state.page_id {
+        info!("Updating UI page after sending transaction");
+        let component = build_ui(&state);
+        host::SetPage
+            .call_async(transport.clone(), (page_id, component))
+            .await?;
+    }
+
     Ok(tx)
 }
 
@@ -264,6 +287,15 @@ async fn get_logs(
     let (_, filter) = params;
     let fork = get_fork_provider(transport.clone())?;
     Ok(fork.get_logs(filter)?)
+}
+
+async fn fee_history(
+    transport: Transport,
+    params: (EthProviderId, u64, BlockNumberOrTag, Vec<f64>),
+) -> Result<alloy::rpc::types::FeeHistory, RpcError> {
+    let (_, block_count, newest_block, reward_percentiles) = params;
+    let fork = get_fork_provider(transport.clone())?;
+    Ok(fork.fee_history(block_count, newest_block, reward_percentiles)?)
 }
 
 fn set_snapshot(transport: Transport, snapshot: ProviderSnapshot) -> Result<(), RpcError> {
@@ -300,6 +332,7 @@ fn build_ui(state: &State) -> Component {
 
     sections.extend(vec![
         heading2("Fork Information"),
+        text(format!("Chain ID: {}", state.chain_id)),
         text(format!(
             "Fork Block: {:?}",
             state.fork_block.as_u64().unwrap_or(0)
@@ -313,12 +346,12 @@ fn build_ui(state: &State) -> Component {
     sections.extend(vec![
         heading2("Cheatcodes"),
         heading2("Deal"),
-        text("Set native ETH balance for an address"),
+        text("Set native ETH balance for an account"),
         form(
             "deal_form",
             vec![
-                text_input("address", "Address (hex)"),
-                text_input("amount", "Amount (wei)"),
+                text_input("account", "Account", "eip155:1:0xabc123..."),
+                text_input("amount", "Amount (wei)", "10000"),
                 submit_input("Execute Deal"),
             ],
         ),
@@ -358,19 +391,22 @@ async fn handle_reset_fork(transport: Transport, state: &mut State) -> Result<()
 
     let db: AlloyDb<Ethereum> =
         AlloyDb::new(transport.clone(), RPC_URL.to_string(), BlockId::number(0));
+
     let header = db
         .get_block(BlockNumberOrTag::Latest)
         .context("Failed to get latest block")?;
+    let chain_id = db.chain_id().context("Failed to get chain ID")?;
 
     let block_id = BlockId::number(header.number);
     let db: AlloyDb<Ethereum> = AlloyDb::new(transport.clone(), RPC_URL.to_string(), block_id);
     let parent_hash = header.parent_hash;
     let block_env = header_to_block_env(header);
-    let fork = Provider::new(db, block_env, parent_hash);
+    let fork = Provider::new(db, chain_id, block_env, parent_hash);
     let fork_snapshot = fork.snapshot();
 
     state.fork_block = block_id;
     state.fork_snapshot = fork_snapshot;
+    state.chain_id = chain_id;
 
     Ok(())
 }
@@ -388,11 +424,14 @@ fn handle_deal(
     state: &mut State,
     form_data: HashMap<String, String>,
 ) -> Result<(), RpcError> {
-    let address: Address = form_data
-        .get("address")
-        .context("Missing address")?
+    let account: AccountId = form_data
+        .get("account")
+        .context("Missing account")?
         .parse()
-        .context("Invalid address")?;
+        .context("Invalid account")?;
+    let address = account
+        .as_evm_address()
+        .context("Account must be EVM-compatible")?;
 
     let amount: U256 = form_data
         .get("amount")
@@ -441,5 +480,6 @@ fn main() {
         .with_method(eth::EstimateGas, estimate_gas)
         .with_method(eth::SendRawTransaction, send_raw_transaction)
         .with_method(eth::GetLogs, get_logs)
+        .with_method(eth::FeeHistory, fee_history)
         .run();
 }

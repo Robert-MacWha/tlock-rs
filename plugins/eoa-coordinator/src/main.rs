@@ -25,7 +25,10 @@ use tlock_pdk::{
         RpcMethod,
         alloy::primitives::U256,
         caip::{AccountId, AssetId, AssetType, ChainId},
-        component::{button_input, container, form, heading, submit_input, text, text_input},
+        component::{
+            Component, account, button_input, container, form, heading, heading2, hex,
+            submit_input, text, text_input,
+        },
         coordinator,
         domains::Domain,
         entities::{CoordinatorId, EntityId, EthProviderId, PageId, VaultId},
@@ -41,13 +44,19 @@ use tlock_pdk::{
 use tracing::{info, trace};
 use tracing_subscriber::fmt;
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 struct State {
+    /// Vault managed by this coordinator
     vault_id: VaultId,
     provider_id: EthProviderId,
-    coordinator_id: Option<EntityId>,
-    private_key: Option<FixedBytes<32>>,
-    account: Option<AccountId>,
+    coordinator: Option<Coordinator>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+struct Coordinator {
+    entity_id: EntityId,
+    private_key: FixedBytes<32>,
+    account: AccountId,
 }
 
 sol! {
@@ -92,9 +101,7 @@ async fn init(transport: Transport, _: ()) -> Result<(), RpcError> {
     let state = State {
         vault_id,
         provider_id,
-        coordinator_id: None,
-        private_key: None,
-        account: None,
+        coordinator: None,
     };
 
     set_state(transport.clone(), &state)?;
@@ -108,8 +115,13 @@ async fn get_session(
     let state: State = try_get_state(transport.clone())?;
     let (coordinator_id, chain_id, maybe_account_id) = params;
 
-    if Some(coordinator_id.into()) != state.coordinator_id {
-        return Err(RpcError::Custom("Invalid CoordinatorId".into()));
+    let Some(coordinator) = &state.coordinator else {
+        return Err(RpcError::custom("Coordinator not initialized"));
+    };
+
+    let coordinator_id: EntityId = coordinator_id.into();
+    if coordinator_id != coordinator.entity_id {
+        return Err(RpcError::custom("Invalid CoordinatorId"));
     }
 
     // TODO: Support arbitrary evm chain IDs
@@ -117,17 +129,13 @@ async fn get_session(
         return Err(RpcError::Custom("Invalid ChainId".into()));
     }
 
-    let Some(state_account_id) = state.account else {
-        return Err(RpcError::Custom("No Account configured".into()));
-    };
-
     if let Some(account_id) = maybe_account_id
-        && account_id != state_account_id
+        && account_id != coordinator.account
     {
         return Err(RpcError::Custom("Invalid AccountId".into()));
     }
 
-    Ok(state_account_id)
+    Ok(coordinator.account.clone())
 }
 
 async fn get_assets(
@@ -137,15 +145,16 @@ async fn get_assets(
     let state: State = try_get_state(transport.clone())?;
     let (coordinator_id, account_id) = params;
 
-    if Some(coordinator_id.into()) != state.coordinator_id {
+    let Some(coordinator) = &state.coordinator else {
+        return Err(RpcError::Custom("Coordinator not initialized".into()));
+    };
+
+    let coordinator_id: EntityId = coordinator_id.into();
+    if coordinator_id != coordinator.entity_id {
         return Err(RpcError::Custom("Invalid CoordinatorId".into()));
     }
 
-    let Some(state_account_id) = state.account else {
-        return Err(RpcError::Custom("No Account configured".into()));
-    };
-
-    if account_id != state_account_id {
+    if account_id != coordinator.account {
         return Err(RpcError::Custom("Invalid AccountId".into()));
     }
 
@@ -164,47 +173,43 @@ async fn propose(
     let state: State = try_get_state(transport.clone())?;
     let (coordinator_id, account_id, bundle) = params;
 
-    if Some(coordinator_id.into()) != state.coordinator_id {
+    let Some(coordinator) = &state.coordinator else {
+        return Err(RpcError::custom("Coordinator not initialized"));
+    };
+
+    let coordinator_id: EntityId = coordinator_id.into();
+    if coordinator_id != coordinator.entity_id {
         return Err(RpcError::custom("Invalid CoordinatorId"));
     }
 
-    let Some(state_account_id) = state.account.clone() else {
-        return Err(RpcError::custom("No Account configured"));
-    };
-
-    let Some(state_account_address) = state_account_id.as_evm_address() else {
-        return Err(RpcError::custom("Account is not an EVM account"));
-    };
-
-    let Some(state_private_key) = state.private_key else {
-        return Err(RpcError::custom("No Private Key configured"));
-    };
-
-    if account_id != state_account_id {
+    if account_id != coordinator.account {
         return Err(RpcError::custom("Invalid AccountId"));
     }
 
-    let signer = PrivateKeySigner::from_bytes(&state_private_key).context("Invalid private key")?;
+    let signer =
+        PrivateKeySigner::from_bytes(&coordinator.private_key).context("Invalid private key")?;
     let provider = ProviderBuilder::new()
         .wallet(signer)
-        .connect_client(AlloyBridge::new(
-            transport.clone(),
-            state.provider_id.clone(),
-        ));
+        .connect_client(AlloyBridge::new(transport.clone(), state.provider_id));
 
-    let initial_native_balance = provider
-        .get_balance(state_account_address)
-        .await
-        .rpc_err()?;
+    let evm_address = match coordinator.account.as_evm_address() {
+        Some(addr) => addr,
+        None => {
+            return Err(RpcError::Custom(
+                "Coordinator account is not an EVM address".into(),
+            ));
+        }
+    };
 
+    let initial_native_balance = provider.get_balance(evm_address).await.rpc_err()?;
     verify_vault_balance(&transport, &state, &bundle).await?;
 
     let return_assets = validate_and_get_return_assets(transport.clone(), &state, &bundle).await?;
-    withdraw_assets(transport.clone(), state, &state_account_id, &bundle).await?;
+    withdraw_assets(transport.clone(), &state, &coordinator.account, &bundle).await?;
     execute_bundle(&provider, bundle).await?;
     return_outstanding_assets(
         &provider,
-        state_account_address,
+        evm_address,
         return_assets,
         initial_native_balance,
     )
@@ -299,7 +304,7 @@ async fn validate_and_get_return_assets(
 
 async fn withdraw_assets(
     transport: Transport,
-    state: State,
+    state: &State,
     state_account_id: &AccountId,
     bundle: &coordinator::EvmBundle,
 ) -> Result<(), RpcError> {
@@ -448,19 +453,8 @@ async fn return_erc20<T: Provider>(
 
 // ---------- UI Handlers ----------
 async fn on_load(transport: Transport, page_id: PageId) -> Result<(), RpcError> {
-    let component = container(vec![
-        heading("EOA Coordinator"),
-        text("This is an example dev coordinator plugin."),
-        form(
-            "private_key_form",
-            vec![
-                text_input("dev_private_key", "Enter your private key"),
-                submit_input("Update"),
-            ],
-        ),
-        button_input("generate_dev_key", "Generate Dev Key"),
-    ]);
-
+    let state: State = try_get_state(transport.clone())?;
+    let component = build_ui(&state);
     host::SetPage
         .call_async(transport.clone(), (page_id, component))
         .await?;
@@ -488,6 +482,7 @@ async fn on_update(transport: Transport, props: (PageId, PageEvent)) -> Result<(
         }
     };
 
+    let private_key_hex = private_key_hex.trim().trim_start_matches("0x").to_string();
     let signer: PrivateKeySigner = private_key_hex.parse().context("Invalid private key")?;
     let address = signer.address();
     let account_id = AccountId::new_evm(CHAIN_ID, address);
@@ -497,21 +492,47 @@ async fn on_update(transport: Transport, props: (PageId, PageEvent)) -> Result<(
         .await?;
 
     let mut state: State = try_get_state(transport.clone())?;
-    state.coordinator_id = Some(coordinator_id);
-    state.private_key = Some(signer.to_bytes());
-    state.account = Some(account_id.clone());
+    state.coordinator = Some(Coordinator {
+        entity_id: coordinator_id.clone(),
+        private_key: signer.to_bytes(),
+        account: account_id.clone(),
+    });
     set_state(transport.clone(), &state)?;
 
-    let component = container(vec![
-        heading("Coordinator"),
-        text(&format!("Address: {}", address)),
-        text(&format!("Private Key: {}", private_key_hex)),
-    ]);
+    let component = build_ui(&state);
     host::SetPage
         .call_async(transport.clone(), (page_id, component))
         .await?;
 
     Ok(())
+}
+
+fn build_ui(state: &State) -> Component {
+    let mut sections = vec![
+        heading("Coordinator"),
+        text("Example coordinator plugin that uses an EOA to execute bundles."),
+    ];
+
+    let Some(coordinator) = &state.coordinator else {
+        sections.push(heading2("Create Coordinator's EOA"));
+        sections.push(form(
+            "private_key_form",
+            vec![
+                text_input("dev_private_key", "Private Key", "0xabc123"),
+                submit_input("Create Vault"),
+            ],
+        ));
+        sections.push(button_input("generate_dev_key", "Random EOA"));
+        return container(sections);
+    };
+
+    sections.push(heading2("EOA Info"));
+    sections.push(text("Account:"));
+    sections.push(account(coordinator.account.clone()));
+    sections.push(text("Private Key:"));
+    sections.push(hex(coordinator.private_key.as_slice()));
+
+    return container(sections);
 }
 
 fn main() {

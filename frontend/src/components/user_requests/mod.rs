@@ -8,162 +8,68 @@ use crate::contexts::host::HostContext;
 
 #[component]
 pub fn UserRequestComponent(request: UserRequest) -> Element {
+    let mut ctx: HostContext = use_context();
+
+    // Helper to get common data
+    let plugin_id = request.plugin_id();
+    let plugin_name = ctx
+        .plugin(plugin_id)
+        .map(|p| p.name().to_string())
+        .unwrap_or("Unknown Plugin".to_string());
+
     match request {
-        UserRequest::EthProviderSelection { .. } => {
-            rsx! { EthProviderSelectionComponent { request } }
-        }
-        UserRequest::VaultSelection { .. } => {
-            rsx! { VaultSelectionComponent { request } }
-        }
-        UserRequest::CoordinatorSelection { .. } => {
-            rsx! { CoordinatorSelectionComponent { request } }
-        }
+        UserRequest::EthProviderSelection { id, chain_id, .. } => rsx! {
+            SelectionWrapper { title: "Ethereum Provider ({chain_id})", plugin_name,
+                EntitySelection {
+                    filter_map: |eid| match eid {
+                        EntityId::EthProvider(i) => Some(i),
+                        _ => None,
+                    },
+                    on_deny: move |_| ctx.deny_user_request(id),
+                    on_select: move |selected_id| ctx.resolve_eth_provider_request(id, selected_id),
+                }
+            }
+        },
+        UserRequest::VaultSelection { id, .. } => rsx! {
+            SelectionWrapper { title: "Vault", plugin_name,
+                EntitySelection {
+                    filter_map: |eid| match eid {
+                        EntityId::Vault(i) => Some(i),
+                        _ => None,
+                    },
+                    on_deny: move |_| ctx.deny_user_request(id),
+                    on_select: move |selected_id| ctx.resolve_vault_request(id, selected_id),
+                }
+            }
+        },
+        UserRequest::CoordinatorSelection { id, .. } => rsx! {
+            SelectionWrapper { title: "Coordinator", plugin_name,
+                EntitySelection {
+                    filter_map: |eid| match eid {
+                        EntityId::Coordinator(i) => Some(i),
+                        _ => None,
+                    },
+                    on_deny: move |_| ctx.deny_user_request(id),
+                    on_select: move |selected_id| ctx.resolve_coordinator_request(id, selected_id),
+                }
+            }
+        },
     }
 }
 
 #[component]
-fn EthProviderSelectionComponent(request: UserRequest) -> Element {
-    let (request_id, plugin_id, chain_id) = match request {
-        UserRequest::EthProviderSelection {
-            id,
-            plugin_id,
-            chain_id,
-        } => (id, plugin_id, chain_id),
-        _ => {
-            panic!("EthProviderSelection request passed to wrong component")
-        }
-    };
-
-    let plugins = consume_context::<HostContext>()
-        .host
-        .read()
-        .get_plugin(&plugin_id);
-    let plugin_name = plugins
-        .as_ref()
-        .map(|p| p.name())
-        .unwrap_or("Unknown Plugin");
-
-    rsx!(
-        div {
-            "Ethereum Provider requested by {plugin_name}"
-            ul {
-                li { "Requested ChainId: {chain_id}" }
-                EntitySelection {
-                    filter_map: move |entity_id| match entity_id {
-                        EntityId::EthProvider(id) => Some(id),
-                        _ => None,
-                    },
-                    on_select: move |id| {
-                        consume_context::<HostContext>()
-                            .host
-                            .read()
-                            .resolve_eth_provider_request(request_id, id);
-                    },
-                    on_deny: move || {
-                        consume_context::<HostContext>()
-                            .host
-                            .read()
-                            .deny_user_request(request_id);
-                        }
-                }
+fn SelectionWrapper(title: String, plugin_name: String, children: Element) -> Element {
+    rsx! {
+        div { class: "menu w-full",
+            h3 { class: "menu-title",
+                "{title} requested by "
+                span { class: "font-bold", "{plugin_name}" }
             }
+            {children}
         }
-    )
+    }
 }
 
-#[component]
-fn VaultSelectionComponent(request: UserRequest) -> Element {
-    let (request_id, plugin_id) = match request {
-        UserRequest::VaultSelection { id, plugin_id } => (id, plugin_id),
-        _ => {
-            panic!("VaultSelection request passed to wrong component")
-        }
-    };
-
-    let plugins = consume_context::<HostContext>()
-        .host
-        .read()
-        .get_plugin(&plugin_id);
-    let plugin_name = plugins
-        .as_ref()
-        .map(|p| p.name())
-        .unwrap_or("Unknown Plugin");
-
-    rsx!(
-        div {
-            "Vault requested by {plugin_name}"
-            ul {
-                EntitySelection {
-                    filter_map: move |entity_id| match entity_id {
-                        EntityId::Vault(id) => Some(id),
-                        _ => None,
-                    },
-                    on_select: move |id| {
-                        consume_context::<HostContext>()
-                            .host
-                            .read()
-                            .resolve_vault_request(request_id, id);
-                    },
-                    on_deny: move || {
-                        consume_context::<HostContext>()
-                            .host
-                            .read()
-                            .deny_user_request(request_id);
-                        }
-                }
-            }
-        }
-    )
-}
-
-#[component]
-fn CoordinatorSelectionComponent(request: UserRequest) -> Element {
-    let (request_id, plugin_id) = match request {
-        UserRequest::CoordinatorSelection { id, plugin_id } => (id, plugin_id),
-        _ => {
-            panic!("CoordinatorSelection request passed to wrong component")
-        }
-    };
-
-    let plugins = consume_context::<HostContext>()
-        .host
-        .read()
-        .get_plugin(&plugin_id);
-    let plugin_name = plugins
-        .as_ref()
-        .map(|p| p.name())
-        .unwrap_or("Unknown Plugin");
-
-    rsx!(
-        div {
-            "Coordinator requested by {plugin_name}"
-            ul {
-                EntitySelection {
-                    filter_map: move |entity_id| match entity_id {
-                        EntityId::Coordinator(id) => Some(id),
-                        _ => None,
-                    },
-                    on_select: move |id| {
-                        consume_context::<HostContext>()
-                            .host
-                            .read()
-                            .resolve_coordinator_request(request_id, id);
-                    },
-                    on_deny: move || {
-                        consume_context::<HostContext>()
-                            .host
-                            .read()
-                            .deny_user_request(request_id);
-                        }
-                }
-            }
-        }
-    )
-}
-
-// TODO: Consider abstracting on_deny into EntitySelection so that each
-// component doesn't have to repeat it. It should be shared across all
-// components I expect.
 #[component]
 fn EntitySelection<T>(
     filter_map: Callback<EntityId, Option<T>>,
@@ -173,32 +79,29 @@ fn EntitySelection<T>(
 where
     T: PartialEq + Debug + Copy + 'static,
 {
-    let entities = consume_context::<HostContext>()
-        .entities
-        .read()
+    let ctx: HostContext = use_context();
+    let entities = ctx.entity_ids();
+    let entities: Vec<(EntityId, T)> = entities
         .iter()
         .filter_map(|entity_id| filter_map.call(*entity_id).map(|t| (*entity_id, t)))
-        .collect::<Vec<(EntityId, T)>>();
+        .collect();
 
     rsx!(
-        div {
-            ul {
-                for entity in entities {
-                    li {
-                        key: "{entity:?}",
-                        SelectableEntity {
-                            id: entity.0,
-                            entity: entity.1,
-                            on_select: on_select.clone()
-                        }
+        ul {
+            for entity in entities {
+                li { key: "entity-{entity:?}",
+                    SelectableEntity {
+                        id: entity.0,
+                        entity: entity.1,
+                        on_select: on_select.clone(),
                     }
                 }
             }
-            button {
-                onclick: move |_| on_deny.call(()),
-                "Deny Request"
+            div { class: "divider" }
+            li {
+                button { class: "text-error", onclick: move |_| on_deny.call(()), "Deny Request" }
             }
-         }
+        }
     )
 }
 
@@ -207,19 +110,14 @@ fn SelectableEntity<T>(id: EntityId, entity: T, on_select: EventHandler<T>) -> E
 where
     T: PartialEq + Debug + Copy + 'static,
 {
-    let entity_plugin = consume_context::<HostContext>()
-        .host
-        .read()
-        .get_entity_plugin(id);
+    let ctx: HostContext = use_context();
+    let entity_plugin = ctx.entity_plugin(id);
     let plugin_name = entity_plugin
         .as_ref()
         .map(|p| p.name())
         .unwrap_or("Unknown Plugin");
 
     rsx!(
-        button {
-            onclick: move |_| on_select.call(entity),
-            "{id} (provided by plugin {plugin_name})"
-        }
+        button { onclick: move |_| on_select.call(entity), "{id} (plugin: {plugin_name})" }
     )
 }

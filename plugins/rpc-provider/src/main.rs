@@ -1,7 +1,7 @@
 use std::io::stderr;
 
 use alloy::{
-    eips::BlockId,
+    eips::{BlockId, BlockNumberOrTag},
     primitives::{Address, Bytes, TxHash, U256},
     providers::Provider,
     rpc::types::{
@@ -291,6 +291,22 @@ async fn get_storage_at(
     Ok(storage_value)
 }
 
+async fn fee_history(
+    transport: Transport,
+    params: (EthProviderId, u64, BlockNumberOrTag, Vec<f64>),
+) -> Result<alloy::rpc::types::FeeHistory, RpcError> {
+    let state: ProviderState = try_get_state(transport.clone())?;
+    let (_provider_id, block_count, newest_block, reward_percentiles) = params;
+
+    let provider = create_alloy_provider(transport.clone(), state.rpc_url);
+    let fee_history = provider
+        .get_fee_history(block_count, newest_block, &reward_percentiles)
+        .await
+        .rpc_err()?;
+
+    Ok(fee_history)
+}
+
 fn main() {
     fmt()
         .with_writer(stderr)
@@ -318,5 +334,6 @@ fn main() {
         .with_method(eth::SendRawTransaction, send_raw_transaction)
         .with_method(eth::EstimateGas, estimate_gas)
         .with_method(eth::GetStorageAt, get_storage_at)
+        .with_method(eth::FeeHistory, fee_history)
         .run();
 }
