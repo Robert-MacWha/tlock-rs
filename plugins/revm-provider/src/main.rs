@@ -59,7 +59,7 @@ struct State {
     page_id: Option<PageId>,
 }
 
-const RPC_URL: &str = "https://1rpc.io/sepolia";
+const RPC_URL: &str = "https://1rpc.io/eth";
 
 async fn init(transport: Transport, _params: ()) -> Result<(), RpcError> {
     let mut state = State {
@@ -477,7 +477,6 @@ fn main() {
         .compact()
         .init();
 
-    info!("Starting plugin...");
     PluginRunner::new()
         .with_method(plugin::Init, init)
         .with_method(page::OnLoad, on_load)

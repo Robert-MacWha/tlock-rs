@@ -311,11 +311,13 @@ fn requests_modal() -> Element {
                     p { "No pending requests" }
                 }
 
-                for request in ctx.requests() {
-                    div { key: "request-{request.id()}",
-                        div { class: "card bg-base-100 shadow-sm",
-                            div { class: "card-body",
-                                UserRequestComponent { request }
+                div { class: "flex flex-col gap-4",
+                    for request in ctx.requests() {
+                        div { key: "request-{request.id()}",
+                            div { class: "card bg-base-100 shadow-sm",
+                                div { class: "card-body",
+                                    UserRequestComponent { request }
+                                }
                             }
                         }
                     }

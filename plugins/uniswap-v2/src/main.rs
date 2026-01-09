@@ -42,8 +42,8 @@ use tracing_subscriber::fmt;
 const CHAIN_ID: u64 = 11155111; // Sepolia
 
 // Uniswap V2 Addresses on Sepolia
-const UNISWAP_V2_ROUTER: Address = address!("0xeE567Fe1712Faf6149d80dA1E6934E354124CfE3");
-const UNISWAP_V2_FACTORY: Address = address!("0xF62c03E08ada871A0bEb309762E260a7a6a880E6");
+const UNISWAP_V2_ROUTER: Address = address!("0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D");
+const UNISWAP_V2_FACTORY: Address = address!("0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f");
 
 // ---------- Plugin State ----------
 
@@ -372,8 +372,8 @@ async fn handle_execute_swap(
     let amount_in = state.input_amount;
     let expected_out = state.expected_output;
 
-    // Apply 0.5% slippage tolerance
-    let amount_out_min = expected_out * 0.995;
+    // TODO: Add slippage tolerance
+    let amount_out_min = expected_out * 0.9; // 10% slippage tolerance
 
     // Get coordinator session
     let account_id = coordinator::GetSession

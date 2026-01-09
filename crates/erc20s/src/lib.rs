@@ -10,36 +10,38 @@ pub struct ERC20 {
     pub slot: u64,
 }
 
+pub const CHAIN_ID: u64 = 1;
+
 pub const ERC20S: [ERC20; 3] = [
     ERC20 {
-        address: address!("0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14"),
+        address: address!("0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"),
         asset_id: AssetId::erc20(
-            111555111,
-            address!("0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14"),
+            CHAIN_ID,
+            address!("0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"),
         ),
-        chain_id: 111555111,
+        chain_id: CHAIN_ID,
         symbol: "WETH",
         slot: 3,
     },
     ERC20 {
-        address: address!("0xaA8E23Fb1079EA71e0a56F48a2aA51851D8433D0"),
+        address: address!("0x6b175474e89094c44da98b954eedeac495271d0f"),
         asset_id: AssetId::erc20(
-            111555111,
-            address!("0xaA8E23Fb1079EA71e0a56F48a2aA51851D8433D0"),
+            CHAIN_ID,
+            address!("0x6b175474e89094c44da98b954eedeac495271d0f"),
         ),
-        chain_id: 111555111,
-        symbol: "USDT",
-        slot: 0,
+        chain_id: CHAIN_ID,
+        symbol: "DAI",
+        slot: 2,
     },
     ERC20 {
-        address: address!("0xd7b45cbc28ba9ba8653665d5fb37167a2afe35d9"),
+        address: address!("0xDe30da39c46104798bB5aA3fe8B9e0e1F348163F"),
         asset_id: AssetId::erc20(
-            111555111,
-            address!("0xd7b45cbc28ba9ba8653665d5fb37167a2afe35d9"),
+            CHAIN_ID,
+            address!("0xDe30da39c46104798bB5aA3fe8B9e0e1F348163F"),
         ),
-        chain_id: 111555111,
-        symbol: "UNI",
-        slot: 0,
+        chain_id: CHAIN_ID,
+        symbol: "GTC",
+        slot: 5,
     },
 ];
 

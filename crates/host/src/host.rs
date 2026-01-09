@@ -532,11 +532,9 @@ impl Host {
 
     pub async fn fetch(
         &self,
-        plugin_id: &PluginId,
+        _plugin_id: &PluginId,
         req: host::Request,
     ) -> Result<Result<Vec<u8>, String>, RpcError> {
-        info!("Plugin {} requested fetch: {:?}", plugin_id, req);
-
         let mut headers = reqwest::header::HeaderMap::new();
         for (key, value) in req.headers.iter() {
             if let (Ok(name), Ok(val)) = (

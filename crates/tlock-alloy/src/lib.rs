@@ -77,7 +77,6 @@ impl Service<RequestPacket> for AlloyBridge {
                         return Err(e);
                     }
                 };
-                info!("Alloy bridge Response: {:?}", response);
                 responses.push(response);
             }
 
@@ -116,7 +115,6 @@ async fn call_req(
     });
 
     let req = EthRequest::deserialize(&json_with_params).map_err(TransportError::ser_err)?;
-    info!("Handling EthRequest: {:?}", req);
 
     let resp = match req {
         EthRequest::EthChainId(()) => {

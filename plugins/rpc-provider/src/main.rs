@@ -40,7 +40,7 @@ async fn init(transport: Transport, _params: ()) -> Result<(), RpcError> {
     info!("Initializing Ethereum Provider Plugin...");
 
     let state = ProviderState {
-        rpc_url: "https://1rpc.io/sepolia".to_string(),
+        rpc_url: "https://1rpc.io/eth".to_string(),
     };
     set_state(transport.clone(), &state)?;
 
@@ -314,7 +314,6 @@ fn main() {
         .with_ansi(false)
         .compact()
         .init();
-    info!("Starting plugin...");
 
     PluginRunner::new()
         .with_method(global::Ping, ping)

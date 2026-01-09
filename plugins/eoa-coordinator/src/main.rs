@@ -9,13 +9,13 @@
 use std::io::stderr;
 
 use alloy::{
-    hex,
     primitives::{Address, FixedBytes},
     providers::{Provider, ProviderBuilder},
     rpc::types::TransactionRequest,
     signers::local::PrivateKeySigner,
     sol,
 };
+use erc20s::CHAIN_ID;
 use serde::{Deserialize, Serialize};
 use tlock_alloy::AlloyBridge;
 use tlock_pdk::{
@@ -25,23 +25,17 @@ use tlock_pdk::{
         RpcMethod,
         alloy::primitives::U256,
         caip::{AccountId, AssetId, AssetType, ChainId},
-        component::{
-            Component, account, button_input, container, form, heading, heading2, hex,
-            submit_input, text, text_input,
-        },
         coordinator,
         domains::Domain,
-        entities::{CoordinatorId, EntityId, EthProviderId, PageId, VaultId},
-        global, host,
-        page::{self, PageEvent},
-        plugin, vault,
+        entities::{CoordinatorId, EntityId, EthProviderId, VaultId},
+        global, host, plugin, vault,
     },
     wasmi_plugin_pdk::{
         rpc_message::{RpcError, RpcErrorContext, ToRpcResult},
         transport::Transport,
     },
 };
-use tracing::{info, trace};
+use tracing::{error, info};
 use tracing_subscriber::fmt;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -49,7 +43,7 @@ struct State {
     /// Vault managed by this coordinator
     vault_id: VaultId,
     provider_id: EthProviderId,
-    coordinator: Option<Coordinator>,
+    coordinator: Coordinator,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -67,7 +61,9 @@ sol! {
     }
 }
 
-const CHAIN_ID: u64 = 11155111; // Sepolia
+/// Minimum gas required for executing a bundle
+/// TODO: Dynamically calculate based on bundle complexity
+const REQUIRED_GAS: u128 = 10000000000000000; // 0.01 ETH
 
 #[derive(Debug)]
 struct ReturnAsset {
@@ -87,21 +83,27 @@ async fn ping(transport: Transport, _: ()) -> Result<String, RpcError> {
 }
 
 async fn init(transport: Transport, _: ()) -> Result<(), RpcError> {
-    let vault_id = host::RequestVault.call_async(transport.clone(), ()).await?;
-    info!("Obtained vault ID: {}", vault_id);
-
     let provider_id = host::RequestEthProvider
         .call_async(transport.clone(), ChainId::new_evm(CHAIN_ID))
         .await?;
+    let vault_id = host::RequestVault.call_async(transport.clone(), ()).await?;
 
-    host::RegisterEntity
-        .call_async(transport.clone(), Domain::Page)
+    let coordinator_id = host::RegisterEntity
+        .call_async(transport.clone(), Domain::Coordinator)
         .await?;
+
+    let signer = PrivateKeySigner::random();
+    let address = signer.address();
+    let account_id = AccountId::new_evm(CHAIN_ID, address);
 
     let state = State {
         vault_id,
         provider_id,
-        coordinator: None,
+        coordinator: Coordinator {
+            entity_id: coordinator_id,
+            private_key: signer.to_bytes(),
+            account: account_id,
+        },
     };
 
     set_state(transport.clone(), &state)?;
@@ -115,12 +117,8 @@ async fn get_session(
     let state: State = try_get_state(transport.clone())?;
     let (coordinator_id, chain_id, maybe_account_id) = params;
 
-    let Some(coordinator) = &state.coordinator else {
-        return Err(RpcError::custom("Coordinator not initialized"));
-    };
-
     let coordinator_id: EntityId = coordinator_id.into();
-    if coordinator_id != coordinator.entity_id {
+    if coordinator_id != state.coordinator.entity_id {
         return Err(RpcError::custom("Invalid CoordinatorId"));
     }
 
@@ -130,12 +128,12 @@ async fn get_session(
     }
 
     if let Some(account_id) = maybe_account_id
-        && account_id != coordinator.account
+        && account_id != state.coordinator.account
     {
         return Err(RpcError::Custom("Invalid AccountId".into()));
     }
 
-    Ok(coordinator.account.clone())
+    Ok(state.coordinator.account.clone())
 }
 
 async fn get_assets(
@@ -145,16 +143,12 @@ async fn get_assets(
     let state: State = try_get_state(transport.clone())?;
     let (coordinator_id, account_id) = params;
 
-    let Some(coordinator) = &state.coordinator else {
-        return Err(RpcError::Custom("Coordinator not initialized".into()));
-    };
-
     let coordinator_id: EntityId = coordinator_id.into();
-    if coordinator_id != coordinator.entity_id {
+    if coordinator_id != state.coordinator.entity_id {
         return Err(RpcError::Custom("Invalid CoordinatorId".into()));
     }
 
-    if account_id != coordinator.account {
+    if account_id != state.coordinator.account {
         return Err(RpcError::Custom("Invalid AccountId".into()));
     }
 
@@ -168,14 +162,11 @@ async fn propose(
     transport: Transport,
     params: (CoordinatorId, AccountId, coordinator::EvmBundle),
 ) -> Result<(), RpcError> {
-    info!("Received proposal: {:#?}", params);
+    info!("Received proposal: {:?}", params);
 
     let state: State = try_get_state(transport.clone())?;
     let (coordinator_id, account_id, bundle) = params;
-
-    let Some(coordinator) = &state.coordinator else {
-        return Err(RpcError::custom("Coordinator not initialized"));
-    };
+    let coordinator = state.coordinator.clone();
 
     let coordinator_id: EntityId = coordinator_id.into();
     if coordinator_id != coordinator.entity_id {
@@ -205,8 +196,20 @@ async fn propose(
     verify_vault_balance(&transport, &state, &bundle).await?;
 
     let return_assets = validate_and_get_return_assets(transport.clone(), &state, &bundle).await?;
+    withdraw_gas(
+        &provider,
+        transport.clone(),
+        &state,
+        &coordinator.account,
+        U256::from(REQUIRED_GAS),
+    )
+    .await?;
     withdraw_assets(transport.clone(), &state, &coordinator.account, &bundle).await?;
-    execute_bundle(&provider, bundle).await?;
+    //? Log the error, but continue to the return step regardless
+    let _ = execute_bundle(&provider, bundle).await.map_err(|e| {
+        // TODO: Notify host on error
+        error!("Error executing bundle: {:?}", e);
+    });
     return_outstanding_assets(
         &provider,
         evm_address,
@@ -302,6 +305,41 @@ async fn validate_and_get_return_assets(
     Ok(return_assets)
 }
 
+async fn withdraw_gas<T: Provider>(
+    provider: &T,
+    transport: Transport,
+    state: &State,
+    state_account_id: &AccountId,
+    required_gas: U256,
+) -> Result<(), RpcError> {
+    let balance = provider
+        .get_balance(state_account_id.as_evm_address().unwrap())
+        .await
+        .rpc_err()?;
+
+    let required_gas = required_gas.saturating_sub(balance);
+    if required_gas == U256::ZERO {
+        info!("Sufficient gas balance available, no withdrawal needed");
+        return Ok(());
+    }
+
+    info!("Withdrawing gas from vault: {}...", required_gas);
+    let eth_asset_id = AssetId::eth(CHAIN_ID);
+    vault::Withdraw
+        .call_async(
+            transport.clone(),
+            (
+                state.vault_id,
+                state_account_id.clone(),
+                eth_asset_id,
+                required_gas,
+            ),
+        )
+        .await?;
+
+    Ok(())
+}
+
 async fn withdraw_assets(
     transport: Transport,
     state: &State,
@@ -309,7 +347,7 @@ async fn withdraw_assets(
     bundle: &coordinator::EvmBundle,
 ) -> Result<(), RpcError> {
     for (asset_id, amount) in &bundle.inputs {
-        info!("Transferring asset {} amount {}", asset_id, amount);
+        info!("Withdrawing from vault: {}:{}...", asset_id, amount);
         vault::Withdraw
             .call_async(
                 transport.clone(),
@@ -356,25 +394,27 @@ async fn return_outstanding_assets<T: Provider>(
     initial_native_balance: U256,
 ) -> Result<(), RpcError> {
     for return_asset in return_assets {
-        info!("Returning {:?} to vault...", &return_asset.asset);
+        info!("Returning to vault: {:?}...", &return_asset.asset);
         match return_asset.asset {
             EvmAsset::Eth => {
-                return_eth(
+                let _ = return_eth(
                     provider,
                     state_account_address,
                     return_asset.deposit_address,
                     initial_native_balance,
                 )
-                .await?;
+                .await
+                .map_err(|e| error!("Error returning {:?}: {}", &return_asset.asset, e));
             }
             EvmAsset::Erc20(address) => {
-                return_erc20(
+                let _ = return_erc20(
                     provider,
                     state_account_address,
                     return_asset.deposit_address,
                     address,
                 )
-                .await?;
+                .await
+                .map_err(|e| error!("Error returning {:?}: {}", &return_asset.asset, e));
             }
         }
     }
@@ -398,7 +438,7 @@ async fn return_eth<T: Provider>(
     //? which is generally fine.
     let return_amount = balance.saturating_sub(initial_native_balance);
     if return_amount == U256::ZERO {
-        trace!("No balance to return, skipping ETH return");
+        info!("No balance to return, skipping ETH return");
         return Ok(());
     }
 
@@ -431,7 +471,7 @@ async fn return_erc20<T: Provider>(
         .rpc_err()?;
 
     if balance == U256::ZERO {
-        trace!("No balance for ERC20 {}, skipping return", erc20_address);
+        info!("No balance for ERC20 {}, skipping return", erc20_address);
         return Ok(());
     }
 
@@ -451,90 +491,6 @@ async fn return_erc20<T: Provider>(
     Ok(())
 }
 
-// ---------- UI Handlers ----------
-async fn on_load(transport: Transport, page_id: PageId) -> Result<(), RpcError> {
-    let state: State = try_get_state(transport.clone())?;
-    let component = build_ui(&state);
-    host::SetPage
-        .call_async(transport.clone(), (page_id, component))
-        .await?;
-
-    Ok(())
-}
-
-async fn on_update(transport: Transport, props: (PageId, PageEvent)) -> Result<(), RpcError> {
-    let (page_id, event) = props;
-
-    let private_key_hex = match event {
-        page::PageEvent::FormSubmitted(form_id, form_data) if form_id == "private_key_form" => {
-            let Some(pk) = form_data.get("dev_private_key") else {
-                return Err(RpcError::Custom("Private key not found in form".into()));
-            };
-            pk.clone()
-        }
-        page::PageEvent::ButtonClicked(button_id) if button_id == "generate_dev_key" => {
-            let signer = PrivateKeySigner::random();
-            let private_key = signer.to_bytes();
-            hex::encode(private_key)
-        }
-        _ => {
-            return Ok(());
-        }
-    };
-
-    let private_key_hex = private_key_hex.trim().trim_start_matches("0x").to_string();
-    let signer: PrivateKeySigner = private_key_hex.parse().context("Invalid private key")?;
-    let address = signer.address();
-    let account_id = AccountId::new_evm(CHAIN_ID, address);
-
-    let coordinator_id = host::RegisterEntity
-        .call_async(transport.clone(), Domain::Coordinator)
-        .await?;
-
-    let mut state: State = try_get_state(transport.clone())?;
-    state.coordinator = Some(Coordinator {
-        entity_id: coordinator_id.clone(),
-        private_key: signer.to_bytes(),
-        account: account_id.clone(),
-    });
-    set_state(transport.clone(), &state)?;
-
-    let component = build_ui(&state);
-    host::SetPage
-        .call_async(transport.clone(), (page_id, component))
-        .await?;
-
-    Ok(())
-}
-
-fn build_ui(state: &State) -> Component {
-    let mut sections = vec![
-        heading("Coordinator"),
-        text("Example coordinator plugin that uses an EOA to execute bundles."),
-    ];
-
-    let Some(coordinator) = &state.coordinator else {
-        sections.push(heading2("Create Coordinator's EOA"));
-        sections.push(form(
-            "private_key_form",
-            vec![
-                text_input("dev_private_key", "Private Key", "0xabc123"),
-                submit_input("Create Vault"),
-            ],
-        ));
-        sections.push(button_input("generate_dev_key", "Random EOA"));
-        return container(sections);
-    };
-
-    sections.push(heading2("EOA Info"));
-    sections.push(text("Account:"));
-    sections.push(account(coordinator.account.clone()));
-    sections.push(text("Private Key:"));
-    sections.push(hex(coordinator.private_key.as_slice()));
-
-    return container(sections);
-}
-
 fn main() {
     fmt()
         .with_writer(stderr)
@@ -542,7 +498,6 @@ fn main() {
         .with_ansi(false)
         .compact()
         .init();
-    info!("Starting plugin...");
 
     PluginRunner::new()
         .with_method(global::Ping, ping)
@@ -550,7 +505,5 @@ fn main() {
         .with_method(coordinator::GetSession, get_session)
         .with_method(coordinator::GetAssets, get_assets)
         .with_method(coordinator::Propose, propose)
-        .with_method(page::OnLoad, on_load)
-        .with_method(page::OnUpdate, on_update)
         .run();
 }

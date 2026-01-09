@@ -144,7 +144,7 @@ impl<DB: DatabaseRef> Chain<DB> {
         block_override: Option<BlockOverrides>,
         unconstrained: bool,
     ) -> Result<ExecutionResult, ChainError<DB>> {
-        info!("Calling tx {:?} at block {:?}", tx, block_id);
+        info!("eth_call {:?} at block {:?}", tx, block_id);
 
         let mut block_env = match self.get_blockenv(block_id) {
             Some(env) => env,
@@ -180,6 +180,7 @@ impl<DB: DatabaseRef> Chain<DB> {
             .modify_cfg_chained(|cfg| {
                 cfg.tx_chain_id_check = false;
                 cfg.chain_id = self.chain_id;
+                cfg.disable_nonce_check = true;
             })
             .with_db(overlay_db)
             .with_block(block_env)

@@ -4,12 +4,11 @@
 //! Account (EOA) using a private key provided by the user. It supports
 //! operations for native ETH and a predefined set of ERC20 tokens.
 
-use std::io::stderr;
+use std::{collections::HashMap, io::stderr};
 
 use alloy::{
-    hex,
     network::TransactionBuilder,
-    primitives::{Address, U256},
+    primitives::{Address, FixedBytes, U256},
     providers::{Provider, ProviderBuilder},
     rpc::types::TransactionRequest,
     signers::local::PrivateKeySigner,
@@ -25,8 +24,8 @@ use tlock_pdk::{
         RpcMethod,
         caip::{AccountId, AssetId, AssetType, ChainId},
         component::{
-            Component, account, button_input, container, form, heading, heading2, hex,
-            submit_input, text, text_input,
+            Component, account, asset, button_input, container, form, heading, heading2, hex,
+            submit_input, text, text_input, unordered_list,
         },
         domains::Domain,
         entities::{EntityId, EthProviderId, PageId, VaultId},
@@ -38,7 +37,7 @@ use tlock_pdk::{
         transport::Transport,
     },
 };
-use tracing::{error, info, warn};
+use tracing::{info, warn};
 use tracing_subscriber::fmt;
 
 #[derive(Serialize, Deserialize, Default, Debug)]
@@ -50,7 +49,7 @@ struct PluginState {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct Vault {
     entity_id: EntityId,
-    private_key: String,
+    private_key: FixedBytes<32>,
     address: Address,
 }
 
@@ -107,7 +106,14 @@ async fn get_assets(
     info!("Received get_assets request for vault: {}", vault_id);
 
     let vault = get_vault(transport.clone(), vault_id)?;
+    let assets = get_vault_assets(transport.clone(), &vault).await?;
+    Ok(assets)
+}
 
+async fn get_vault_assets(
+    transport: Transport,
+    vault: &Vault,
+) -> Result<Vec<(AssetId, U256)>, RpcError> {
     let state: PluginState = try_get_state(transport.clone())?;
     let provider = ProviderBuilder::new()
         .connect_client(AlloyBridge::new(transport.clone(), state.provider_id));
@@ -115,7 +121,6 @@ async fn get_assets(
     // Fetch native ETH balance
     let balance = provider.get_balance(vault.address).await.rpc_err()?;
 
-    info!("ETH balance for vault {}: {}", vault_id, balance);
     let mut balances = vec![(AssetId::eth(CHAIN_ID), balance)];
 
     // Fetch ERC20 balances
@@ -126,10 +131,6 @@ async fn get_assets(
         let contract = ERC20::new(address, &provider);
         erc20_futures.push(async move {
             let balance = contract.balanceOf(vault.address).call().await.rpc_err()?;
-            info!(
-                "ERC20 balance for vault {}, token {}: {}",
-                vault_id, address, balance
-            );
             Ok::<_, RpcError>((AssetId::erc20(CHAIN_ID, address), balance))
         });
     }
@@ -180,7 +181,8 @@ async fn withdraw(
         .ok_or_else(|| RpcError::Custom("Invalid to address".into()))?;
 
     let vault = get_vault(transport.clone(), vault_id)?;
-    let signer: PrivateKeySigner = vault.private_key.parse().rpc_err()?;
+    let signer: PrivateKeySigner =
+        PrivateKeySigner::from_bytes(&vault.private_key).context("Invalid private key")?;
     let state: PluginState = try_get_state(transport.clone())?;
     let provider = ProviderBuilder::new()
         .wallet(signer)
@@ -239,7 +241,7 @@ async fn on_load(transport: Transport, page_id: PageId) -> Result<(), RpcError> 
     info!("OnPageLoad called for page: {}", page_id);
 
     let state: PluginState = get_state(transport.clone());
-    let component = build_ui(&state);
+    let component = build_ui(transport.clone(), &state).await;
     host::SetPage
         .call_async(transport.clone(), (page_id, component))
         .await?;
@@ -254,24 +256,45 @@ async fn on_update(
     let (page_id, event) = params;
     info!("Page updated in Vault Plugin: {:?}", event);
 
-    let private_key_hex = match event {
-        page::PageEvent::ButtonClicked(button_id) if button_id == "generate_dev_key" => {
+    match event {
+        page::PageEvent::ButtonClicked(id) if id == "generate_dev_key" => {
             let signer = PrivateKeySigner::random();
-            let private_key = signer.to_bytes();
-            hex::encode(private_key)
+            handle_new_signer(transport.clone(), signer.clone()).await?;
         }
-        page::PageEvent::FormSubmitted(_, form_data) => form_data
-            .get("dev_private_key")
-            .context("No private key in form")?
-            .clone(),
+        page::PageEvent::ButtonClicked(id) if id == "refresh_assets" => {
+            // Simply rebuild the UI to refresh asset balances
+        }
+        page::PageEvent::FormSubmitted(id, form_data) if id == "private_key_form" => {
+            handle_dev_private_key(transport.clone(), form_data).await?;
+        }
         _ => {
             warn!("Unhandled page event: {:?}", event);
-            return Ok(());
         }
-    };
+    }
+
+    let state: PluginState = get_state(transport.clone());
+    let component = build_ui(transport.clone(), &state).await;
+    host::SetPage
+        .call_async(transport.clone(), (page_id, component))
+        .await?;
+
+    Ok(())
+}
+
+async fn handle_dev_private_key(
+    transport: Transport,
+    form_data: HashMap<String, String>,
+) -> Result<(), RpcError> {
+    let private_key_hex = form_data
+        .get("dev_private_key")
+        .context("Private key not in form data")?;
 
     let private_key_hex = private_key_hex.trim().trim_start_matches("0x").to_string();
     let signer: PrivateKeySigner = private_key_hex.parse().context("Invalid private key")?;
+    handle_new_signer(transport.clone(), signer).await
+}
+
+async fn handle_new_signer(transport: Transport, signer: PrivateKeySigner) -> Result<(), RpcError> {
     let address = signer.address();
 
     let entity_id = host::RegisterEntity
@@ -281,20 +304,15 @@ async fn on_update(
     let mut state: PluginState = get_state(transport.clone());
     state.vault = Some(Vault {
         entity_id,
-        private_key: private_key_hex.clone(),
+        private_key: signer.to_bytes(),
         address,
     });
     set_state(transport.clone(), &state)?;
 
-    let component = build_ui(&state);
-    host::SetPage
-        .call_async(transport.clone(), (page_id, component))
-        .await?;
-
     Ok(())
 }
 
-fn build_ui(state: &PluginState) -> Component {
+async fn build_ui(transport: Transport, state: &PluginState) -> Component {
     let mut sections = vec![
         heading("EOA Vault"),
         text("Example vault plugin managing an externally owned account using a private key"),
@@ -317,7 +335,19 @@ fn build_ui(state: &PluginState) -> Component {
     sections.push(text("Vault Address:"));
     sections.push(account(AccountId::new_evm(CHAIN_ID, vault.address)));
     sections.push(text("Private Key:"));
-    sections.push(hex(vault.private_key.as_bytes()));
+    sections.push(hex(vault.private_key.as_slice()));
+
+    let Ok(balances) = get_vault_assets(transport.clone(), &vault).await else {
+        sections.push(text("Error fetching assets"));
+        return container(sections);
+    };
+
+    sections.push(heading2("Assets"));
+    let balances = balances
+        .into_iter()
+        .map(|(id, bal)| (id.to_string(), asset(id.clone(), Some(bal.clone()))));
+    sections.push(unordered_list(balances));
+    sections.push(button_input("refresh_assets", "Refresh"));
 
     return container(sections);
 }
@@ -366,20 +396,6 @@ fn get_vault(transport: Transport, _id: VaultId) -> Result<Vault, RpcError> {
 /// On first plugin load, the host calls `plugin::Init` for setup.
 /// Subsequent requests skip init and directly invoke registered methods.
 fn main() {
-    std::panic::set_hook(Box::new(|panic_info| {
-        let location = panic_info.location().unwrap();
-        let message = panic_info
-            .payload()
-            .downcast_ref::<&str>()
-            .unwrap_or(&"unknown");
-        error!(
-            "Panic occurred in file '{}' at line {}: {}",
-            location.file(),
-            location.line(),
-            message
-        );
-    }));
-
     // Setup logging - host captures stderr and forwards to its logging system
     fmt()
         .with_writer(stderr)
@@ -387,7 +403,6 @@ fn main() {
         .with_ansi(false)
         .compact()
         .init();
-    info!("Starting plugin...");
 
     // Register method handlers and start processing.
     // The server automatically:

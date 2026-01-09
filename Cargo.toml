@@ -13,7 +13,6 @@ members = [
     "plugins/revm-provider",
     "plugins/rpc-provider",
     "plugins/uniswap-v2",
-    "plugins/vault-page",
 ]
 
 resolver = "2"
