@@ -3,7 +3,7 @@ use std::{collections::HashMap, io::stderr};
 use erc20s::ERC20S;
 use revm::{
     DatabaseRef,
-    primitives::{Address, Bytes, alloy_primitives::TxHash},
+    primitives::{Address, Bytes, alloy_primitives::TxHash, hex},
 };
 use serde::{Deserialize, Serialize};
 use tlock_pdk::{
@@ -380,12 +380,34 @@ fn build_ui(state: &State) -> Component {
     // Show transactions by block
     let mut sorted_blocks: Vec<_> = state.fork_snapshot.transactions.iter().collect();
     sorted_blocks.sort_by_key(|(block_num, _)| *block_num);
-    sections.push(unordered_list(sorted_blocks.iter().map(|(number, txs)| {
-        (
-            format!("block_{}", number),
-            text(format!("Block {}: {} transaction(s)", number, txs.len())),
-        )
-    })));
+    sections.push(unordered_list(sorted_blocks.iter().flat_map(
+        |(number, txs)| {
+            let block_header = (
+                format!("block_{}", number),
+                text(format!("Block {}: {} transaction(s)", number, txs.len())),
+            );
+
+            let tx_items = txs.iter().enumerate().map(move |(i, tx)| {
+                use alloy_consensus::Transaction;
+                (
+                    format!("block_{}_tx_{}", number, i),
+                    text(format!(
+                        "  - {} -> {} | value: {} wei | sig: {}",
+                        tx.inner.signer(),
+                        tx.to().unwrap_or(Address::ZERO),
+                        tx.value(),
+                        if tx.input().len() >= 4 {
+                            format!("0x{}", hex::encode(&tx.input()[..4]))
+                        } else {
+                            "0x".to_string()
+                        }
+                    )),
+                )
+            });
+
+            std::iter::once(block_header).chain(tx_items)
+        },
+    )));
 
     container(sections)
 }

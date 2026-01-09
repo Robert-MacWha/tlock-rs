@@ -12,7 +12,7 @@ use alloy::{
     sol,
     sol_types::SolCall,
 };
-use erc20s::ERC20S;
+use erc20s::{CHAIN_ID, ERC20S};
 use serde::{Deserialize, Serialize};
 use tlock_alloy::AlloyBridge;
 use tlock_pdk::{
@@ -38,10 +38,6 @@ use tracing::{error, info, warn};
 use tracing_subscriber::fmt;
 
 // ---------- Constants ----------
-
-const CHAIN_ID: u64 = 11155111; // Sepolia
-
-// Uniswap V2 Addresses on Sepolia
 const UNISWAP_V2_ROUTER: Address = address!("0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D");
 const UNISWAP_V2_FACTORY: Address = address!("0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f");
 
@@ -101,17 +97,13 @@ sol! {
 async fn init(transport: Transport, _params: ()) -> Result<(), RpcError> {
     info!("Initializing Uniswap V2 Plugin");
 
-    // Request coordinator
+    let provider_id = host::RequestEthProvider
+        .call_async(transport.clone(), ChainId::new_evm(CHAIN_ID))
+        .await?;
     let coordinator_id = host::RequestCoordinator
         .call_async(transport.clone(), ())
         .await?;
 
-    // Request eth provider for Sepolia
-    let provider_id = host::RequestEthProvider
-        .call_async(transport.clone(), ChainId::new_evm(CHAIN_ID))
-        .await?;
-
-    // Initialize state
     let state = PluginState {
         coordinator_id,
         provider_id,

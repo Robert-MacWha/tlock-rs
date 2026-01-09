@@ -238,7 +238,8 @@ async fn verify_vault_balance(
 
         if &vault_amount < amount {
             return Err(RpcError::Custom(format!(
-                "Insufficient asset {asset_id} in vault"
+                "Insufficient asset {asset_id} in vault {} ({} < {})",
+                state.vault_id, vault_amount, amount
             )));
         }
     }
@@ -453,7 +454,10 @@ async fn return_eth<T: Provider>(
         .watch()
         .await
         .rpc_err()?;
-    info!("Returned ETH to vault with tx_hash {}", tx_hash);
+    info!(
+        "Returned {} ETH to vault with tx_hash {}",
+        return_amount, tx_hash
+    );
     Ok(())
 }
 
@@ -484,8 +488,8 @@ async fn return_erc20<T: Provider>(
         .await
         .rpc_err()?;
     info!(
-        "Returned ERC20 {} to vault with tx_hash {}",
-        erc20_address, tx_hash
+        "Returned {} ERC20 {} to vault with tx_hash {}",
+        balance, erc20_address, tx_hash
     );
 
     Ok(())

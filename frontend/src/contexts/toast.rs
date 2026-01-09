@@ -17,7 +17,7 @@ pub enum ToastKind {
 #[derive(Clone, Copy)]
 pub struct ToastContext(Signal<Vec<Toast>>);
 
-const TOAST_TIMEOUT_MS: u32 = 5000;
+const TOAST_TIMEOUT_MS: u32 = 7000;
 
 impl ToastContext {
     pub fn new(storage: Signal<Vec<Toast>>) -> Self {

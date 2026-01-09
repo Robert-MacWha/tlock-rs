@@ -304,7 +304,10 @@ pub mod eth {
     // between "eth-read" and "eth-write" methods. Would also make it easier to
     // add custom send methods (IE to private pool, or forwarding to devp2p, etc).
     rpc_method!(
-        /// Sends a raw transaction to the network.
+        /// Sends a raw transaction to the network. The transaction MUST be
+        /// signed prior to calling this method. If the transaction is invalid,
+        /// the plugin MUST return an error. Callers SHOULD NOT assume that
+        /// the plugin
         eth_sendRawTransaction, SendRawTransaction, (EthProviderId, Bytes), TxHash
     );
 }

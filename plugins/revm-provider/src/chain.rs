@@ -50,7 +50,6 @@ pub struct SimulatedBlock {
     pub hash: B256,
     pub parent_hash: B256,
     pub results: Vec<ExecutionResult>,
-    pub transactions: Vec<TxEnv>,
 }
 
 #[derive(Error, Debug)]
@@ -144,7 +143,12 @@ impl<DB: DatabaseRef> Chain<DB> {
         block_override: Option<BlockOverrides>,
         unconstrained: bool,
     ) -> Result<ExecutionResult, ChainError<DB>> {
-        info!("eth_call {:?} at block {:?}", tx, block_id);
+        info!(
+            "eth_call {:?} at block {:?}, latest is {}",
+            tx,
+            block_id,
+            self.latest()
+        );
 
         let mut block_env = match self.get_blockenv(block_id) {
             Some(env) => env,
@@ -247,7 +251,6 @@ impl<DB: DatabaseRef> Chain<DB> {
                 parent_hash,
                 hash: block_hash,
                 results: results.clone(),
-                transactions: self.pending.transactions.clone(),
             },
         );
         self.db

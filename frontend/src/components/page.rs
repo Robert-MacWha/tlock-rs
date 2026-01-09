@@ -16,6 +16,7 @@ pub fn Page(id: PageId) -> Element {
     use_effect(move || {
         spawn(async move {
             if let Err(err) = ctx.page_on_load(id).await {
+                info!("OnPageLoad error: {}", err);
                 toast.push(
                     format!("Error loading page: {}", err),
                     crate::contexts::toast::ToastKind::Error,
@@ -28,10 +29,13 @@ pub fn Page(id: PageId) -> Element {
         spawn(async move {
             match ctx.page_on_update(id, event).await {
                 Ok(()) => info!("OnPageUpdate success"),
-                Err(err) => toast.push(
-                    format!("Error updating page: {}", err),
-                    crate::contexts::toast::ToastKind::Error,
-                ),
+                Err(err) => {
+                    info!("OnPageUpdate error: {}", err);
+                    toast.push(
+                        format!("Error updating page: {}", err),
+                        crate::contexts::toast::ToastKind::Error,
+                    );
+                }
             }
         });
     });

@@ -14,7 +14,7 @@ use alloy::{
     signers::local::PrivateKeySigner,
     sol,
 };
-use erc20s::{ERC20S, get_erc20_by_address};
+use erc20s::{CHAIN_ID, ERC20S, get_erc20_by_address};
 use serde::{Deserialize, Serialize};
 use tlock_alloy::AlloyBridge;
 use tlock_pdk::{
@@ -62,8 +62,6 @@ sol! {
         function transfer(address to, uint256 amount) external returns (bool);
     }
 }
-
-const CHAIN_ID: u64 = 11155111; // Sepolia
 
 // ---------- Plugin Handlers ----------
 
