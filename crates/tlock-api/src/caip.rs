@@ -279,14 +279,14 @@ impl AssetId {
         Self { chain_id, asset }
     }
 
-    pub fn eth(chain_id: u64) -> Self {
+    pub const fn eth(chain_id: u64) -> Self {
         Self {
             chain_id: ChainId::Evm(Some(chain_id)),
             asset: AssetType::Slip44(60),
         }
     }
 
-    pub fn erc20(chain_id: u64, contract: Address) -> Self {
+    pub const fn erc20(chain_id: u64, contract: Address) -> Self {
         Self {
             chain_id: ChainId::Evm(Some(chain_id)),
             asset: AssetType::Erc20(contract),

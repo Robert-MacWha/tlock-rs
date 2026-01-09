@@ -1,5 +1,6 @@
 use std::{collections::HashMap, io::stderr};
 
+use erc20s::ERC20S;
 use revm::{
     DatabaseRef,
     primitives::{Address, Bytes, alloy_primitives::TxHash},
@@ -22,8 +23,8 @@ use tlock_pdk::{
         },
         caip::AccountId,
         component::{
-            Component, button_input, container, form, heading, heading2, submit_input, text,
-            text_input, unordered_list,
+            Component, button_input, container, dropdown, form, heading, heading2, submit_input,
+            text, text_input, unordered_list,
         },
         domains::Domain,
         entities::{EntityId, EthProviderId, PageId},
@@ -343,15 +344,18 @@ fn build_ui(state: &State) -> Component {
     ]);
 
     // Cheatcodes section
+    let mut asset_symbols = vec!["ETH".to_string()];
+    asset_symbols.extend(ERC20S.iter().map(|e| e.symbol.to_string()));
     sections.extend(vec![
         heading2("Cheatcodes"),
         heading2("Deal"),
-        text("Set native ETH balance for an account"),
+        text("Sets the balance of an account"),
         form(
             "deal_form",
             vec![
                 text_input("account", "Account", "eip155:1:0xabc123..."),
                 text_input("amount", "Amount (wei)", "10000"),
+                dropdown("asset", "Asset", asset_symbols, Some("ETH".to_string())),
                 submit_input("Execute Deal"),
             ],
         ),
@@ -439,13 +443,25 @@ fn handle_deal(
         .parse()
         .context("Invalid amount")?;
 
-    info!(
-        "Executing deal for address {} with amount {}",
-        address, amount
-    );
+    let asset_symbol = form_data.get("asset").context("Missing asset")?.as_str();
+    info!("Dealing {}:{} to address {}", asset_symbol, amount, address);
 
     let mut fork = get_fork_provider(transport.clone())?;
-    fork.deal(address, amount)?;
+
+    match asset_symbol {
+        "ETH" => {
+            fork.deal(address, amount)?;
+        }
+        other => {
+            let token_address = ERC20S
+                .iter()
+                .find(|e| e.symbol == other)
+                .map(|e| e.address)
+                .context("Unknown ERC20 asset")?;
+            fork.deal_erc20(address, token_address, amount)?;
+        }
+    }
+
     state.fork_snapshot = fork.snapshot();
 
     Ok(())

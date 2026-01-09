@@ -5,6 +5,7 @@ members = [
     "crates/tlock-api",
     "crates/tlock-hdk",
     "crates/tlock-pdk",
+    "crates/erc20s",
     "frontend",
     "plugins/eoa-coordinator",
     "plugins/eoa-vault",
@@ -40,6 +41,7 @@ tlock-alloy = { path = "./crates/tlock-alloy" }
 tlock-api = { path = "./crates/tlock-api" }
 tlock-hdk = { path = "./crates/tlock-hdk" }
 tlock-pdk = { path = "./crates/tlock-pdk" }
+erc20s = { path = "./crates/erc20s" }
 tower-service = "0.3"
 tracing = "0.1"
 tracing-subscriber = "0.3"

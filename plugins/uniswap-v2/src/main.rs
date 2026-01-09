@@ -12,6 +12,7 @@ use alloy::{
     sol,
     sol_types::SolCall,
 };
+use erc20s::ERC20S;
 use serde::{Deserialize, Serialize};
 use tlock_alloy::AlloyBridge;
 use tlock_pdk::{
@@ -43,33 +44,6 @@ const CHAIN_ID: u64 = 11155111; // Sepolia
 // Uniswap V2 Addresses on Sepolia
 const UNISWAP_V2_ROUTER: Address = address!("0xeE567Fe1712Faf6149d80dA1E6934E354124CfE3");
 const UNISWAP_V2_FACTORY: Address = address!("0xF62c03E08ada871A0bEb309762E260a7a6a880E6");
-
-// ---------- Token Configuration ----------
-
-#[derive(Debug, Clone)]
-struct TokenInfo {
-    symbol: &'static str,
-    address: Address,
-}
-
-const TOKENS: [TokenInfo; 4] = [
-    TokenInfo {
-        symbol: "WETH",
-        address: address!("0xfff9976782d46cc05630d1f6ebab18b2324d6b14"),
-    },
-    TokenInfo {
-        symbol: "USDC",
-        address: address!("0x1c7d4b196cb0c7b01d743fbc6116a902379c7238"),
-    },
-    TokenInfo {
-        symbol: "DAI",
-        address: address!("0xFF34B3d4Aee8ddCd6F9AFFFB6Fe49bD371b8a357"),
-    },
-    TokenInfo {
-        symbol: "LINK",
-        address: address!("0x779877A7B0D9E8603169DdbD7836e478b4624789"),
-    },
-];
 
 // ---------- Plugin State ----------
 
@@ -304,8 +278,8 @@ async fn calculate_quote(transport: &Transport, state: &mut PluginState) -> Resu
         return Ok(());
     }
 
-    let from_token = &TOKENS[from_idx];
-    let to_token = &TOKENS[to_idx];
+    let from_token = &ERC20S[from_idx];
+    let to_token = &ERC20S[to_idx];
 
     // Parse input amount
     let amount_in = state.input_amount;
@@ -391,8 +365,8 @@ async fn handle_execute_swap(
     };
 
     let coordinator_id = state.coordinator_id;
-    let from_token = &TOKENS[from_idx];
-    let to_token = &TOKENS[to_idx];
+    let from_token = &ERC20S[from_idx];
+    let to_token = &ERC20S[to_idx];
 
     // Parse input amount
     let amount_in = state.input_amount;
@@ -453,8 +427,8 @@ async fn handle_execute_swap(
 
 fn build_swap_operations(
     account_address: Address,
-    from_token: &TokenInfo,
-    to_token: &TokenInfo,
+    from_token: &erc20s::ERC20,
+    to_token: &erc20s::ERC20,
     amount_in: U256,
     amount_out_min: U256,
 ) -> Result<Vec<coordinator::EvmOperation>, RpcError> {
@@ -509,7 +483,7 @@ fn build_ui(state: &PluginState) -> tlock_pdk::tlock_api::component::Component {
     // Token selection and swap form
     sections.push(heading("Select Tokens"));
 
-    let token_options: Vec<String> = TOKENS
+    let token_options: Vec<String> = ERC20S
         .iter()
         .enumerate()
         .map(|(i, t)| format!("{}: {}", i, t.symbol))
@@ -517,10 +491,10 @@ fn build_ui(state: &PluginState) -> tlock_pdk::tlock_api::component::Component {
 
     let from_selected = state
         .selected_from_token
-        .map(|i| format!("{}: {}", i, TOKENS[i].symbol));
+        .map(|i| format!("{}: {}", i, ERC20S[i].symbol));
     let to_selected = state
         .selected_to_token
-        .map(|i| format!("{}: {}", i, TOKENS[i].symbol));
+        .map(|i| format!("{}: {}", i, ERC20S[i].symbol));
 
     sections.push(form(
         "swap_form",
@@ -556,7 +530,7 @@ fn build_ui(state: &PluginState) -> tlock_pdk::tlock_api::component::Component {
 
     // Display selected token info
     if let Some(from_idx) = state.selected_from_token {
-        let token = &TOKENS[from_idx];
+        let token = &ERC20S[from_idx];
         sections.push(text(format!(
             "From: {} ({:?})",
             token.symbol, token.address
@@ -564,7 +538,7 @@ fn build_ui(state: &PluginState) -> tlock_pdk::tlock_api::component::Component {
     }
 
     if let Some(to_idx) = state.selected_to_token {
-        let token = &TOKENS[to_idx];
+        let token = &ERC20S[to_idx];
         sections.push(text(format!("To: {} ({:?})", token.symbol, token.address)));
     }
 

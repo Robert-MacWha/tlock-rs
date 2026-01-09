@@ -1,14 +1,17 @@
 use alloy_consensus::transaction::Recovered;
+use erc20s::get_erc20_by_address;
 use revm::{
     Database, DatabaseRef,
     context::{
         BlockEnv,
         result::{ExecutionResult, HaltReason, Output},
     },
+    interpreter::instructions::utility::IntoU256,
     primitives::{
         Address, Bytes, HashMap, U256,
         alloy_primitives::{BlockHash, TxHash},
         hex::{self},
+        keccak256,
     },
 };
 use thiserror::Error;
@@ -27,6 +30,7 @@ use tlock_pdk::{
     },
     wasmi_plugin_pdk::rpc_message::RpcError,
 };
+use tracing::warn;
 
 use crate::{
     chain::{Chain, ChainError},
@@ -403,6 +407,30 @@ impl<DB: DatabaseRef> Provider<DB> {
 
         info.balance = amount;
         self.chain.db().insert_account_info(address, info);
+
+        Ok(())
+    }
+
+    pub fn deal_erc20(
+        &mut self,
+        address: Address,
+        token: Address,
+        amount: U256,
+    ) -> Result<(), ProviderError<DB>> {
+        let slot = if let Some(erc20) = get_erc20_by_address(&token) {
+            erc20.slot
+        } else {
+            warn!("Attempting to deal ERC20 for unknown token: {:?}", token);
+            0
+        };
+
+        let storage_key =
+            keccak256([address.as_slice(), &U256::from(slot).to_be_bytes::<32>()].concat());
+
+        self.chain
+            .db()
+            .insert_account_storage(token, storage_key.into_u256(), amount)
+            .map_err(|e| ChainError::Db(e.to_string()))?;
 
         Ok(())
     }

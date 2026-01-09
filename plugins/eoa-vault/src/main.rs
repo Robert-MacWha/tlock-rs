@@ -9,12 +9,13 @@ use std::io::stderr;
 use alloy::{
     hex,
     network::TransactionBuilder,
-    primitives::{Address, U256, address},
+    primitives::{Address, U256},
     providers::{Provider, ProviderBuilder},
     rpc::types::TransactionRequest,
     signers::local::PrivateKeySigner,
     sol,
 };
+use erc20s::{ERC20S, get_erc20_by_address};
 use serde::{Deserialize, Serialize};
 use tlock_alloy::AlloyBridge;
 use tlock_pdk::{
@@ -64,12 +65,6 @@ sol! {
 }
 
 const CHAIN_ID: u64 = 11155111; // Sepolia
-const ERC20S: [Address; 4] = [
-    address!("0x1c7d4b196cb0c7b01d743fbc6116a902379c7238"), // USDC
-    address!("0xfff9976782d46cc05630d1f6ebab18b2324d6b14"), // WETH
-    address!("0xFF34B3d4Aee8ddCd6F9AFFFB6Fe49bD371b8a357"), // DAI
-    address!("0x779877A7B0D9E8603169DdbD7836e478b4624789"), // LINK
-];
 
 // ---------- Plugin Handlers ----------
 
@@ -125,17 +120,19 @@ async fn get_assets(
 
     // Fetch ERC20 balances
     //? We could choose to filter out zero balances here if desired.
-    let erc20_futures = ERC20S.iter().map(|&erc20_address| {
-        let contract = ERC20::new(erc20_address, &provider);
-        async move {
+    let mut erc20_futures = Vec::new();
+    for erc20 in &ERC20S {
+        let address = erc20.address;
+        let contract = ERC20::new(address, &provider);
+        erc20_futures.push(async move {
             let balance = contract.balanceOf(vault.address).call().await.rpc_err()?;
             info!(
                 "ERC20 balance for vault {}, token {}: {}",
-                vault_id, erc20_address, balance
+                vault_id, address, balance
             );
-            Ok::<_, RpcError>((AssetId::erc20(CHAIN_ID, erc20_address), balance))
-        }
-    });
+            Ok::<_, RpcError>((AssetId::erc20(CHAIN_ID, address), balance))
+        });
+    }
 
     let erc20_balances = futures::future::try_join_all(erc20_futures).await?;
     balances.extend(erc20_balances);
@@ -158,7 +155,7 @@ async fn get_deposit_address(
     // If the asset is supported, we MUST return a valid address.
     match &asset_id.asset {
         AssetType::Slip44(60) => Ok(account_id),
-        AssetType::Erc20(addr) if ERC20S.contains(addr) => Ok(account_id),
+        AssetType::Erc20(addr) if get_erc20_by_address(addr).is_some() => Ok(account_id),
         _ => Err(RpcError::Custom(
             "Unsupported asset for deposit address".into(),
         )),
@@ -217,11 +214,12 @@ async fn withdraw_erc20(
     to: Address,
     amount: U256,
 ) -> Result<(), RpcError> {
-    if !ERC20S.contains(&token_address) {
+    if get_erc20_by_address(&token_address).is_none() {
         return Err(RpcError::Custom(
             "Unsupported ERC20 token for withdrawal".into(),
         ));
     }
+
     let contract = ERC20::new(token_address, &provider);
     let tx_hash = contract
         .transfer(to, amount)

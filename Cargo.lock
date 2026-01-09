@@ -3460,6 +3460,7 @@ name = "eoa-vault"
 version = "0.1.0"
 dependencies = [
  "alloy",
+ "erc20s",
  "futures",
  "serde",
  "tlock-alloy",
@@ -3473,6 +3474,14 @@ name = "equivalent"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "877a4ace8713b0bcf2a4e7eec82529c029f1d0619886d18145fea96c3ffe5c0f"
+
+[[package]]
+name = "erc20s"
+version = "0.1.0"
+dependencies = [
+ "alloy",
+ "tlock-api",
+]
 
 [[package]]
 name = "errno"
@@ -7200,6 +7209,7 @@ name = "revm-provider"
 version = "0.1.0"
 dependencies = [
  "alloy-consensus",
+ "erc20s",
  "revm",
  "serde",
  "serde_json",
@@ -9069,6 +9079,7 @@ name = "uniswap-v2"
 version = "0.1.0"
 dependencies = [
  "alloy",
+ "erc20s",
  "serde",
  "tlock-alloy",
  "tlock-pdk",

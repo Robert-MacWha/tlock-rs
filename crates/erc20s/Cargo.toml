@@ -1,0 +1,8 @@
+[package]
+name = "erc20s"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+alloy = { workspace = true }
+tlock-api = { workspace = true }
