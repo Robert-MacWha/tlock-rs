@@ -83,6 +83,6 @@ pkgs.mkShell {
   ];
 
   shellHook = ''
-    echo "Run 'dev' to start the development server with Caddy proxy."
+    echo "Run 'dev' to start the development server"
   '';
 }

@@ -184,6 +184,7 @@ pub mod host {
         host_fetch, Fetch, Request, Result<Vec<u8>, String>
     );
 
+    // TODO: [Update state management](docs/state.md)
     rpc_method!(
         /// Gets the plugin's persistent state from the host.
         ///
@@ -202,12 +203,12 @@ pub mod host {
     );
 }
 
-/// The plugin namespace contains methods implemented by plugins, generally
-/// used by the host for lifecycle management.
+/// The plugin namespace contains methods implemented by plugins, used by the 
+/// host for lifecycle management.
 pub mod plugin {
     rpc_method!(
         /// Initialize the plugin, called by the host the first time a new plugin
-        /// is registered.
+        /// is registered. Will only ever be called once per plugin.
         plugin_init, Init, (), ()
     );
 }
@@ -374,6 +375,17 @@ pub mod vault {
     // AssetId), () );
 }
 
+/// Coordinators act as intermediaries between plugins and vaults. They provide
+/// an atomic-like interface for plugins to propose operations and ensure funds
+/// are never lost or stuck.
+/// 
+/// Plugins SHOULD NOT interact with vaults directly, and instead use coordinators.
+/// A plugin interacting with a vault directly is not only responsible for ensuring
+/// the operations it performs are valid, but also for ensuring that the correct
+/// funds are requestd from the vault, that any received funds are returned to the vault,
+/// that the vault can accept the returned funds, and that no funds are lost or stuck
+/// in the event of an error or failure. Coordinators abstract away this complexity and
+/// handle all vault interactions on behalf of plugins.
 pub mod coordinator {
     use alloy::primitives::{Address, U256};
 
@@ -413,7 +425,7 @@ pub mod coordinator {
         ///
         /// Only valid for accounts that have an active session.
         ///
-        /// The coordinator SHOULD only return assets it can guarantee are
+        /// The coordinator MUST only return assets it can guarantee are
         /// available for use in the proposed account.
         coordinator_get_assets, GetAssets, (CoordinatorId, AccountId), Vec<(AssetId, U256)>
     );
@@ -452,7 +464,7 @@ pub mod page {
 
     rpc_method!(
         /// Called by the host when a registered page is loaded in the frontend. This function
-        /// MAY be called multiple times for the same page if the user navigates away and back.
+        /// MAY be called multiple times for the same page.
         page_on_load, OnLoad, PageId, ()
     );
 
