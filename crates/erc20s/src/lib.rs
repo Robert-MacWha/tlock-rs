@@ -22,14 +22,14 @@ pub const ERC20S: [ERC20; 3] = [
         slot: 3,
     },
     ERC20 {
-        address: address!("0x7fc21ceb0c5003576ab5e101eb240c2b822c95d2"),
+        address: address!("0xaA8E23Fb1079EA71e0a56F48a2aA51851D8433D0"),
         asset_id: AssetId::erc20(
             111555111,
-            address!("0x7fc21ceb0c5003576ab5e101eb240c2b822c95d2"),
+            address!("0xaA8E23Fb1079EA71e0a56F48a2aA51851D8433D0"),
         ),
         chain_id: 111555111,
-        symbol: "USDC",
-        slot: 6,
+        symbol: "USDT",
+        slot: 0,
     },
     ERC20 {
         address: address!("0xd7b45cbc28ba9ba8653665d5fb37167a2afe35d9"),

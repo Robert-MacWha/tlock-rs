@@ -6,7 +6,6 @@ use revm::{
         BlockEnv,
         result::{ExecutionResult, HaltReason, Output},
     },
-    interpreter::instructions::utility::IntoU256,
     primitives::{
         Address, Bytes, HashMap, U256,
         alloy_primitives::{BlockHash, TxHash},
@@ -411,6 +410,7 @@ impl<DB: DatabaseRef> Provider<DB> {
         Ok(())
     }
 
+    /// Sets the ERC20 token balance for a given address.
     pub fn deal_erc20(
         &mut self,
         address: Address,
@@ -424,12 +424,17 @@ impl<DB: DatabaseRef> Provider<DB> {
             0
         };
 
-        let storage_key =
-            keccak256([address.as_slice(), &U256::from(slot).to_be_bytes::<32>()].concat());
+        // Storage key = keccak256(abi.encode(holder, slot))
+        // holder is left-padded to 32 bytes, then slot as 32 bytes
+        let mut key_preimage = [0u8; 64];
+        key_preimage[12..32].copy_from_slice(address.as_slice()); // address at bytes 12-31
+        key_preimage[32..64].copy_from_slice(&U256::from(slot).to_be_bytes::<32>()); // slot at bytes 32-63
+
+        let storage_key = keccak256(key_preimage);
 
         self.chain
             .db()
-            .insert_account_storage(token, storage_key.into_u256(), amount)
+            .insert_account_storage(token, storage_key.into(), amount)
             .map_err(|e| ChainError::Db(e.to_string()))?;
 
         Ok(())
