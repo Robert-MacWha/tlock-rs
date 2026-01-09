@@ -7,6 +7,7 @@ edition = "2024"
 alloy = { workspace = true }
 serde = { workspace = true }
 tlock-alloy = { workspace = true }
+erc20s = { workspace = true }
 tlock-pdk = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }

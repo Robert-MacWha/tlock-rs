@@ -1,3 +1,5 @@
+use alloy_consensus::transaction::Recovered;
+use erc20s::get_erc20_by_address;
 use revm::{
     Database, DatabaseRef,
     context::{
@@ -8,6 +10,7 @@ use revm::{
         Address, Bytes, HashMap, U256,
         alloy_primitives::{BlockHash, TxHash},
         hex::{self},
+        keccak256,
     },
 };
 use thiserror::Error;
@@ -26,6 +29,7 @@ use tlock_pdk::{
     },
     wasmi_plugin_pdk::rpc_message::RpcError,
 };
+use tracing::warn;
 
 use crate::{
     chain::{Chain, ChainError},
@@ -86,8 +90,8 @@ impl<DB: DatabaseRef> From<ProviderError<DB>> for RpcError {
 }
 
 impl<DB: DatabaseRef + std::fmt::Debug> Provider<DB> {
-    pub fn new(db: DB, block_env: BlockEnv, parent_hash: BlockHash) -> Self {
-        let chain = Chain::new(db, block_env, Some(parent_hash));
+    pub fn new(db: DB, chain_id: u64, block_env: BlockEnv, parent_hash: BlockHash) -> Self {
+        let chain = Chain::new(db, chain_id, block_env, Some(parent_hash));
         Self {
             chain,
             transactions: HashMap::default(),
@@ -279,19 +283,36 @@ impl<DB: DatabaseRef> Provider<DB> {
     pub fn send_raw_transaction(&mut self, raw_tx: Bytes) -> Result<TxHash, ProviderError<DB>> {
         let tx_envelope = TxEnvelope::decode(&mut raw_tx.as_ref())?;
         let from = tx_envelope.recover_signer()?;
+        let tx_hash = tx_envelope.hash().clone();
 
         let tx_env = signed_tx_to_tx_env(&tx_envelope, from);
         let result = self.chain.transact_commit(tx_env)?;
 
         //? Should always have a block since we just committed a transaction
+        let block_number = self.chain.latest();
         let block = self
             .chain
-            .block(self.chain.latest())
+            .block(block_number)
             .ok_or(ProviderError::BlockNotFound)?;
 
-        let receipt = result_to_tx_receipt(block, tx_envelope, from, &result);
-        let tx_hash = receipt.transaction_hash.clone();
+        let receipt = result_to_tx_receipt(block, tx_envelope.clone(), from, &result);
         self.receipts.insert(tx_hash, receipt);
+
+        let rpc_tx = rpc::types::Transaction {
+            inner: Recovered::new_unchecked(tx_envelope, from),
+            block_hash: Some(block.hash),
+            block_number: Some(block_number),
+            transaction_index: Some(
+                self.transactions
+                    .get(&block_number)
+                    .map_or(0, |v| v.len() as u64),
+            ),
+            effective_gas_price: Some(self.chain.pending().env.basefee as u128),
+        };
+        self.transactions
+            .entry(block_number)
+            .or_insert_with(Vec::new)
+            .push(rpc_tx);
 
         Ok(tx_hash)
     }
@@ -332,6 +353,43 @@ impl<DB: DatabaseRef> Provider<DB> {
         // TODO: Impl get_logs
         return Err(ProviderError::NotImplemented);
     }
+
+    pub fn fee_history(
+        &self,
+        block_count: u64,
+        newest_block: BlockNumberOrTag,
+        reward_percentiles: Vec<f64>,
+    ) -> Result<alloy::rpc::types::FeeHistory, ProviderError<DB>> {
+        let count: usize = block_count as usize;
+        let current_base_fee: u128 = self.chain.pending().env.basefee.into();
+        let blob_excess_gas_and_price: u128 = self
+            .chain
+            .pending()
+            .env
+            .blob_excess_gas_and_price
+            .map(|b| b.blob_gasprice)
+            .unwrap_or(1u128);
+
+        let newest_num: u64 = match newest_block {
+            BlockNumberOrTag::Number(n) => n,
+            BlockNumberOrTag::Latest => self.chain.latest(),
+            BlockNumberOrTag::Pending => self.chain.latest(),
+            _ => return Err(ProviderError::BlockNotFound),
+        };
+        let oldest_block = newest_num.saturating_sub(block_count);
+
+        Ok(alloy::rpc::types::FeeHistory {
+            oldest_block,
+            base_fee_per_gas: vec![current_base_fee; count + 1],
+            gas_used_ratio: vec![0.1; count as usize],
+            reward: Some(vec![
+                vec![1_000_000_000u128; reward_percentiles.len()];
+                count
+            ]),
+            base_fee_per_blob_gas: vec![blob_excess_gas_and_price; count + 1],
+            blob_gas_used_ratio: vec![0.1; count as usize],
+        })
+    }
 }
 
 // ---------- CHEATCODES ----------
@@ -348,6 +406,36 @@ impl<DB: DatabaseRef> Provider<DB> {
 
         info.balance = amount;
         self.chain.db().insert_account_info(address, info);
+
+        Ok(())
+    }
+
+    /// Sets the ERC20 token balance for a given address.
+    pub fn deal_erc20(
+        &mut self,
+        address: Address,
+        token: Address,
+        amount: U256,
+    ) -> Result<(), ProviderError<DB>> {
+        let slot = if let Some(erc20) = get_erc20_by_address(&token) {
+            erc20.slot
+        } else {
+            warn!("Attempting to deal ERC20 for unknown token: {:?}", token);
+            0
+        };
+
+        // Storage key = keccak256(abi.encode(holder, slot))
+        // holder is left-padded to 32 bytes, then slot as 32 bytes
+        let mut key_preimage = [0u8; 64];
+        key_preimage[12..32].copy_from_slice(address.as_slice()); // address at bytes 12-31
+        key_preimage[32..64].copy_from_slice(&U256::from(slot).to_be_bytes::<32>()); // slot at bytes 32-63
+
+        let storage_key = keccak256(key_preimage);
+
+        self.chain
+            .db()
+            .insert_account_storage(token, storage_key.into(), amount)
+            .map_err(|e| ChainError::Db(e.to_string()))?;
 
         Ok(())
     }

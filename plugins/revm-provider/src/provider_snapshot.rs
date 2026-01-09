@@ -19,6 +19,7 @@ pub struct ProviderSnapshot {
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct ChainSnapshot {
     pub cache: Cache,
+    pub chain_id: u64,
     pub pending: PendingBlock,
     pub blocks: BTreeMap<u64, SimulatedBlock>,
     pub block_time: u64,

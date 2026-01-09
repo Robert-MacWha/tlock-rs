@@ -5,7 +5,6 @@ use tlock_pdk::{
     tlock_api::{RpcMethod, global},
     wasmi_plugin_pdk::{rpc_message::RpcError, transport::Transport},
 };
-use tracing::info;
 use tracing_subscriber::fmt;
 
 async fn ping(transport: Transport, _: ()) -> Result<String, RpcError> {
@@ -20,7 +19,6 @@ fn main() {
         .with_ansi(false)
         .compact()
         .init();
-    info!("Starting plugin...");
 
     PluginRunner::new().with_method(global::Ping, ping).run();
 }

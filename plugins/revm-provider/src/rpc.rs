@@ -136,7 +136,9 @@ pub fn signed_tx_to_tx_env(tx: &TxEnvelope, from: Address) -> TxEnv {
     }
     tx_env = tx_env
         .caller(from)
+        .tx_type(Some(tx.tx_type() as u8))
         .gas_limit(tx.gas_limit())
+        .max_fee_per_gas(tx.max_fee_per_gas())
         .kind(tx.to().map(|t| TxKind::Call(t)).unwrap_or(TxKind::Create))
         .value(tx.value())
         .data(tx.input().clone())
@@ -144,6 +146,9 @@ pub fn signed_tx_to_tx_env(tx: &TxEnvelope, from: Address) -> TxEnv {
         .chain_id(tx.chain_id())
         .gas_priority_fee(tx.max_priority_fee_per_gas());
 
+    if let Some(access_list) = tx.access_list() {
+        tx_env = tx_env.access_list(access_list.clone());
+    }
     if let Some(blob_hashes) = tx.blob_versioned_hashes() {
         tx_env = tx_env.blob_hashes(blob_hashes.to_vec());
     }

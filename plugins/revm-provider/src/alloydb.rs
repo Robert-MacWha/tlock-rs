@@ -119,6 +119,11 @@ impl<N: Network> AlloyDb<N> {
             vec![json!(number.to_string()), json!(false)],
         )
     }
+
+    pub fn chain_id(&self) -> Result<u64, DBTransportError> {
+        let id: U64 = self.call_rpc("eth_chainId", vec![])?;
+        Ok(id.to())
+    }
 }
 
 impl<N: Network> DatabaseRef for AlloyDb<N> {

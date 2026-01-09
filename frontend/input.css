@@ -1,0 +1,16 @@
+@import "tailwindcss";
+@source "./src/**/*.{rs,html,css}";
+
+@plugin "./assets/daisyui.js" {
+    themes: light, dark;
+}
+
+;
+
+@theme {
+    --breakpoint-ml: 72rem;
+}
+
+.divider {
+    --divider-m: 0px;
+}

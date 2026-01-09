@@ -10,6 +10,7 @@ desktop = ["dioxus/desktop"]
 mobile = ["dioxus/mobile"]
 
 [dependencies]
+anyhow = { workspace = true }
 dioxus = { workspace = true }
 futures = { workspace = true }
 gloo-timers = { workspace = true }
@@ -22,3 +23,9 @@ web-sys = { workspace = true, features = [
     "Blob",
     "Url"
 ] }
+uuid = { workspace = true }
+hex = { workspace = true }
+console_error_panic_hook = { workspace = true }
+
+[package.metadata.wasm-pack.profile.dev]
+wasm-opt = false

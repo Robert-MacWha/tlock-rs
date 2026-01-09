@@ -7,14 +7,14 @@
 use std::{collections::HashMap, io::stderr};
 
 use alloy::{
-    hex,
     network::TransactionBuilder,
-    primitives::{Address, U256, address},
+    primitives::{Address, FixedBytes, U256},
     providers::{Provider, ProviderBuilder},
     rpc::types::TransactionRequest,
     signers::local::PrivateKeySigner,
     sol,
 };
+use erc20s::{CHAIN_ID, ERC20S, get_erc20_by_address};
 use serde::{Deserialize, Serialize};
 use tlock_alloy::AlloyBridge;
 use tlock_pdk::{
@@ -23,7 +23,10 @@ use tlock_pdk::{
     tlock_api::{
         RpcMethod,
         caip::{AccountId, AssetId, AssetType, ChainId},
-        component::{button_input, container, form, heading, submit_input, text, text_input},
+        component::{
+            Component, account, asset, button_input, container, form, heading, heading2, hex,
+            submit_input, text, text_input, unordered_list,
+        },
         domains::Domain,
         entities::{EntityId, EthProviderId, PageId, VaultId},
         eth::{self},
@@ -39,13 +42,14 @@ use tracing_subscriber::fmt;
 
 #[derive(Serialize, Deserialize, Default, Debug)]
 struct PluginState {
-    vaults: HashMap<EntityId, Vault>,
+    vault: Option<Vault>,
     provider_id: EthProviderId,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct Vault {
-    private_key: String,
+    entity_id: EntityId,
+    private_key: FixedBytes<32>,
     address: Address,
 }
 
@@ -59,12 +63,6 @@ sol! {
     }
 }
 
-const CHAIN_ID: u64 = 11155111; // Sepolia
-const ERC20S: [Address; 2] = [
-    address!("0x1c7d4b196cb0c7b01d743fbc6116a902379c7238"), // USDC
-    address!("0xfff9976782d46cc05630d1f6ebab18b2324d6b14"), // WETH
-];
-
 // ---------- Plugin Handlers ----------
 
 async fn init(transport: Transport, _params: ()) -> Result<(), RpcError> {
@@ -75,7 +73,7 @@ async fn init(transport: Transport, _params: ()) -> Result<(), RpcError> {
         .call_async(transport.clone(), ChainId::Evm(Some(CHAIN_ID)))
         .await?;
     let state = PluginState {
-        vaults: HashMap::new(),
+        vault: None,
         provider_id,
     };
     set_state(transport.clone(), &state)?;
@@ -106,7 +104,14 @@ async fn get_assets(
     info!("Received get_assets request for vault: {}", vault_id);
 
     let vault = get_vault(transport.clone(), vault_id)?;
+    let assets = get_vault_assets(transport.clone(), &vault).await?;
+    Ok(assets)
+}
 
+async fn get_vault_assets(
+    transport: Transport,
+    vault: &Vault,
+) -> Result<Vec<(AssetId, U256)>, RpcError> {
     let state: PluginState = try_get_state(transport.clone())?;
     let provider = ProviderBuilder::new()
         .connect_client(AlloyBridge::new(transport.clone(), state.provider_id));
@@ -114,22 +119,19 @@ async fn get_assets(
     // Fetch native ETH balance
     let balance = provider.get_balance(vault.address).await.rpc_err()?;
 
-    info!("ETH balance for vault {}: {}", vault_id, balance);
     let mut balances = vec![(AssetId::eth(CHAIN_ID), balance)];
 
     // Fetch ERC20 balances
     //? We could choose to filter out zero balances here if desired.
-    let erc20_futures = ERC20S.iter().map(|&erc20_address| {
-        let contract = ERC20::new(erc20_address, &provider);
-        async move {
+    let mut erc20_futures = Vec::new();
+    for erc20 in &ERC20S {
+        let address = erc20.address;
+        let contract = ERC20::new(address, &provider);
+        erc20_futures.push(async move {
             let balance = contract.balanceOf(vault.address).call().await.rpc_err()?;
-            info!(
-                "ERC20 balance for vault {}, token {}: {}",
-                vault_id, erc20_address, balance
-            );
-            Ok::<_, RpcError>((AssetId::erc20(CHAIN_ID, erc20_address), balance))
-        }
-    });
+            Ok::<_, RpcError>((AssetId::erc20(CHAIN_ID, address), balance))
+        });
+    }
 
     let erc20_balances = futures::future::try_join_all(erc20_futures).await?;
     balances.extend(erc20_balances);
@@ -152,7 +154,7 @@ async fn get_deposit_address(
     // If the asset is supported, we MUST return a valid address.
     match &asset_id.asset {
         AssetType::Slip44(60) => Ok(account_id),
-        AssetType::Erc20(addr) if ERC20S.contains(addr) => Ok(account_id),
+        AssetType::Erc20(addr) if get_erc20_by_address(addr).is_some() => Ok(account_id),
         _ => Err(RpcError::Custom(
             "Unsupported asset for deposit address".into(),
         )),
@@ -177,7 +179,8 @@ async fn withdraw(
         .ok_or_else(|| RpcError::Custom("Invalid to address".into()))?;
 
     let vault = get_vault(transport.clone(), vault_id)?;
-    let signer: PrivateKeySigner = vault.private_key.parse().rpc_err()?;
+    let signer: PrivateKeySigner =
+        PrivateKeySigner::from_bytes(&vault.private_key).context("Invalid private key")?;
     let state: PluginState = try_get_state(transport.clone())?;
     let provider = ProviderBuilder::new()
         .wallet(signer)
@@ -211,11 +214,12 @@ async fn withdraw_erc20(
     to: Address,
     amount: U256,
 ) -> Result<(), RpcError> {
-    if !ERC20S.contains(&token_address) {
+    if get_erc20_by_address(&token_address).is_none() {
         return Err(RpcError::Custom(
             "Unsupported ERC20 token for withdrawal".into(),
         ));
     }
+
     let contract = ERC20::new(token_address, &provider);
     let tx_hash = contract
         .transfer(to, amount)
@@ -234,19 +238,8 @@ async fn withdraw_erc20(
 async fn on_load(transport: Transport, page_id: PageId) -> Result<(), RpcError> {
     info!("OnPageLoad called for page: {}", page_id);
 
-    let component = container(vec![
-        heading("EOA Vault"),
-        text("This is an example vault plugin. Please enter a dev private key."),
-        form(
-            "private_key_form",
-            vec![
-                text_input("dev_private_key", "Enter your private key"),
-                submit_input("Update"),
-            ],
-        ),
-        button_input("generate_dev_key", "Generate Dev Key"),
-    ]);
-
+    let state: PluginState = get_state(transport.clone());
+    let component = build_ui(transport.clone(), &state).await;
     host::SetPage
         .call_async(transport.clone(), (page_id, component))
         .await?;
@@ -261,23 +254,45 @@ async fn on_update(
     let (page_id, event) = params;
     info!("Page updated in Vault Plugin: {:?}", event);
 
-    let private_key_hex = match event {
-        page::PageEvent::ButtonClicked(button_id) if button_id == "generate_dev_key" => {
+    match event {
+        page::PageEvent::ButtonClicked(id) if id == "generate_dev_key" => {
             let signer = PrivateKeySigner::random();
-            let private_key = signer.to_bytes();
-            hex::encode(private_key)
+            handle_new_signer(transport.clone(), signer.clone()).await?;
         }
-        page::PageEvent::FormSubmitted(_, form_data) => form_data
-            .get("dev_private_key")
-            .context("No private key in form")?
-            .clone(),
+        page::PageEvent::ButtonClicked(id) if id == "refresh_assets" => {
+            // Simply rebuild the UI to refresh asset balances
+        }
+        page::PageEvent::FormSubmitted(id, form_data) if id == "private_key_form" => {
+            handle_dev_private_key(transport.clone(), form_data).await?;
+        }
         _ => {
             warn!("Unhandled page event: {:?}", event);
-            return Ok(());
         }
-    };
+    }
 
+    let state: PluginState = get_state(transport.clone());
+    let component = build_ui(transport.clone(), &state).await;
+    host::SetPage
+        .call_async(transport.clone(), (page_id, component))
+        .await?;
+
+    Ok(())
+}
+
+async fn handle_dev_private_key(
+    transport: Transport,
+    form_data: HashMap<String, String>,
+) -> Result<(), RpcError> {
+    let private_key_hex = form_data
+        .get("dev_private_key")
+        .context("Private key not in form data")?;
+
+    let private_key_hex = private_key_hex.trim().trim_start_matches("0x").to_string();
     let signer: PrivateKeySigner = private_key_hex.parse().context("Invalid private key")?;
+    handle_new_signer(transport.clone(), signer).await
+}
+
+async fn handle_new_signer(transport: Transport, signer: PrivateKeySigner) -> Result<(), RpcError> {
     let address = signer.address();
 
     let entity_id = host::RegisterEntity
@@ -285,25 +300,54 @@ async fn on_update(
         .await?;
 
     let mut state: PluginState = get_state(transport.clone());
-    state.vaults.insert(
+    state.vault = Some(Vault {
         entity_id,
-        Vault {
-            private_key: private_key_hex.clone(),
-            address,
-        },
-    );
+        private_key: signer.to_bytes(),
+        address,
+    });
     set_state(transport.clone(), &state)?;
 
-    let component = container(vec![
-        heading("EOA Vault"),
-        text(&format!("Address: {}", address)),
-        text(&format!("Private Key: {}", private_key_hex)),
-    ]);
-    host::SetPage
-        .call_async(transport.clone(), (page_id, component))
-        .await?;
-
     Ok(())
+}
+
+async fn build_ui(transport: Transport, state: &PluginState) -> Component {
+    let mut sections = vec![
+        heading("EOA Vault"),
+        text("Example vault plugin managing an externally owned account using a private key"),
+    ];
+
+    let Some(vault) = &state.vault else {
+        sections.push(heading2("Create EOA"));
+        sections.push(form(
+            "private_key_form",
+            vec![
+                text_input("dev_private_key", "Private Key", "0xabc123"),
+                submit_input("Create Vault"),
+            ],
+        ));
+        sections.push(button_input("generate_dev_key", "Random Vault"));
+        return container(sections);
+    };
+
+    sections.push(heading2("Vault Info"));
+    sections.push(text("Vault Address:"));
+    sections.push(account(AccountId::new_evm(CHAIN_ID, vault.address)));
+    sections.push(text("Private Key:"));
+    sections.push(hex(vault.private_key.as_slice()));
+
+    let Ok(balances) = get_vault_assets(transport.clone(), &vault).await else {
+        sections.push(text("Error fetching assets"));
+        return container(sections);
+    };
+
+    sections.push(heading2("Assets"));
+    let balances = balances
+        .into_iter()
+        .map(|(id, bal)| (id.to_string(), asset(id.clone(), Some(bal.clone()))));
+    sections.push(unordered_list(balances));
+    sections.push(button_input("refresh_assets", "Refresh"));
+
+    return container(sections);
 }
 
 // ---------- Helpers ----------
@@ -315,14 +359,14 @@ fn validate_chain_id(chain_id: &ChainId) -> Result<(), RpcError> {
     }
 }
 
-fn get_vault(transport: Transport, id: VaultId) -> Result<Vault, RpcError> {
+fn get_vault(transport: Transport, _id: VaultId) -> Result<Vault, RpcError> {
     let state: PluginState = get_state(transport.clone());
-    let vault = state.vaults.get(&id.into()).ok_or_else(|| {
-        warn!("vaults: {:?}", state.vaults.keys());
-        RpcError::Custom(format!("Vault ID not found: {}", id))
-    })?;
+    let vault = state
+        .vault
+        .clone()
+        .ok_or_else(|| RpcError::Custom("No vault configured in plugin state".to_string()))?;
 
-    Ok(vault.clone())
+    Ok(vault)
 }
 
 /// Plugin entrypoint where the host initiates communication.
@@ -357,7 +401,6 @@ fn main() {
         .with_ansi(false)
         .compact()
         .init();
-    info!("Starting plugin...");
 
     // Register method handlers and start processing.
     // The server automatically:

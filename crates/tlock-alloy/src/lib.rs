@@ -77,7 +77,6 @@ impl Service<RequestPacket> for AlloyBridge {
                         return Err(e);
                     }
                 };
-                info!("Alloy bridge Response: {:?}", response);
                 responses.push(response);
             }
 
@@ -116,7 +115,6 @@ async fn call_req(
     });
 
     let req = EthRequest::deserialize(&json_with_params).map_err(TransportError::ser_err)?;
-    info!("Handling EthRequest: {:?}", req);
 
     let resp = match req {
         EthRequest::EthChainId(()) => {
@@ -254,6 +252,17 @@ async fn call_req(
             let block_id = block_id.unwrap_or(BlockId::latest());
             let resp = eth::GetStorageAt
                 .call_async(transport.clone(), (provider_id, address, slot, block_id))
+                .await
+                .map_err(|e| TransportErrorKind::custom_str(&e.to_string()))?;
+            serde_json::to_value(resp).map_err(TransportError::ser_err)?
+        }
+        EthRequest::EthFeeHistory(block_count, newest_block, reward_percentiles) => {
+            let block_count: u64 = block_count.saturating_to();
+            let resp = eth::FeeHistory
+                .call_async(
+                    transport.clone(),
+                    (provider_id, block_count, newest_block, reward_percentiles),
+                )
                 .await
                 .map_err(|e| TransportErrorKind::custom_str(&e.to_string()))?;
             serde_json::to_value(resp).map_err(TransportError::ser_err)?

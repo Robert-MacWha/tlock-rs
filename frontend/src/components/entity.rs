@@ -5,10 +5,8 @@ use crate::contexts::host::HostContext;
 
 #[component]
 pub fn Entity(id: EntityId) -> Element {
-    let entity_plugin = consume_context::<HostContext>()
-        .host
-        .read()
-        .get_entity_plugin(id);
+    let ctx: HostContext = use_context();
+    let entity_plugin = ctx.entity_plugin(id);
     let plugin_name = entity_plugin
         .as_ref()
         .map(|p| p.name())

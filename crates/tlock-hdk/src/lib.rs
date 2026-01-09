@@ -66,7 +66,8 @@ macro_rules! impl_host_rpc_no_id {
                     plugin = %plugin_id,
                 );
                 let _enter = span.enter();
-                host.log_event(format!("[{}] {}", plugin_id, <$method>::NAME));
+                let plugin_name = host.get_plugin(&plugin_id).map(|p| p.name().to_string()).unwrap_or("<unknown>".to_string());
+                host.log_event(format!("[{}] {}", plugin_name, <$method>::NAME));
                 host.$host_fn(params).await
             }
         );
