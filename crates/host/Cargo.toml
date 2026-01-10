@@ -13,3 +13,4 @@ tlock-hdk = { workspace = true }
 tracing = { workspace = true }
 uuid = { workspace = true }
 chrono = { workspace = true }
+event-listener = { workspace = true }  

@@ -6,7 +6,7 @@ use tlock_hdk::{tlock_api::entities::EntityId, wasmi_plugin_hdk::plugin_id::Plug
 pub struct HostState {
     pub plugins: Vec<PluginData>,
     pub entities: Vec<(EntityId, PluginId)>,
-    pub state: Vec<(PluginId, Vec<u8>)>,
+    pub state: Vec<((PluginId, String), Vec<u8>)>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]

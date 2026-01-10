@@ -3,6 +3,7 @@ use std::{
     hash::{DefaultHasher, Hash, Hasher},
     sync::{Arc, Mutex, Weak},
     time::Duration,
+    usize,
 };
 
 use alloy::{primitives::U256, transports::http::reqwest};
@@ -18,10 +19,10 @@ use tlock_hdk::{
         coordinator,
         domains::Domain,
         entities::{CoordinatorId, EntityId, EthProviderId, PageId, VaultId},
-        eth, global, host, page, plugin,
+        eth, global, host, page, plugin, state,
         vault::{self},
     },
-    wasmi_plugin_hdk::{self, plugin::Plugin, plugin_id::PluginId},
+    wasmi_plugin_hdk::{self, instance_id::InstanceId, plugin::Plugin, plugin_id::PluginId},
     wasmi_plugin_pdk::rpc_message::{RpcError, RpcErrorContext},
 };
 use tracing::{info, warn};
@@ -35,7 +36,9 @@ pub struct Host {
     entities: Mutex<HashMap<EntityId, PluginId>>,
 
     // TODO: Restrict these to a max size / otherwise prevent plugins from abusing storage
-    state: Mutex<HashMap<PluginId, Vec<u8>>>,
+    state: Mutex<HashMap<(PluginId, String), Vec<u8>>>,
+    locks: Mutex<HashMap<(PluginId, String), (InstanceId, Arc<event_listener::Event>)>>,
+
     interfaces: Mutex<HashMap<PageId, Component>>,
 
     // User requests awaiting user decisions
@@ -120,6 +123,7 @@ impl Host {
             plugin_sources: Mutex::new(HashMap::new()),
             entities: Mutex::new(HashMap::new()),
             state: Mutex::new(HashMap::new()),
+            locks: Mutex::new(HashMap::new()),
             interfaces: Mutex::new(HashMap::new()),
             user_requests: Mutex::new(Vec::new()),
             user_request_senders: Mutex::new(HashMap::new()),
@@ -130,34 +134,14 @@ impl Host {
 
     pub async fn from_state(host_state: HostState) -> Result<Arc<Self>, PluginError> {
         let entities: HashMap<EntityId, PluginId> = host_state.entities.into_iter().collect();
-        let state: HashMap<PluginId, Vec<u8>> = host_state.state.into_iter().collect();
-
-        info!("Restoring host from state...");
-        info!(
-            "Restoring {} entities and {} state entries",
-            entities.len(),
-            state.len(),
-        );
-
-        entities.iter().for_each(|(entity_id, plugin_id)| {
-            info!(
-                "Restored entity {:?} with plugin ID {}",
-                entity_id, plugin_id
-            );
-        });
-        state.iter().for_each(|(plugin_id, data)| {
-            info!(
-                "Restored state for plugin ID {} with {} bytes",
-                plugin_id,
-                data.len()
-            );
-        });
+        let state: HashMap<(PluginId, String), Vec<u8>> = host_state.state.into_iter().collect();
 
         let host = Self {
             plugins: Mutex::new(HashMap::new()),
             plugin_sources: Mutex::new(HashMap::new()),
             entities: Mutex::new(entities),
             state: Mutex::new(state),
+            locks: Mutex::new(HashMap::new()),
             interfaces: Mutex::new(HashMap::new()),
             user_requests: Mutex::new(Vec::new()),
             user_request_senders: Mutex::new(HashMap::new()),
@@ -273,8 +257,9 @@ impl Host {
             .with_method(host::RequestVault, request_vault)
             .with_method(host::RequestCoordinator, request_coordinator)
             .with_method(host::Fetch, fetch)
-            .with_method(host::GetState, get_state)
-            .with_method(host::SetState, set_state)
+            .with_method(state::LockKey, lock_key)
+            .with_method(state::SetKey, set_key)
+            .with_method(state::UnlockKey, unlock_key)
             .with_method(host::SetPage, set_interface)
             .with_method(vault::GetAssets, vault_get_assets)
             .with_method(vault::Withdraw, vault_withdraw)
@@ -457,13 +442,13 @@ impl Host {
 // TODO: Create a macro for these. It seens extremely possible, if a little
 // fiddly.
 impl Host {
-    pub async fn ping(&self, _plugin_id: &PluginId, _params: ()) -> Result<String, RpcError> {
+    pub async fn ping(&self, _instance_id: &InstanceId, _params: ()) -> Result<String, RpcError> {
         Ok("Pong from host".to_string())
     }
 
     pub async fn register_entity(
         &self,
-        plugin_id: &PluginId,
+        instance_id: &InstanceId,
         domain: Domain,
     ) -> Result<EntityId, RpcError> {
         let entity_id: EntityId = match domain {
@@ -474,18 +459,18 @@ impl Host {
         };
 
         let mut entities = self.entities.lock().unwrap();
-        entities.insert(entity_id, *plugin_id);
+        entities.insert(entity_id, instance_id.plugin);
         Ok(entity_id)
     }
 
     pub async fn request_eth_provider(
         &self,
-        plugin_id: &PluginId,
+        instance_id: &InstanceId,
         chain_id: caip::ChainId,
     ) -> Result<EthProviderId, RpcError> {
         let request = UserRequest::EthProviderSelection {
             id: Uuid::new_v4(),
-            plugin_id: *plugin_id,
+            plugin_id: instance_id.plugin,
             chain_id,
         };
 
@@ -498,12 +483,12 @@ impl Host {
 
     pub async fn request_vault(
         &self,
-        plugin_id: &PluginId,
+        instance_id: &InstanceId,
         _params: (),
     ) -> Result<VaultId, RpcError> {
         let request = UserRequest::VaultSelection {
             id: Uuid::new_v4(),
-            plugin_id: *plugin_id,
+            plugin_id: instance_id.plugin,
         };
 
         self.create_user_request(request, |resp| match resp {
@@ -515,12 +500,12 @@ impl Host {
 
     pub async fn request_coordinator(
         &self,
-        plugin_id: &PluginId,
+        instance_id: &InstanceId,
         _params: (),
     ) -> Result<CoordinatorId, RpcError> {
         let request = UserRequest::CoordinatorSelection {
             id: Uuid::new_v4(),
-            plugin_id: *plugin_id,
+            plugin_id: instance_id.plugin,
         };
 
         self.create_user_request(request, |resp| match resp {
@@ -532,7 +517,7 @@ impl Host {
 
     pub async fn fetch(
         &self,
-        _plugin_id: &PluginId,
+        _instance_id: &InstanceId,
         req: host::Request,
     ) -> Result<Result<Vec<u8>, String>, RpcError> {
         let mut headers = reqwest::header::HeaderMap::new();
@@ -565,26 +550,77 @@ impl Host {
         Ok(Ok(bytes.to_vec()))
     }
 
-    pub async fn get_state(
+    pub async fn lock_key(
         &self,
-        plugin_id: &PluginId,
-        _params: (),
-    ) -> Result<Option<Vec<u8>>, RpcError> {
-        Ok(self.state.lock().unwrap().get(plugin_id).cloned())
+        instance_id: &InstanceId,
+        key: String,
+    ) -> Result<Vec<u8>, RpcError> {
+        let state_key = (instance_id.plugin, key);
+
+        //? Iteratively wait for the lock to be released and our turn to access the key
+        loop {
+            let listener = {
+                let mut locks = self.locks.lock().unwrap();
+
+                //? If the lock is held by another, wait on their event. If it's not
+                //? held, insert our event and proceed.
+                let event = locks
+                    .entry(state_key.clone())
+                    .or_insert((*instance_id, Arc::new(event_listener::Event::new())));
+                if event.0 == *instance_id {
+                    let state = self.state.lock().unwrap();
+                    return Ok(state.get(&state_key).cloned().unwrap_or_default());
+                }
+
+                event.1.listen()
+            };
+            listener.await;
+        }
     }
 
-    pub async fn set_state(
+    pub async fn set_key(
         &self,
-        plugin_id: &PluginId,
-        state_data: Vec<u8>,
-    ) -> Result<(), RpcError> {
-        self.state.lock().unwrap().insert(*plugin_id, state_data);
-        Ok(())
+        instance_id: &InstanceId,
+        params: (String, Vec<u8>),
+    ) -> Result<Result<(), state::SetError>, RpcError> {
+        let (key, value) = params;
+        let state_key = (instance_id.plugin, key);
+
+        {
+            let locks = self.locks.lock().unwrap();
+            match locks.get(&state_key) {
+                Some((holder, _)) if holder == instance_id => {}
+                _ => return Ok(Err(state::SetError::KeyNotLocked)),
+            }
+        }
+
+        let mut state = self.state.lock().unwrap();
+        state.insert(state_key, value);
+        Ok(Ok(()))
+    }
+
+    pub async fn unlock_key(
+        &self,
+        instance_id: &InstanceId,
+        key: String,
+    ) -> Result<Result<(), state::UnlockError>, RpcError> {
+        let state_key = (instance_id.plugin, key);
+
+        let event = {
+            let mut locks = self.locks.lock().unwrap();
+            match locks.get(&state_key) {
+                Some((holder, _)) if holder == instance_id => locks.remove(&state_key).unwrap().1,
+                _ => return Ok(Err(state::UnlockError::KeyNotLocked)),
+            }
+        };
+
+        event.notify(usize::MAX);
+        Ok(Ok(()))
     }
 
     pub async fn set_interface(
         &self,
-        _plugin_id: &PluginId,
+        _instance_id: &InstanceId,
         params: (PageId, Component),
     ) -> Result<(), RpcError> {
         info!("Setting interface for page {}", params.0);
@@ -890,8 +926,9 @@ impl_host_rpc!(Host, host::RequestEthProvider, request_eth_provider);
 impl_host_rpc!(Host, host::RequestVault, request_vault);
 impl_host_rpc!(Host, host::RequestCoordinator, request_coordinator);
 impl_host_rpc!(Host, host::Fetch, fetch);
-impl_host_rpc!(Host, host::GetState, get_state);
-impl_host_rpc!(Host, host::SetState, set_state);
+impl_host_rpc!(Host, state::LockKey, lock_key);
+impl_host_rpc!(Host, state::SetKey, set_key);
+impl_host_rpc!(Host, state::UnlockKey, unlock_key);
 impl_host_rpc!(Host, host::SetPage, set_interface);
 impl_host_rpc_no_id!(Host, vault::GetAssets, vault_get_assets);
 impl_host_rpc_no_id!(Host, vault::Withdraw, vault_withdraw);

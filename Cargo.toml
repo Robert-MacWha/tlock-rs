@@ -52,6 +52,7 @@ web-sys = "0.3"
 hex = "0.4"
 chrono = "0.4"
 console_error_panic_hook = "0.1"
+event-listener = "5"
 
 [profile.release]
 lto = "thin"

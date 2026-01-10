@@ -1,6 +1,6 @@
 use serde_json::Value;
 use tlock_api::{RpcMethod, alloy::transports::BoxFuture};
-use wasmi_plugin_hdk::{host_handler::HostHandler, plugin_id::PluginId};
+use wasmi_plugin_hdk::{host_handler::HostHandler, instance_id::InstanceId};
 use wasmi_plugin_pdk::{router::MaybeSend, rpc_message::RpcError};
 
 /// Lightweight HostServer wrapper that provides a typed interface for
@@ -27,7 +27,7 @@ impl<S: Clone + Send + Sync + 'static> HostServer<S> {
     pub fn with_method<M, F, Fut>(mut self, _: M, func: F) -> Self
     where
         M: RpcMethod + 'static,
-        F: Fn((PluginId, S), M::Params) -> Fut + Send + Sync + 'static,
+        F: Fn((InstanceId, S), M::Params) -> Fut + Send + Sync + 'static,
         Fut: Future<Output = Result<M::Output, RpcError>> + MaybeSend + 'static,
     {
         self.inner = self.inner.with_method(M::NAME, func);
@@ -38,10 +38,10 @@ impl<S: Clone + Send + Sync + 'static> HostServer<S> {
 impl<S: Clone + Send + Sync + 'static> HostHandler for HostServer<S> {
     fn handle<'a>(
         &'a self,
-        plugin: PluginId,
+        instance: InstanceId,
         method: &'a str,
         params: Value,
     ) -> BoxFuture<'a, Result<Value, RpcError>> {
-        self.inner.handle(plugin, method, params)
+        self.inner.handle(instance, method, params)
     }
 }

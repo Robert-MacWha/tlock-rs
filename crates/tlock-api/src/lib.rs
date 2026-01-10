@@ -185,17 +185,17 @@ pub mod host {
     );
 
     // TODO: [Update state management](docs/state.md)
-    rpc_method!(
-        /// Gets the plugin's persistent state from the host.
-        ///
-        /// Returns `None` if no state has been stored.
-        host_get_state, GetState, (), Option<Vec<u8>>
-    );
+    // rpc_method!(
+    //     /// Gets the plugin's persistent state from the host.
+    //     ///
+    //     /// Returns `None` if no state has been stored.
+    //     host_get_state, GetState, (), Option<Vec<u8>>
+    // );
 
-    rpc_method!(
-        /// Sets the plugin's persistent state to the host.
-        host_set_state, SetState, Vec<u8>, ()
-    );
+    // rpc_method!(
+    //     /// Sets the plugin's persistent state to the host.
+    //     host_set_state, SetState, Vec<u8>, ()
+    // );
 
     rpc_method!(
         /// Sets a specific page to the given component.
@@ -203,7 +203,50 @@ pub mod host {
     );
 }
 
-/// The plugin namespace contains methods implemented by plugins, used by the 
+/// The state namespace allows plugins to manage their persistent state
+/// stored by the host.
+pub mod state {
+    use serde::{Deserialize, Serialize};
+    use thiserror::Error;
+
+    #[derive(Debug, Error, Serialize, Deserialize)]
+    #[non_exhaustive]
+    pub enum SetError {
+        #[error("Key is not locked")]
+        KeyNotLocked,
+    }
+
+    #[derive(Debug, Error, Serialize, Deserialize)]
+    #[non_exhaustive]
+    pub enum UnlockError {
+        #[error("Key is not locked")]
+        KeyNotLocked,
+    }
+
+    rpc_method!(
+        /// Locks a key from this plugin's state. The key will remain
+        /// locked until either `state_unlock_key` is called, or the plugin
+        /// instance is terminated.
+        ///
+        /// If the key is already locked, the host will block until it is
+        /// unlocked.
+        state_lock_key, LockKey, String, Vec<u8>
+    );
+
+    rpc_method!(
+        /// Sets a key in this plugin's state. If the key is not locked,
+        /// returns an error.
+        state_set_key, SetKey, (String, Vec<u8>), Result<(), SetError>
+    );
+
+    rpc_method!(
+        /// Unlocks a previously locked key in this plugin's state. If the key
+        /// is not locked, returns an error.
+        state_unlock_key, UnlockKey, String, Result<(), UnlockError>
+    );
+}
+
+/// The plugin namespace contains methods implemented by plugins, used by the
 /// host for lifecycle management.
 pub mod plugin {
     rpc_method!(
@@ -378,7 +421,7 @@ pub mod vault {
 /// Coordinators act as intermediaries between plugins and vaults. They provide
 /// an atomic-like interface for plugins to propose operations and ensure funds
 /// are never lost or stuck.
-/// 
+///
 /// Plugins SHOULD NOT interact with vaults directly, and instead use coordinators.
 /// A plugin interacting with a vault directly is not only responsible for ensuring
 /// the operations it performs are valid, but also for ensuring that the correct
