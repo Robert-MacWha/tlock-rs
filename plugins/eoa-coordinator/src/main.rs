@@ -20,7 +20,7 @@ use serde::{Deserialize, Serialize};
 use tlock_alloy::AlloyBridge;
 use tlock_pdk::{
     runner::PluginRunner,
-    state::{set_state, try_get_state},
+    state::StateExt,
     tlock_api::{
         RpcMethod,
         alloy::primitives::U256,
@@ -106,7 +106,8 @@ async fn init(transport: Transport, _: ()) -> Result<(), RpcError> {
         },
     };
 
-    set_state(transport.clone(), &state)?;
+    transport.state().lock_or(|| state)?;
+
     Ok(())
 }
 
@@ -114,7 +115,7 @@ async fn get_session(
     transport: Transport,
     params: (CoordinatorId, ChainId, Option<AccountId>),
 ) -> Result<AccountId, RpcError> {
-    let state: State = try_get_state(transport.clone())?;
+    let state: State = transport.state().read()?;
     let (coordinator_id, chain_id, maybe_account_id) = params;
 
     let coordinator_id: EntityId = coordinator_id.into();
@@ -140,7 +141,7 @@ async fn get_assets(
     transport: Transport,
     params: (CoordinatorId, AccountId),
 ) -> Result<Vec<(AssetId, U256)>, RpcError> {
-    let state: State = try_get_state(transport.clone())?;
+    let state: State = transport.state().read()?;
     let (coordinator_id, account_id) = params;
 
     let coordinator_id: EntityId = coordinator_id.into();
@@ -164,7 +165,7 @@ async fn propose(
 ) -> Result<(), RpcError> {
     info!("Received proposal: {:?}", params);
 
-    let state: State = try_get_state(transport.clone())?;
+    let state: State = transport.state().read()?;
     let (coordinator_id, account_id, bundle) = params;
     let coordinator = state.coordinator.clone();
 

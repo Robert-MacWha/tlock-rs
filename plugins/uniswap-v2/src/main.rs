@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 use tlock_alloy::AlloyBridge;
 use tlock_pdk::{
     runner::PluginRunner,
-    state::{set_state, try_get_state},
+    state::StateExt,
     tlock_api::{
         RpcMethod,
         caip::{AssetId, AssetType, ChainId},
@@ -30,7 +30,7 @@ use tlock_pdk::{
         global, host, page, plugin,
     },
     wasmi_plugin_pdk::{
-        rpc_message::{RpcError, ToRpcResult},
+        rpc_message::{RpcError, RpcErrorContext, ToRpcResult},
         transport::Transport,
     },
 };
@@ -47,7 +47,7 @@ const UNISWAP_V2_FACTORY: Address = address!("0x5C69bEe701ef814a2B6a3EDD4B1652CB
 struct PluginState {
     coordinator_id: CoordinatorId,
     provider_id: EthProviderId,
-    page_id: Option<PageId>,
+    page_id: PageId,
     selected_from_token: Option<usize>,
     selected_to_token: Option<usize>,
     input_amount: f64,
@@ -104,10 +104,20 @@ async fn init(transport: Transport, _params: ()) -> Result<(), RpcError> {
         .call_async(transport.clone(), ())
         .await?;
 
+    let page_id = host::RegisterEntity
+        .call_async(transport.clone(), Domain::Page)
+        .await?;
+
+    let page_id = match page_id {
+        tlock_pdk::tlock_api::entities::EntityId::Page(id) => Some(id),
+        _ => None,
+    }
+    .context("Invalid Page ID")?;
+
     let state = PluginState {
         coordinator_id,
         provider_id,
-        page_id: None,
+        page_id: page_id,
         selected_from_token: None,
         selected_to_token: None,
         input_amount: 0.0,
@@ -117,12 +127,7 @@ async fn init(transport: Transport, _params: ()) -> Result<(), RpcError> {
         last_message: None,
     };
 
-    set_state(transport.clone(), &state)?;
-
-    // Register plugin's page
-    host::RegisterEntity
-        .call_async(transport.clone(), Domain::Page)
-        .await?;
+    transport.state().lock_or(|| state)?;
 
     Ok(())
 }
@@ -137,10 +142,7 @@ async fn ping(transport: Transport, _params: ()) -> Result<String, RpcError> {
 async fn on_load(transport: Transport, page_id: PageId) -> Result<(), RpcError> {
     info!("Page loaded: {}", page_id);
 
-    let mut state: PluginState = try_get_state(transport.clone())?;
-    state.page_id = Some(page_id);
-    set_state(transport.clone(), &state)?;
-
+    let state: PluginState = transport.state().read()?;
     let component = build_ui(&state);
     host::SetPage
         .call_async(transport.clone(), (page_id, component))
@@ -156,8 +158,7 @@ async fn on_update(
     let (page_id, event) = params;
     info!("Page updated: {:?}", event);
 
-    let mut state: PluginState = try_get_state(transport.clone())?;
-
+    let mut state = transport.state().try_lock::<PluginState>()?;
     match event {
         page::PageEvent::FormSubmitted(form_id, form_data) if form_id == "swap_form" => {
             handle_swap_form_update(&transport, &mut state, form_data).await?;
@@ -173,8 +174,6 @@ async fn on_update(
             return Ok(());
         }
     }
-
-    set_state(transport.clone(), &state)?;
 
     let component = build_ui(&state);
     host::SetPage

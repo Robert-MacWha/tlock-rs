@@ -19,7 +19,7 @@ use serde::{Deserialize, Serialize};
 use tlock_alloy::AlloyBridge;
 use tlock_pdk::{
     runner::PluginRunner,
-    state::{get_state, set_state, try_get_state},
+    state::StateExt,
     tlock_api::{
         RpcMethod,
         caip::{AccountId, AssetId, AssetType, ChainId},
@@ -76,7 +76,7 @@ async fn init(transport: Transport, _params: ()) -> Result<(), RpcError> {
         vault: None,
         provider_id,
     };
-    set_state(transport.clone(), &state)?;
+    transport.state().lock_or(|| state)?;
 
     host::RegisterEntity
         .call_async(transport.clone(), Domain::Page)
@@ -86,7 +86,7 @@ async fn init(transport: Transport, _params: ()) -> Result<(), RpcError> {
 }
 
 async fn ping(transport: Transport, _params: ()) -> Result<String, RpcError> {
-    let state: PluginState = try_get_state(transport.clone())?;
+    let state: PluginState = transport.state().read()?;
 
     let chain_id = eth::ChainId
         .call_async(transport, state.provider_id)
@@ -112,7 +112,7 @@ async fn get_vault_assets(
     transport: Transport,
     vault: &Vault,
 ) -> Result<Vec<(AssetId, U256)>, RpcError> {
-    let state: PluginState = try_get_state(transport.clone())?;
+    let state: PluginState = transport.state().read()?;
     let provider = ProviderBuilder::new()
         .connect_client(AlloyBridge::new(transport.clone(), state.provider_id));
 
@@ -181,7 +181,7 @@ async fn withdraw(
     let vault = get_vault(transport.clone(), vault_id)?;
     let signer: PrivateKeySigner =
         PrivateKeySigner::from_bytes(&vault.private_key).context("Invalid private key")?;
-    let state: PluginState = try_get_state(transport.clone())?;
+    let state: PluginState = transport.state().read()?;
     let provider = ProviderBuilder::new()
         .wallet(signer)
         .connect_client(AlloyBridge::new(transport.clone(), state.provider_id));
@@ -238,7 +238,7 @@ async fn withdraw_erc20(
 async fn on_load(transport: Transport, page_id: PageId) -> Result<(), RpcError> {
     info!("OnPageLoad called for page: {}", page_id);
 
-    let state: PluginState = get_state(transport.clone());
+    let state: PluginState = transport.state().read()?;
     let component = build_ui(transport.clone(), &state).await;
     host::SetPage
         .call_async(transport.clone(), (page_id, component))
@@ -270,7 +270,7 @@ async fn on_update(
         }
     }
 
-    let state: PluginState = get_state(transport.clone());
+    let state: PluginState = transport.state().read()?;
     let component = build_ui(transport.clone(), &state).await;
     host::SetPage
         .call_async(transport.clone(), (page_id, component))
@@ -299,13 +299,12 @@ async fn handle_new_signer(transport: Transport, signer: PrivateKeySigner) -> Re
         .call_async(transport.clone(), Domain::Vault)
         .await?;
 
-    let mut state: PluginState = get_state(transport.clone());
+    let mut state = transport.state().lock::<PluginState>()?;
     state.vault = Some(Vault {
         entity_id,
         private_key: signer.to_bytes(),
         address,
     });
-    set_state(transport.clone(), &state)?;
 
     Ok(())
 }
@@ -360,7 +359,7 @@ fn validate_chain_id(chain_id: &ChainId) -> Result<(), RpcError> {
 }
 
 fn get_vault(transport: Transport, _id: VaultId) -> Result<Vault, RpcError> {
-    let state: PluginState = get_state(transport.clone());
+    let state: PluginState = transport.state().read()?;
     let vault = state
         .vault
         .clone()
