@@ -5,7 +5,6 @@ use revm::{
         Address, B256, Log, TxKind, U256,
         alloy_primitives::{B64, BlockHash, Bloom, BloomInput, TxHash},
         hardfork::SpecId,
-        keccak256,
     },
 };
 use tlock_pdk::tlock_api::alloy::{
@@ -249,16 +248,6 @@ fn log_to_rpc_log(
     };
 
     return rpc_log;
-}
-
-pub fn compute_tx_hash(block_number: u64, tx_index: usize) -> TxHash {
-    keccak256(
-        [
-            block_number.to_be_bytes().as_slice(),
-            tx_index.to_be_bytes().as_slice(),
-        ]
-        .concat(),
-    )
 }
 
 fn accrue_log(bloom: &mut Bloom, log: &Log) {

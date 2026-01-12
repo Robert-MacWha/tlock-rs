@@ -359,13 +359,6 @@ async fn handle_execute_swap(
     let from_token = &ERC20S[from_idx];
     let to_token = &ERC20S[to_idx];
 
-    // Parse input amount
-    let amount_in = state.input_amount;
-    let expected_out = state.expected_output;
-
-    // TODO: Add slippage tolerance
-    let amount_out_min = expected_out * 0.9; // 10% slippage tolerance
-
     // Get coordinator session
     let account_id = coordinator::GetSession
         .call_async(
@@ -380,12 +373,15 @@ async fn handle_execute_swap(
     };
 
     // Build swap operations
+    let amount_in_scaled = to_units(state.input_amount, state.input_decimals);
+    let amount_out_min_scaled = to_units(state.expected_output * 0.9, state.output_decimals);
+
     let operations = build_swap_operations(
         account_address,
         from_token,
         to_token,
-        U256::from(amount_in),
-        U256::from(amount_out_min),
+        amount_in_scaled,
+        amount_out_min_scaled,
     )?;
 
     // Build EvmBundle
@@ -399,7 +395,7 @@ async fn handle_execute_swap(
     };
 
     let bundle = coordinator::EvmBundle {
-        inputs: vec![(from_asset_id, U256::from(amount_in))],
+        inputs: vec![(from_asset_id, amount_in_scaled)],
         outputs: vec![to_asset_id],
         operations,
     };
@@ -497,26 +493,21 @@ fn build_ui(state: &PluginState) -> tlock_pdk::tlock_api::component::Component {
                 from_selected,
             ),
             dropdown("to_token", "To Token:", token_options, to_selected),
-            text_input("amount", "Amount (wei)", "1500"),
+            text_input("amount", "Amount", "1.0"),
             submit_input("Update Quote"),
         ],
     ));
 
     // Display quote if available
-    let formatted_in = state.input_amount / 10f64.powi(state.input_decimals as i32);
-    let formatted_out = state.expected_output / 10f64.powi(state.output_decimals as i32);
+    let formatted_out = state.expected_output;
 
     if formatted_out > 0.0 {
         sections.push(heading("Quote"));
-        sections.push(text(format!("Expected Output: {:.4}", formatted_out)));
-
-        if formatted_in != 0.0 {
-            let exchange_rate = formatted_out / formatted_in;
-            sections.push(text(format!("Exchange Rate: {:.4}", exchange_rate)));
-        }
-
-        sections.push(button_input("refresh_quote", "Refresh Quote"));
-        sections.push(button_input("execute_swap", "Execute Swap"));
+        sections.push(text(format!(
+            "You will receive approximately: {:.6} {}",
+            formatted_out,
+            ERC20S[state.selected_to_token.unwrap()].symbol
+        )));
     }
 
     // Display selected token info
@@ -533,7 +524,15 @@ fn build_ui(state: &PluginState) -> tlock_pdk::tlock_api::component::Component {
         sections.push(text(format!("To: {} ({:?})", token.symbol, token.address)));
     }
 
+    sections.push(button_input("refresh_quote", "Refresh Quote"));
+    sections.push(button_input("execute_swap", "Execute Swap"));
+
     container(sections)
+}
+
+fn to_units(amount: f64, decimals: u8) -> U256 {
+    let multiplier = 10f64.powi(decimals as i32);
+    U256::from((amount * multiplier) as u128)
 }
 
 // ---------- Main Entry Point ----------

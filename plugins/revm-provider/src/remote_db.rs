@@ -52,11 +52,6 @@ struct JsonRpcError {
     message: String,
 }
 
-#[derive(Deserialize)]
-struct RpcResult<T> {
-    result: T,
-}
-
 impl<N: Network> RemoteDB<N> {
     pub fn new(transport: Transport, url: String, block_id: BlockId) -> Self {
         Self {
@@ -146,15 +141,31 @@ fn get_account_info(
         {"jsonrpc": "2.0", "id": 3, "method": "eth_getCode", "params": [address, block]}
     ]);
 
-    let (balance, nonce, code): (RpcResult<U256>, RpcResult<U64>, RpcResult<Bytes>) =
-        rpc_call(transport.clone(), url.clone(), batch)?;
+    let (balance, nonce, code): (
+        JsonRpcResponse<U256>,
+        JsonRpcResponse<U64>,
+        JsonRpcResponse<Bytes>,
+    ) = rpc_batch(transport, url, batch)?;
 
-    let bytecode = Bytecode::new_raw(code.result);
+    let balance = balance.result.context(format!(
+        "Failed to get balance for account {:?}: {:?}",
+        address, balance.error
+    ))?;
+    let nonce = nonce.result.context(format!(
+        "Failed to get nonce for account {:?}: {:?}",
+        address, nonce.error
+    ))?;
+    let code = code.result.context(format!(
+        "Failed to get code for account {:?}: {:?}",
+        address, code.error
+    ))?;
+
+    let bytecode = Bytecode::new_raw(code);
     let code_hash = bytecode.hash_slow();
 
     Ok(Some(AccountInfo::new(
-        balance.result,
-        nonce.result.to::<u64>(),
+        balance,
+        nonce.to::<u64>(),
         code_hash,
         bytecode,
     )))
@@ -223,4 +234,25 @@ fn rpc_call<T: for<'a> Deserialize<'a>>(
     Ok(response
         .result
         .context("Missing result in JSON-RPC response")?)
+}
+
+fn rpc_batch<T: for<'a> Deserialize<'a>>(
+    transport: Transport,
+    url: String,
+    payload: Value,
+) -> Result<T, AlloyDBError> {
+    let body = serde_json::to_vec(&payload)?;
+
+    let req = host::Request {
+        url,
+        method: "POST".to_string(),
+        headers: vec![("Content-Type".to_string(), b"application/json".to_vec())],
+        body: Some(body),
+    };
+
+    let resp = host::Fetch.call(transport, req)?;
+    let resp = resp.map_err(RpcError::custom)?;
+
+    // Batch responses are returned directly as an array, no wrapper
+    Ok(serde_json::from_slice(&resp)?)
 }

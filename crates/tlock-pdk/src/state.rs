@@ -10,6 +10,7 @@ use tlock_api::{
     RpcMethod,
     state::{self, SetError},
 };
+use tracing::error;
 use wasmi_plugin_pdk::{rpc_message::RpcError, transport::SyncTransport};
 
 #[derive(Debug, Error)]
@@ -18,8 +19,8 @@ pub enum LockError {
     Rpc(#[from] RpcError),
     #[error("Deserialization error: {0}")]
     Serialization(#[from] serde_json::Error),
-    #[error("State is empty")]
-    Empty,
+    #[error("Key is empty: {0}")]
+    Empty(String),
     #[error("Set key error: {0}")]
     SetError(#[from] SetError),
 }
@@ -48,6 +49,27 @@ where
 
 pub struct StateHandle<T, E> {
     transport: T,
+    _phantom: PhantomData<E>,
+}
+
+pub struct LockedState<T, V, E>
+where
+    T: StateExt<E>,
+    V: Serialize,
+    E: Into<RpcError>,
+{
+    guard: LockGuard<T, E>,
+    value: Option<V>, // Only None after into_inner
+    dirty: bool,
+}
+
+pub struct LockGuard<T, E>
+where
+    T: SyncTransport<E> + Clone,
+    E: Into<RpcError>,
+{
+    transport: T,
+    key: String,
     _phantom: PhantomData<E>,
 }
 
@@ -110,6 +132,9 @@ where
         Ok(self.try_lock_key::<V>(key)?.into_inner())
     }
 
+    /// Read the state at `key` or return the result of `default` if the state is empty.
+    ///
+    /// Does not write back to state if the key is empty.
     pub fn read_key_or<V: Serialize + DeserializeOwned>(
         &self,
         key: impl Into<String>,
@@ -128,7 +153,7 @@ where
         let key = key.into();
 
         //? Lock the key so the host lets us write to it
-        let _ = state::LockKey.call(self.transport.clone(), key.clone())?;
+        let (_guard, _data) = LockGuard::acquire(self.transport.clone(), key.clone())?;
         let data = serde_json::to_vec(&value)?;
         state::SetKey.call(self.transport.clone(), (key.clone(), data))??;
         let _ = state::UnlockKey.call(self.transport.clone(), key)?;
@@ -140,19 +165,18 @@ where
         key: impl Into<String>,
     ) -> Result<LockedState<T, V, E>, LockError> {
         let key = key.into();
-        let data = state::LockKey.call(self.transport.clone(), key.clone())?;
+        let (guard, data) = LockGuard::acquire(self.transport.clone(), key.clone())?;
 
         let value: V = if data.is_empty() {
             V::default()
         } else {
             serde_json::from_slice(&data)?
         };
+
         Ok(LockedState {
-            transport: self.transport.clone(),
-            key,
-            value,
+            guard,
+            value: Some(value),
             dirty: false,
-            _phantom: PhantomData,
         })
     }
 
@@ -161,17 +185,18 @@ where
         key: impl Into<String>,
     ) -> Result<LockedState<T, V, E>, LockError> {
         let key = key.into();
-        let data = state::LockKey.call(self.transport.clone(), key.clone())?;
+        let (guard, data) = LockGuard::acquire(self.transport.clone(), key.clone())?;
+
         if data.is_empty() {
-            return Err(LockError::Empty);
+            return Err(LockError::Empty(key));
         }
+
         let value: V = serde_json::from_slice(&data)?;
+
         Ok(LockedState {
-            transport: self.transport.clone(),
-            key,
-            value,
+            guard,
+            value: Some(value),
             dirty: false,
-            _phantom: PhantomData,
         })
     }
 
@@ -181,34 +206,21 @@ where
         default: impl FnOnce() -> V,
     ) -> Result<LockedState<T, V, E>, LockError> {
         let key = key.into();
-        let data = state::LockKey.call(self.transport.clone(), key.clone())?;
+        let (guard, data) = LockGuard::acquire(self.transport.clone(), key.clone())?;
 
         let (value, dirty) = if data.is_empty() {
             (default(), true)
         } else {
-            (serde_json::from_slice(&data)?, false)
+            let value: V = serde_json::from_slice(&data)?;
+            (value, false)
         };
+
         Ok(LockedState {
-            transport: self.transport.clone(),
-            key,
-            value,
+            guard,
+            value: Some(value),
             dirty,
-            _phantom: PhantomData,
         })
     }
-}
-
-pub struct LockedState<T, V, E>
-where
-    T: StateExt<E>,
-    V: Serialize,
-    E: Into<RpcError>,
-{
-    transport: T,
-    key: String,
-    value: V,
-    dirty: bool,
-    _phantom: PhantomData<E>,
 }
 
 impl<T, V, E> LockedState<T, V, E>
@@ -217,11 +229,10 @@ where
     V: Serialize,
     E: Into<RpcError>,
 {
-    pub fn into_inner(self) -> V {
-        //? Safe because we consume self and prevent double-drop
-        let value = unsafe { std::ptr::read(&self.value) };
-        std::mem::forget(self);
-        value
+    pub fn into_inner(mut self) -> V {
+        self.dirty = false;
+        //? Safe because we only take it on consuming self
+        self.value.take().expect("value already taken")
     }
 }
 
@@ -233,7 +244,7 @@ where
 {
     type Target = V;
     fn deref(&self) -> &V {
-        &self.value
+        self.value.as_ref().expect("value already taken")
     }
 }
 
@@ -245,7 +256,7 @@ where
 {
     fn deref_mut(&mut self) -> &mut V {
         self.dirty = true;
-        &mut self.value
+        self.value.as_mut().expect("value already taken")
     }
 }
 
@@ -257,10 +268,59 @@ where
 {
     fn drop(&mut self) {
         if self.dirty {
-            if let Ok(data) = serde_json::to_vec(&self.value) {
-                let _ = state::SetKey.call(self.transport.clone(), (self.key.clone(), data));
+            if let Some(ref value) = self.value {
+                if let Ok(data) = serde_json::to_vec(value) {
+                    self.guard.set(data);
+                }
             }
         }
+        // Unlocked when guard is dropped
+    }
+}
+
+impl<T, E> LockGuard<T, E>
+where
+    T: SyncTransport<E> + Clone,
+    E: Into<RpcError>,
+{
+    pub fn acquire(transport: T, key: String) -> Result<(Self, Vec<u8>), LockError> {
+        let data = state::LockKey.call(transport.clone(), key.clone())?;
+        Ok((
+            Self {
+                transport,
+                key,
+                _phantom: PhantomData,
+            },
+            data,
+        ))
+    }
+
+    pub fn set(&self, data: Vec<u8>) {
+        let result = state::SetKey.call(self.transport.clone(), (self.key.clone(), data));
+        let result = match result {
+            Ok(res) => res,
+            Err(err) => {
+                error!("Failed to set key '{}': {}", self.key, err);
+                return;
+            }
+        };
+
+        match result {
+            Ok(_) => {}
+            Err(err) => {
+                error!("Failed to set key '{}': {}", self.key, err);
+                return;
+            }
+        };
+    }
+}
+
+impl<T, E> Drop for LockGuard<T, E>
+where
+    T: SyncTransport<E> + Clone,
+    E: Into<RpcError>,
+{
+    fn drop(&mut self) {
         let _ = state::UnlockKey.call(self.transport.clone(), self.key.clone());
     }
 }

@@ -58,6 +58,8 @@ const RPC_URL: &str = "https://1rpc.io/eth";
 const PROVIDER_KEY: &str = "revm_fork_provider";
 
 async fn init(transport: Transport, _params: ()) -> Result<(), RpcError> {
+    handle_reset_fork(transport.clone())?;
+
     //? Register the revm entities
     host::RegisterEntity
         .call_async(transport.clone(), Domain::EthProvider)
@@ -99,13 +101,13 @@ async fn on_update(
 
     match event {
         page::PageEvent::ButtonClicked(button_id) if button_id == "reset_fork" => {
-            handle_reset_fork(transport.clone()).await?;
+            handle_reset_fork(transport.clone())?;
         }
         page::PageEvent::ButtonClicked(button_id) if button_id == "mine_fork" => {
-            handle_mine(transport.clone()).await?;
+            handle_mine(transport.clone())?;
         }
         page::PageEvent::FormSubmitted(form_id, form_data) if form_id == "deal_form" => {
-            handle_deal(transport.clone(), form_data).await?;
+            handle_deal(transport.clone(), form_data)?;
         }
         _ => {
             warn!("Unhandled page event: {:?}", event);
@@ -327,12 +329,7 @@ fn build_ui(provider: Provider) -> Result<Component, RpcError> {
 
     // Transactions section
     let tx_count: usize = provider.state.transactions.values().map(|v| v.len()).sum();
-    sections.push(heading2("Transactions"));
-
-    if tx_count == 0 {
-        sections.push(text("No transactions"));
-        return Ok(container(sections));
-    }
+    sections.push(heading2("Blocks"));
 
     sections.push(text(format!("Total transactions: {}", tx_count)));
 
@@ -371,9 +368,7 @@ fn build_ui(provider: Provider) -> Result<Component, RpcError> {
     Ok(container(sections))
 }
 
-async fn handle_reset_fork(transport: Transport) -> Result<(), RpcError> {
-    info!("Resetting fork to chain head");
-
+fn handle_reset_fork(transport: Transport) -> Result<(), RpcError> {
     let chain_id =
         get_chain_id(transport.clone(), RPC_URL.to_string()).context("Error getting chain_id")?;
     let header = get_latest_block_header(transport.clone(), RPC_URL.to_string())
@@ -392,18 +387,13 @@ async fn handle_reset_fork(transport: Transport) -> Result<(), RpcError> {
     Ok(())
 }
 
-async fn handle_mine(transport: Transport) -> Result<(), RpcError> {
+fn handle_mine(transport: Transport) -> Result<(), RpcError> {
     let fork = load_provider(transport.clone())?;
     fork.mine()?;
-
-    info!("Mined a new block on the fork");
     Ok(())
 }
 
-async fn handle_deal(
-    transport: Transport,
-    form_data: HashMap<String, String>,
-) -> Result<(), RpcError> {
+fn handle_deal(transport: Transport, form_data: HashMap<String, String>) -> Result<(), RpcError> {
     let account: AccountId = form_data
         .get("account")
         .context("Missing account")?

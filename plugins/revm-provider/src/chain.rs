@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use erc20s::get_erc20_by_address;
+use erc20s::{ERC20S, get_erc20_by_address};
 use revm::{
     Context, DatabaseRef, ExecuteEvm, MainBuilder, MainContext,
     bytecode::LegacyAnalyzedBytecode,
@@ -27,7 +27,7 @@ use tlock_pdk::{
         transport::{Transport, TransportError},
     },
 };
-use tracing::warn;
+use tracing::{error, info, warn};
 
 use crate::{
     cache_db::{CacheDB, CacheDBError},
@@ -46,7 +46,7 @@ pub struct Chain {
     fork_url: String,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct ChainState {
     chain_id: u64,
     /// Block at which the chain was forked. This block is static and fetched
@@ -97,7 +97,6 @@ impl Chain {
         chain_id: u64,
         block_time: u64,
     ) -> Result<Self, ChainError> {
-        let fork_hash = header.hash;
         let parent_hash = header.parent_hash;
         let block_env = header_to_block_env(header);
 
@@ -106,7 +105,7 @@ impl Chain {
         //? don't need to construct it ourselves.
         let fork_block_number: u64 = block_env.number.saturating_to();
         let fork_block_number = fork_block_number.saturating_sub(1);
-        let state = ChainState {
+        let chain_state = ChainState {
             chain_id,
             block_time,
             fork_block_number,
@@ -117,27 +116,23 @@ impl Chain {
             blocks: BTreeMap::new(),
         };
 
-        //? Also create a layer db for the fork block with empty state,
-        //? so cheatcodes can modify it if needed
-        let layer_state = LayerState {
-            block_number: fork_block_number,
-            block_hash: fork_hash,
-            state: Default::default(),
-        };
-        let layer_key = get_layer_key(&key, fork_block_number);
-        transport
-            .state()
-            .write_key(layer_key, layer_state)
-            .rpc_err()?;
-
         let state_key = get_chain_key(&key);
-        transport.state().write_key(state_key, state).rpc_err()?;
+        let mut state = transport
+            .state()
+            .lock_key_or(state_key, || chain_state.clone())
+            .rpc_err()?;
+        *state = chain_state;
 
-        Ok(Self {
+        let chain = Self {
             transport,
             key,
             fork_url,
-        })
+        };
+
+        //? Mine an initial empty block to establish the fork state
+        chain.mine_with_state(&mut state, EvmState::default(), vec![])?;
+
+        Ok(chain)
     }
 
     /// Load an existing chain from storage.
@@ -216,9 +211,14 @@ impl Chain {
 
         let mut block_env = match get_blockenv(&state, &block_id) {
             Some(env) => env,
-            None => return Err(ChainError::Rpc(RpcError::Custom("Invalid Block ID".into()))),
+            None => {
+                return Err(ChainError::Rpc(RpcError::custom(format!(
+                    "Invalid Block ID: {}",
+                    block_id
+                ))));
+            }
         };
-        block_env.basefee = 0;
+        block_env.basefee = 0; //? Disable basefee for calls
 
         let block_env = if let Some(overrides) = block_override {
             apply_block_overrides(&block_env, overrides)
@@ -256,8 +256,8 @@ impl Chain {
         let mut evm = Context::mainnet()
             .modify_cfg_chained(|cfg| {
                 cfg.tx_chain_id_check = false;
-                cfg.chain_id = state.chain_id;
                 cfg.disable_nonce_check = true;
+                cfg.chain_id = state.chain_id;
             })
             .with_db(overlay_db)
             .with_block(block_env)
@@ -277,6 +277,15 @@ impl Chain {
 
     /// Mines a block containing the transaction and updates the chain state.
     pub fn transact_commit(&self, tx: TxEnv) -> Result<ExecutionResult, ChainError> {
+        //? Inspect the erc20 balances of the sender before executing the tx
+        for erc20 in ERC20S.iter() {
+            let balance = self.inspect_erc20(tx.caller, erc20.address)?;
+            info!(
+                "Pre-Tx Balance of {} for {:?}: {}",
+                erc20.symbol, tx.caller, balance
+            );
+        }
+
         let state_key = get_chain_key(&self.key);
         let mut state = self
             .transport
@@ -316,6 +325,44 @@ impl Chain {
             .get(0)
             .context("Missing transaction in ExecutionResult")?
             .clone();
+
+        match exec_result {
+            ExecutionResult::Success { .. } => {}
+            ExecutionResult::Halt {
+                ref reason,
+                gas_used,
+            } => {
+                error!(
+                    "Transaction halted. Gas used: {}. Reason: {:?}",
+                    gas_used, reason
+                );
+            }
+            ExecutionResult::Revert {
+                gas_used,
+                ref output,
+            } => {
+                let reason = if output.is_empty() {
+                    "Empty revert (no message)".to_string()
+                } else if output.len() >= 4 && output[0..4] == [0x08, 0xc3, 0x79, 0xa0] {
+                    String::from_utf8_lossy(&output[68..])
+                        .trim_matches(char::from(0))
+                        .to_string()
+                } else {
+                    format!("Raw Hex: {:?}", output)
+                };
+
+                error!(
+                    "Transaction reverted. Gas used: {}. Reason: {}",
+                    gas_used, reason
+                );
+            }
+        };
+
+        info!(
+            "Committed transaction in block {}: {:?}",
+            state.pending.env.number, exec_result
+        );
+
         let exec_state = exec_result_and_state.state;
 
         //* Update the chain state with the new block, transaction result, and state.
@@ -337,6 +384,8 @@ impl Chain {
         let new_parent_hash = state.pending.parent_hash;
         let new_block_hash = compute_block_hash(new_block_number, new_parent_hash);
         let new_pending = state.pending.clone();
+
+        info!("Mining block {}", new_block_number);
 
         state.blocks.insert(
             new_block_number,
@@ -391,6 +440,8 @@ impl Chain {
 impl Chain {
     /// Mine a new block with no state changes.
     pub fn mine(&self) -> Result<(), ChainError> {
+        info!("mine");
+
         let state_key = get_chain_key(&self.key);
         let mut state = self
             .transport
@@ -463,6 +514,40 @@ impl Chain {
 
         self.mine_with_state(&mut state, evm_state, vec![])
     }
+
+    /// Inspects the ERC20 token balance of the specified address.
+    fn inspect_erc20(&self, address: Address, token: Address) -> Result<U256, ChainError> {
+        let state = self.clone_state()?;
+
+        let latest: u64 = state.pending.env.number.saturating_to();
+        let latest = latest.saturating_sub(1);
+        let db = construct_db::<Ethereum>(
+            self.transport.clone(),
+            self.key.clone(),
+            self.fork_url.clone(),
+            state.fork_block_number,
+            latest,
+        )?;
+
+        let slot = if let Some(erc20) = get_erc20_by_address(&token) {
+            erc20.slot
+        } else {
+            warn!("Attempting to inspect ERC20 for unknown token: {:?}", token);
+            0
+        };
+
+        // Storage key = keccak256(abi.encode(holder, slot))
+        // holder is left-padded to 32 bytes, then slot as 32 bytes
+        let mut key_preimage = [0u8; 64];
+        key_preimage[12..32].copy_from_slice(address.as_slice()); // address at bytes 12-31
+        key_preimage[32..64].copy_from_slice(&U256::from(slot).to_be_bytes::<32>()); // slot at bytes 32-63
+
+        let storage_key = keccak256(key_preimage);
+        let storage_key = storage_key.into_u256();
+
+        let balance = db.storage_ref(token, storage_key).rpc_err()?;
+        Ok(balance)
+    }
 }
 
 /// Constructs a new database instance for the chain. Stacks the alloy_db, cache_db,
@@ -482,10 +567,9 @@ fn construct_db<N: Network>(
     let cache_db_key = format!("{}/{}", key, fork_block_number);
     let cache_db: CacheDB<_, N> = CacheDB::new(transport.clone(), cache_db_key, alloy_db);
 
-    //? Stack layerDBs from fork block to latest block. We include the fork block
-    //? so that cheatcodes can modify its state.
+    //? Stack layerDBs from 1+forked block to latest block.
     let mut layer_db: LayeredDB<_, N> = LayeredDB::new(cache_db);
-    for block_number in (fork_block_number)..=latest_block_number {
+    for block_number in (fork_block_number + 1)..=latest_block_number {
         let layer_state_key = get_layer_key(&key, block_number);
         let layer_state: LayerState = transport.state().try_read_key(layer_state_key).rpc_err()?;
 
@@ -493,6 +577,19 @@ fn construct_db<N: Network>(
     }
 
     Ok(Box::new(layer_db))
+}
+
+fn get_blockenv(state: &ChainState, block: &BlockId) -> Option<BlockEnv> {
+    let number = block_id_to_number(state, block)?;
+    if number == state.pending.env.number.saturating_to::<u64>() {
+        return Some(state.pending.env.clone());
+    }
+
+    if let Some(env) = state.blocks.get(&number) {
+        return Some(env.env.clone());
+    }
+
+    return None;
 }
 
 fn block_id_to_number(state: &ChainState, block: &BlockId) -> Option<u64> {
@@ -508,19 +605,6 @@ fn block_id_to_number(state: &ChainState, block: &BlockId) -> Option<u64> {
         BlockId::Number(BlockNumberOrTag::Number(n)) => Some(*n),
         _ => None,
     }
-}
-
-fn get_blockenv(state: &ChainState, block: &BlockId) -> Option<BlockEnv> {
-    let number = block_id_to_number(state, block)?;
-    if number == state.pending.env.number.saturating_to::<u64>() {
-        return Some(state.pending.env.clone());
-    }
-
-    if let Some(env) = state.blocks.get(&number) {
-        return Some(env.env.clone());
-    }
-
-    return None;
 }
 
 fn compute_block_hash(number: u64, parent_hash: B256) -> B256 {

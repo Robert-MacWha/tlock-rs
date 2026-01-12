@@ -26,6 +26,7 @@ use tlock_pdk::{
     },
     wasmi_plugin_pdk::{rpc_message::RpcError, transport::Transport},
 };
+use tracing::info;
 
 use crate::{
     chain::{Chain, ChainError},
@@ -114,6 +115,7 @@ impl Provider {
             receipts: HashMap::default(),
         };
         let state_key = get_provider_key(&key);
+        info!("Writing provider state to key: {}...", state_key);
         transport.state().write_key(state_key, state.clone())?;
 
         let chain = Chain::new(
@@ -141,7 +143,6 @@ impl Provider {
     ) -> Result<Self, ProviderError> {
         let state_key = get_provider_key(&key);
         let state: ProviderState = transport.state().read_key(state_key)?;
-
         let chain = Chain::load(transport.clone(), key.clone(), fork_url);
 
         Ok(Self {
@@ -295,10 +296,10 @@ impl Provider {
 
         let result = self
             .chain
-            .call(tx_env, block_id, state_override, block_override, false)?;
+            .call(tx_env, block_id, state_override, block_override, true)?;
 
         match result {
-            ExecutionResult::Success { gas_used, .. } => Ok(gas_used),
+            ExecutionResult::Success { gas_used, .. } => Ok((gas_used * 120) / 100), //? Add 20% buffer
             ExecutionResult::Revert { output, .. } => Err(ProviderError::TransactionReverted(
                 decode_revert_reason(&output),
             )),

@@ -45,7 +45,10 @@ impl<ExtDB: DatabaseRef, N: Network> DatabaseRef for LayeredDB<ExtDB, N> {
     fn basic_ref(&self, address: Address) -> Result<Option<AccountInfo>, Self::Error> {
         for layer in self.layers.iter().rev() {
             if let Some(account) = layer.state.get(&address) {
-                return Ok(Some(account.info.clone()));
+                //? Only return if the account is not default. Otherwise continue to check lower layers.
+                if account.info != AccountInfo::default() {
+                    return Ok(Some(account.info.clone()));
+                }
             }
         }
 

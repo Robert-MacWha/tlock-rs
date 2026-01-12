@@ -334,12 +334,17 @@ async fn build_ui(transport: Transport, state: &PluginState) -> Component {
     sections.push(text("Private Key:"));
     sections.push(hex(vault.private_key.as_slice()));
 
-    let Ok(balances) = get_vault_assets(transport.clone(), &vault).await else {
-        sections.push(text("Error fetching assets"));
-        return container(sections);
+    sections.push(heading2("Assets"));
+
+    let balances = match get_vault_assets(transport.clone(), &vault).await {
+        Ok(balances) => balances,
+        Err(e) => {
+            sections.push(text(format!("Error fetching assets: {}", e)));
+            sections.push(button_input("refresh_assets", "Refresh"));
+            return container(sections);
+        }
     };
 
-    sections.push(heading2("Assets"));
     let balances = balances
         .into_iter()
         .map(|(id, bal)| (id.to_string(), asset(id.clone(), Some(bal.clone()))));

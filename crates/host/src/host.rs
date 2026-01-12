@@ -545,8 +545,14 @@ impl Host {
         };
 
         // TODO: Handle errors properly
-        let resp = request.send().await.unwrap();
-        let bytes = resp.bytes().await.unwrap();
+        let resp = request
+            .send()
+            .await
+            .context("Failed to send HTTP request")?;
+        let bytes = resp
+            .bytes()
+            .await
+            .context("Failed to read response bytes")?;
         Ok(Ok(bytes.to_vec()))
     }
 
@@ -562,17 +568,27 @@ impl Host {
             let listener = {
                 let mut locks = self.locks.lock().unwrap();
 
-                //? If the lock is held by another, wait on their event. If it's not
-                //? held, insert our event and proceed.
-                let event = locks
-                    .entry(state_key.clone())
-                    .or_insert((*instance_id, Arc::new(event_listener::Event::new())));
-                if event.0 == *instance_id {
-                    let state = self.state.lock().unwrap();
-                    return Ok(state.get(&state_key).cloned().unwrap_or_default());
+                match locks.get(&state_key) {
+                    Some((holder, _)) if holder == instance_id => {
+                        return Err(RpcError::custom(format!(
+                            "Deadlock: instance already holds lock on key '{}'",
+                            state_key.1
+                        )));
+                    }
+                    Some((holder, event)) => {
+                        // Different holder - wait
+                        event.listen()
+                    }
+                    None => {
+                        // Not held, acquire it
+                        locks.insert(
+                            state_key.clone(),
+                            (*instance_id, Arc::new(event_listener::Event::new())),
+                        );
+                        let state = self.state.lock().unwrap();
+                        return Ok(state.get(&state_key).cloned().unwrap_or_default());
+                    }
                 }
-
-                event.1.listen()
             };
             listener.await;
         }
@@ -616,6 +632,26 @@ impl Host {
 
         event.notify(usize::MAX);
         Ok(Ok(()))
+    }
+
+    /// Unlocks all locks held by an instance
+    pub async fn unlock_instance(&self, instance_id: &InstanceId) {
+        let mut locks = self.locks.lock().unwrap();
+        let keys_to_remove: Vec<_> = locks
+            .iter()
+            .filter(|(_, (holder, _))| holder == instance_id)
+            .map(|(k, _)| k.clone())
+            .collect();
+
+        for key in keys_to_remove {
+            if let Some((_, event)) = locks.remove(&key) {
+                info!(
+                    "Plugin {} unlocking key '{}' due to instance drop",
+                    instance_id.plugin, key.1
+                );
+                event.notify(usize::MAX);
+            }
+        }
     }
 
     pub async fn set_interface(
@@ -670,19 +706,6 @@ impl Host {
             .context("Error calling GetDepositAddress")?;
         Ok(result)
     }
-
-    // pub async fn vault_on_deposit(
-    //     &self,
-    //     params: <vault::OnDeposit as RpcMethod>::Params,
-    // ) -> Result<(), RpcError> {
-    //     let plugin = self.get_entity_plugin_error(params.0)?;
-
-    //     vault::OnDeposit.call(plugin, params).await.map_err(|e| {
-    //         warn!("Error calling OnReceive: {:?}", e);
-    //         e.as_rpc_code()
-    //     })?;
-    //     Ok(())
-    // }
 
     pub async fn page_on_load(&self, page_id: PageId) -> Result<(), RpcError> {
         let plugin = self.get_entity_plugin_error(page_id)?;
