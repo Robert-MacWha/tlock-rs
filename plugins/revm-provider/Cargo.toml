@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 revm = { workspace = true, features = ["std", "serde", "dev"] }
+alloy = { workspace = true }
 alloy-consensus = { workspace = true, features = ["k256"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -13,3 +14,4 @@ tlock-pdk = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 erc20s = { workspace = true }
+tlock-alloy = { workspace = true }

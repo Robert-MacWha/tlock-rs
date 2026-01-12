@@ -12,7 +12,7 @@ use alloy::{
 use serde::{Deserialize, Serialize};
 use tlock_pdk::{
     runner::PluginRunner,
-    state::{set_state, try_get_state},
+    state::StateExt,
     tlock_api::{RpcMethod, domains::Domain, entities::EthProviderId, eth, global, host, plugin},
     wasmi_plugin_pdk::{
         rpc_message::{RpcError, ToRpcResult},
@@ -42,7 +42,7 @@ async fn init(transport: Transport, _params: ()) -> Result<(), RpcError> {
     let state = ProviderState {
         rpc_url: "https://1rpc.io/eth".to_string(),
     };
-    set_state(transport.clone(), &state)?;
+    transport.state().lock_or(|| state)?;
 
     host::RegisterEntity
         .call_async(transport.clone(), Domain::EthProvider)
@@ -52,7 +52,7 @@ async fn init(transport: Transport, _params: ()) -> Result<(), RpcError> {
 }
 
 async fn chain_id(transport: Transport, _params: EthProviderId) -> Result<U256, RpcError> {
-    let state: ProviderState = try_get_state(transport.clone())?;
+    let state: ProviderState = transport.state().read()?;
 
     let provider = create_alloy_provider(transport.clone(), state.rpc_url);
     let chain_id = provider.get_chain_id().await.rpc_err()?;
@@ -62,7 +62,7 @@ async fn chain_id(transport: Transport, _params: EthProviderId) -> Result<U256, 
 }
 
 async fn block_number(transport: Transport, _params: EthProviderId) -> Result<u64, RpcError> {
-    let state: ProviderState = try_get_state(transport.clone())?;
+    let state: ProviderState = transport.state().read()?;
 
     let provider = create_alloy_provider(transport.clone(), state.rpc_url);
     let block_number = provider.get_block_number().await.rpc_err()?;
@@ -79,7 +79,7 @@ async fn call(
         Option<BlockOverrides>,
     ),
 ) -> Result<Bytes, RpcError> {
-    let state: ProviderState = try_get_state(transport.clone())?;
+    let state: ProviderState = transport.state().read()?;
 
     let (_provider_id, tx, block, state_overrides, block_overrides) = params;
 
@@ -96,7 +96,7 @@ async fn call(
 }
 
 async fn gas_price(transport: Transport, _provider_id: EthProviderId) -> Result<u128, RpcError> {
-    let state: ProviderState = try_get_state(transport.clone())?;
+    let state: ProviderState = transport.state().read()?;
 
     let provider = create_alloy_provider(transport.clone(), state.rpc_url);
     let gas_price = provider.get_gas_price().await.rpc_err()?;
@@ -108,7 +108,7 @@ async fn get_balance(
     transport: Transport,
     params: (EthProviderId, Address, BlockId),
 ) -> Result<U256, RpcError> {
-    let state: ProviderState = try_get_state(transport.clone())?;
+    let state: ProviderState = transport.state().read()?;
     let (_provider_id, address, block) = params;
 
     let provider = create_alloy_provider(transport.clone(), state.rpc_url);
@@ -124,7 +124,7 @@ async fn get_block(
     transport: Transport,
     params: (EthProviderId, BlockId, BlockTransactionsKind),
 ) -> Result<Block, RpcError> {
-    let state: ProviderState = try_get_state(transport.clone())?;
+    let state: ProviderState = transport.state().read()?;
     let (_provider_id, block_id, include_transactions) = params;
 
     let provider = create_alloy_provider(transport.clone(), state.rpc_url);
@@ -144,7 +144,7 @@ async fn get_block_receipts(
     transport: Transport,
     params: (EthProviderId, BlockId),
 ) -> Result<Vec<TransactionReceipt>, RpcError> {
-    let state: ProviderState = try_get_state(transport.clone())?;
+    let state: ProviderState = transport.state().read()?;
     let (_provider_id, block_id) = params;
 
     let provider = create_alloy_provider(transport.clone(), state.rpc_url);
@@ -160,7 +160,7 @@ async fn get_code(
     transport: Transport,
     params: (EthProviderId, Address, BlockId),
 ) -> Result<Bytes, RpcError> {
-    let state: ProviderState = try_get_state(transport.clone())?;
+    let state: ProviderState = transport.state().read()?;
     let (_provider_id, address, block_id) = params;
 
     let provider = create_alloy_provider(transport.clone(), state.rpc_url);
@@ -177,7 +177,7 @@ async fn get_logs(
     transport: Transport,
     params: (EthProviderId, Filter),
 ) -> Result<Vec<Log>, RpcError> {
-    let state: ProviderState = try_get_state(transport.clone())?;
+    let state: ProviderState = transport.state().read()?;
     let (_provider_id, filter) = params;
 
     let provider = create_alloy_provider(transport.clone(), state.rpc_url);
@@ -190,7 +190,7 @@ async fn get_transaction_by_hash(
     transport: Transport,
     params: (EthProviderId, TxHash),
 ) -> Result<Transaction, RpcError> {
-    let state: ProviderState = try_get_state(transport.clone())?;
+    let state: ProviderState = transport.state().read()?;
     let (_provider_id, tx_hash) = params;
 
     let provider = create_alloy_provider(transport.clone(), state.rpc_url);
@@ -206,7 +206,7 @@ async fn get_transaction_receipt(
     transport: Transport,
     params: (EthProviderId, TxHash),
 ) -> Result<TransactionReceipt, RpcError> {
-    let state: ProviderState = try_get_state(transport.clone())?;
+    let state: ProviderState = transport.state().read()?;
     let (_provider_id, tx_hash) = params;
 
     let provider = create_alloy_provider(transport.clone(), state.rpc_url);
@@ -222,7 +222,7 @@ async fn get_transaction_count(
     transport: Transport,
     params: (EthProviderId, Address, BlockId),
 ) -> Result<u64, RpcError> {
-    let state: ProviderState = try_get_state(transport.clone())?;
+    let state: ProviderState = transport.state().read()?;
     let (_provider_id, address, block_id) = params;
 
     let provider = create_alloy_provider(transport.clone(), state.rpc_url);
@@ -239,7 +239,7 @@ async fn send_raw_transaction(
     transport: Transport,
     params: (EthProviderId, Bytes),
 ) -> Result<TxHash, RpcError> {
-    let state: ProviderState = try_get_state(transport.clone())?;
+    let state: ProviderState = transport.state().read()?;
     let (_provider_id, raw_tx) = params;
 
     let provider = create_alloy_provider(transport.clone(), state.rpc_url);
@@ -259,7 +259,7 @@ async fn estimate_gas(
         Option<BlockOverrides>,
     ),
 ) -> Result<u64, RpcError> {
-    let state: ProviderState = try_get_state(transport.clone())?;
+    let state: ProviderState = transport.state().read()?;
     let (_provider_id, transaction_request, block_id, state_override, block_override) = params;
 
     let provider = create_alloy_provider(transport.clone(), state.rpc_url);
@@ -278,7 +278,7 @@ async fn get_storage_at(
     transport: Transport,
     params: (EthProviderId, Address, U256, BlockId),
 ) -> Result<U256, RpcError> {
-    let state: ProviderState = try_get_state(transport.clone())?;
+    let state: ProviderState = transport.state().read()?;
     let (_provider_id, address, slot, block_id) = params;
 
     let provider = create_alloy_provider(transport.clone(), state.rpc_url);
@@ -295,7 +295,7 @@ async fn fee_history(
     transport: Transport,
     params: (EthProviderId, u64, BlockNumberOrTag, Vec<f64>),
 ) -> Result<alloy::rpc::types::FeeHistory, RpcError> {
-    let state: ProviderState = try_get_state(transport.clone())?;
+    let state: ProviderState = transport.state().read()?;
     let (_provider_id, block_count, newest_block, reward_percentiles) = params;
 
     let provider = create_alloy_provider(transport.clone(), state.rpc_url);

@@ -1,20 +1,17 @@
 use alloy_consensus::transaction::Recovered;
-use erc20s::get_erc20_by_address;
 use revm::{
-    Database, DatabaseRef,
-    context::{
-        BlockEnv,
-        result::{ExecutionResult, HaltReason, Output},
-    },
+    DatabaseRef,
+    context::result::{ExecutionResult, HaltReason, Output},
     primitives::{
         Address, Bytes, HashMap, U256,
-        alloy_primitives::{BlockHash, TxHash},
+        alloy_primitives::TxHash,
         hex::{self},
-        keccak256,
     },
 };
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tlock_pdk::{
+    state::StateExt,
     tlock_api::alloy::{
         self,
         consensus::{TxEnvelope, transaction::SignerRecoverable},
@@ -27,33 +24,41 @@ use tlock_pdk::{
             },
         },
     },
-    wasmi_plugin_pdk::rpc_message::RpcError,
+    wasmi_plugin_pdk::{rpc_message::RpcError, transport::Transport},
 };
-use tracing::warn;
 
 use crate::{
     chain::{Chain, ChainError},
-    provider_snapshot::ProviderSnapshot,
     rpc::{
         result_to_tx_receipt, signed_tx_to_tx_env, simulated_block_to_header, tx_request_to_tx_env,
     },
+    state::get_provider_key,
 };
 
 /// A alloy-style provider backended using REVM. Handles type conversions and
 /// chain state management.
-pub struct Provider<DB: DatabaseRef> {
-    chain: Chain<DB>,
+///
+/// TODO: Consider making this + the chain functional, since they should be
+/// stateless
+pub struct Provider {
+    key: String,
+    transport: Transport,
+    chain: Chain,
+    pub state: ProviderState,
+}
 
-    /// Cache of all transactions sent to this provider, organized by block
-    /// number.
-    transactions: HashMap<u64, Vec<rpc::types::Transaction>>,
-    receipts: HashMap<TxHash, rpc::types::TransactionReceipt>,
+#[derive(Clone, Serialize, Deserialize)]
+pub struct ProviderState {
+    pub chain_id: u64,
+    pub fork_block: u64,
+    pub transactions: HashMap<u64, Vec<rpc::types::Transaction>>,
+    pub receipts: HashMap<TxHash, rpc::types::TransactionReceipt>,
 }
 
 #[derive(Debug, Error)]
-pub enum ProviderError<DB: DatabaseRef> {
+pub enum ProviderError {
     #[error("Chain Error: {0}")]
-    Chain(#[from] ChainError<DB>),
+    Chain(#[from] ChainError),
 
     #[error("RLP Error: {0}")]
     RlpError(#[from] alloy::rlp::Error),
@@ -79,68 +84,92 @@ pub enum ProviderError<DB: DatabaseRef> {
     #[error("Chain Halted: {0:?}")]
     ChainHalted(HaltReason),
 
+    #[error("Lock Error: {0}")]
+    LockError(#[from] tlock_pdk::state::LockError),
+
     #[error("Not Implemented")]
     NotImplemented,
 }
 
-impl<DB: DatabaseRef> From<ProviderError<DB>> for RpcError {
-    fn from(err: ProviderError<DB>) -> Self {
+impl From<ProviderError> for RpcError {
+    fn from(err: ProviderError) -> Self {
         RpcError::Custom(err.to_string())
     }
 }
 
-impl<DB: DatabaseRef + std::fmt::Debug> Provider<DB> {
-    pub fn new(db: DB, chain_id: u64, block_env: BlockEnv, parent_hash: BlockHash) -> Self {
-        let chain = Chain::new(db, chain_id, block_env, Some(parent_hash));
-        Self {
-            chain,
+impl Provider {
+    /// Creates a new Provider instance for a forked chain, initializing state.
+    pub fn new(
+        transport: Transport,
+        key: String,
+        fork_url: String,
+        header: rpc::types::Header,
+        chain_id: u64,
+        block_time: u64,
+    ) -> Result<Self, ProviderError> {
+        let state = ProviderState {
+            chain_id,
+            fork_block: header.number.saturating_sub(1),
             transactions: HashMap::default(),
             receipts: HashMap::default(),
-        }
-    }
+        };
+        let state_key = get_provider_key(&key);
+        transport.state().write_key(state_key, state.clone())?;
 
-    pub fn from_snapshot(db: DB, snapshot: ProviderSnapshot) -> Self {
-        let chain = Chain::from_snapshot(db, snapshot.chain);
-        Self {
+        let chain = Chain::new(
+            transport.clone(),
+            key.clone(),
+            fork_url,
+            header,
+            chain_id,
+            block_time,
+        )?;
+
+        Ok(Self {
+            key,
+            transport,
             chain,
-            transactions: snapshot.transactions,
-            receipts: snapshot.receipts,
-        }
+            state,
+        })
     }
 
-    pub fn snapshot(&self) -> ProviderSnapshot {
-        ProviderSnapshot {
-            chain: self.chain.snapshot(),
-            transactions: self.transactions.clone(),
-            receipts: self.receipts.clone(),
-        }
+    /// Loads an existing Provider instance from stored state
+    pub fn load(
+        transport: Transport,
+        key: String,
+        fork_url: String,
+    ) -> Result<Self, ProviderError> {
+        let state_key = get_provider_key(&key);
+        let state: ProviderState = transport.state().read_key(state_key)?;
+
+        let chain = Chain::load(transport.clone(), key.clone(), fork_url);
+
+        Ok(Self {
+            key,
+            transport,
+            chain,
+            state,
+        })
     }
 }
 
-impl<DB: DatabaseRef> Provider<DB> {
-    pub fn block_number(&self) -> u64 {
-        self.chain.latest()
+impl Provider {
+    pub fn block_number(&self) -> Result<u64, ProviderError> {
+        Ok(self.chain.latest()?)
     }
 
-    pub fn gas_price(&self) -> u128 {
-        self.chain.pending().env.basefee as u128
+    pub fn gas_price(&self) -> Result<u128, ProviderError> {
+        let pending = self.chain.pending()?;
+        Ok(pending.env.basefee as u128)
     }
 
-    pub fn get_balance(
-        &mut self,
-        address: Address,
-        block_id: BlockId,
-    ) -> Result<U256, ProviderError<DB>> {
-        if !self.is_latest(block_id) {
-            return Err(ProviderError::NotLatestBlock);
-        }
-
+    pub fn get_balance(&self, address: Address, block_id: BlockId) -> Result<U256, ProviderError> {
         let account = self
             .chain
-            .db()
-            .basic(address)
+            .db(block_id)?
+            .basic_ref(address)
             .map_err(|e| ChainError::Db(e.to_string()))?
-            .ok_or(ProviderError::AccountNotFound)?;
+            .unwrap_or_default();
 
         Ok(account.balance)
     }
@@ -149,21 +178,26 @@ impl<DB: DatabaseRef> Provider<DB> {
         &self,
         block_id: BlockId,
         tx_kind: BlockTransactionsKind,
-    ) -> Result<rpc::types::Block, ProviderError<DB>> {
+    ) -> Result<rpc::types::Block, ProviderError> {
         let number = match block_id {
             BlockId::Number(BlockNumberOrTag::Number(num)) => num,
-            BlockId::Number(BlockNumberOrTag::Latest) => self.chain.latest(),
+            BlockId::Number(BlockNumberOrTag::Latest) => self.chain.latest()?,
             _ => return Err(ProviderError::BlockNotFound),
         };
 
         let simulated_block = self
             .chain
-            .block(number)
+            .block(number)?
             .ok_or(ProviderError::BlockNotFound)?;
-        let header = simulated_block_to_header(simulated_block);
+        let header = simulated_block_to_header(&simulated_block);
         let block = rpc::types::Block::empty(header);
 
-        let transactions = self.transactions.get(&number).cloned().unwrap_or_default();
+        let transactions = self
+            .state
+            .transactions
+            .get(&number)
+            .cloned()
+            .unwrap_or_default();
         let block = match tx_kind {
             BlockTransactionsKind::Hashes => block.with_transactions(BlockTransactions::Hashes(
                 transactions
@@ -180,39 +214,31 @@ impl<DB: DatabaseRef> Provider<DB> {
     }
 
     pub fn get_code(
-        &mut self,
+        &self,
         address: Address,
         block_id: BlockId,
-    ) -> Result<Option<Bytes>, ProviderError<DB>> {
-        if !self.is_latest(block_id) {
-            return Err(ProviderError::NotLatestBlock);
-        }
-
+    ) -> Result<Option<Bytes>, ProviderError> {
         let account = self
             .chain
-            .db()
-            .basic(address)
+            .db(block_id)?
+            .basic_ref(address)
             .map_err(|e| ChainError::Db(e.to_string()))?
-            .ok_or(ProviderError::AccountNotFound)?;
+            .unwrap_or_default();
 
         Ok(account.code.map(|c| c.bytes()))
     }
 
     pub fn get_transaction_count(
-        &mut self,
+        &self,
         address: Address,
         block_id: BlockId,
-    ) -> Result<u64, ProviderError<DB>> {
-        if !self.is_latest(block_id) {
-            return Err(ProviderError::NotLatestBlock);
-        }
-
+    ) -> Result<u64, ProviderError> {
         let account = self
             .chain
-            .db()
-            .basic(address)
+            .db(block_id)?
+            .basic_ref(address)
             .map_err(|e| ChainError::Db(e.to_string()))?
-            .ok_or(ProviderError::AccountNotFound)?;
+            .unwrap_or_default();
 
         Ok(account.nonce)
     }
@@ -220,8 +246,9 @@ impl<DB: DatabaseRef> Provider<DB> {
     pub fn get_transaction_by_hash(
         &self,
         tx_hash: TxHash,
-    ) -> Result<rpc::types::Transaction, ProviderError<DB>> {
-        for txs in self.transactions.values() {
+    ) -> Result<rpc::types::Transaction, ProviderError> {
+        // TODO: Pass to chain db if not present?
+        for txs in self.state.transactions.values() {
             for tx in txs {
                 if tx.inner.hash() == &tx_hash {
                     return Ok(tx.clone());
@@ -229,16 +256,16 @@ impl<DB: DatabaseRef> Provider<DB> {
             }
         }
 
-        Err(ProviderError::BlockNotFound)
+        Err(ProviderError::TransactionNotFound)
     }
 
     pub fn call(
-        &mut self,
+        &self,
         tx_request: rpc::types::TransactionRequest,
         block_id: BlockId,
         state_override: Option<StateOverride>,
         block_override: Option<BlockOverrides>,
-    ) -> Result<Bytes, ProviderError<DB>> {
+    ) -> Result<Bytes, ProviderError> {
         let tx_env = tx_request_to_tx_env(tx_request);
 
         let result = self
@@ -250,20 +277,20 @@ impl<DB: DatabaseRef> Provider<DB> {
                 Output::Call(bytes) => Ok(bytes),
                 Output::Create(bytes, _) => Ok(bytes),
             },
-            ExecutionResult::Revert { output, .. } => Err(
-                ProviderError::<DB>::TransactionReverted(decode_revert_reason(&output)),
-            ),
-            ExecutionResult::Halt { reason, .. } => Err(ProviderError::<DB>::ChainHalted(reason)),
+            ExecutionResult::Revert { output, .. } => Err(ProviderError::TransactionReverted(
+                decode_revert_reason(&output),
+            )),
+            ExecutionResult::Halt { reason, .. } => Err(ProviderError::ChainHalted(reason)),
         }
     }
 
     pub fn estimate_gas(
-        &mut self,
+        &self,
         tx_request: rpc::types::TransactionRequest,
         block_id: BlockId,
         state_override: Option<StateOverride>,
         block_override: Option<BlockOverrides>,
-    ) -> Result<u64, ProviderError<DB>> {
+    ) -> Result<u64, ProviderError> {
         let tx_env = tx_request_to_tx_env(tx_request);
 
         let result = self
@@ -272,15 +299,21 @@ impl<DB: DatabaseRef> Provider<DB> {
 
         match result {
             ExecutionResult::Success { gas_used, .. } => Ok(gas_used),
-            ExecutionResult::Revert { output, .. } => Err(
-                ProviderError::<DB>::TransactionReverted(decode_revert_reason(&output)),
-            ),
-            ExecutionResult::Halt { reason, .. } => Err(ProviderError::<DB>::ChainHalted(reason)),
+            ExecutionResult::Revert { output, .. } => Err(ProviderError::TransactionReverted(
+                decode_revert_reason(&output),
+            )),
+            ExecutionResult::Halt { reason, .. } => Err(ProviderError::ChainHalted(reason)),
         }
     }
 
     /// Sends a raw transaction to the chain, executes it, and returns its hash.
-    pub fn send_raw_transaction(&mut self, raw_tx: Bytes) -> Result<TxHash, ProviderError<DB>> {
+    pub fn send_raw_transaction(&self, raw_tx: Bytes) -> Result<TxHash, ProviderError> {
+        let state_key = get_provider_key(&self.key);
+        let mut state = self
+            .transport
+            .state()
+            .try_lock_key::<ProviderState>(state_key)?;
+
         let tx_envelope = TxEnvelope::decode(&mut raw_tx.as_ref())?;
         let from = tx_envelope.recover_signer()?;
         let tx_hash = tx_envelope.hash().clone();
@@ -289,27 +322,29 @@ impl<DB: DatabaseRef> Provider<DB> {
         let result = self.chain.transact_commit(tx_env)?;
 
         //? Should always have a block since we just committed a transaction
-        let block_number = self.chain.latest();
+        let block_number = self.chain.latest()?;
         let block = self
             .chain
-            .block(block_number)
+            .block(block_number)?
             .ok_or(ProviderError::BlockNotFound)?;
 
-        let receipt = result_to_tx_receipt(block, tx_envelope.clone(), from, &result);
-        self.receipts.insert(tx_hash, receipt);
+        let receipt = result_to_tx_receipt(&block, tx_envelope.clone(), from, &result);
+        state.receipts.insert(tx_hash, receipt);
 
         let rpc_tx = rpc::types::Transaction {
             inner: Recovered::new_unchecked(tx_envelope, from),
             block_hash: Some(block.hash),
             block_number: Some(block_number),
             transaction_index: Some(
-                self.transactions
+                state
+                    .transactions
                     .get(&block_number)
                     .map_or(0, |v| v.len() as u64),
             ),
-            effective_gas_price: Some(self.chain.pending().env.basefee as u128),
+            effective_gas_price: Some(self.chain.pending()?.env.basefee as u128),
         };
-        self.transactions
+        state
+            .transactions
             .entry(block_number)
             .or_insert_with(Vec::new)
             .push(rpc_tx);
@@ -321,26 +356,26 @@ impl<DB: DatabaseRef> Provider<DB> {
         &self,
         tx_hash: TxHash,
     ) -> Option<rpc::types::TransactionReceipt> {
-        self.receipts.get(&tx_hash).cloned()
+        self.state.receipts.get(&tx_hash).cloned()
     }
 
     pub fn get_block_receipts(
         &self,
         block_id: BlockId,
-    ) -> Result<Vec<rpc::types::TransactionReceipt>, ProviderError<DB>> {
+    ) -> Result<Vec<rpc::types::TransactionReceipt>, ProviderError> {
         let number = match block_id {
             BlockId::Number(BlockNumberOrTag::Number(num)) => num,
-            BlockId::Number(BlockNumberOrTag::Latest) => self.chain.latest(),
+            BlockId::Number(BlockNumberOrTag::Latest) => self.chain.latest()?,
             _ => return Err(ProviderError::BlockNotFound),
         };
 
-        let Some(txns) = self.transactions.get(&number) else {
+        let Some(txns) = self.state.transactions.get(&number) else {
             return Ok(vec![]);
         };
 
         let receipts = txns
             .iter()
-            .filter_map(|tx| self.receipts.get(&tx.inner.hash().clone()).cloned())
+            .filter_map(|tx| self.state.receipts.get(&tx.inner.hash().clone()).cloned())
             .collect();
 
         Ok(receipts)
@@ -349,7 +384,7 @@ impl<DB: DatabaseRef> Provider<DB> {
     pub fn get_logs(
         &self,
         _filter: rpc::types::Filter,
-    ) -> Result<Vec<rpc::types::Log>, ProviderError<DB>> {
+    ) -> Result<Vec<rpc::types::Log>, ProviderError> {
         // TODO: Impl get_logs
         return Err(ProviderError::NotImplemented);
     }
@@ -359,12 +394,12 @@ impl<DB: DatabaseRef> Provider<DB> {
         block_count: u64,
         newest_block: BlockNumberOrTag,
         reward_percentiles: Vec<f64>,
-    ) -> Result<alloy::rpc::types::FeeHistory, ProviderError<DB>> {
+    ) -> Result<alloy::rpc::types::FeeHistory, ProviderError> {
         let count: usize = block_count as usize;
-        let current_base_fee: u128 = self.chain.pending().env.basefee.into();
-        let blob_excess_gas_and_price: u128 = self
-            .chain
-            .pending()
+        let pending = self.chain.pending()?;
+
+        let current_base_fee: u128 = pending.env.basefee.into();
+        let blob_excess_gas_and_price: u128 = pending
             .env
             .blob_excess_gas_and_price
             .map(|b| b.blob_gasprice)
@@ -372,8 +407,8 @@ impl<DB: DatabaseRef> Provider<DB> {
 
         let newest_num: u64 = match newest_block {
             BlockNumberOrTag::Number(n) => n,
-            BlockNumberOrTag::Latest => self.chain.latest(),
-            BlockNumberOrTag::Pending => self.chain.latest(),
+            BlockNumberOrTag::Latest => self.chain.latest()?,
+            BlockNumberOrTag::Pending => self.chain.latest()?,
             _ => return Err(ProviderError::BlockNotFound),
         };
         let oldest_block = newest_num.saturating_sub(block_count);
@@ -394,66 +429,26 @@ impl<DB: DatabaseRef> Provider<DB> {
 
 // ---------- CHEATCODES ----------
 #[allow(dead_code)]
-impl<DB: DatabaseRef> Provider<DB> {
+impl Provider {
     /// Sets the balance for a given address.
-    pub fn deal(&mut self, address: Address, amount: U256) -> Result<(), ProviderError<DB>> {
-        let mut info = self
-            .chain
-            .db()
-            .basic(address)
-            .map_err(|e| ChainError::Db(e.to_string()))?
-            .unwrap_or_default();
-
-        info.balance = amount;
-        self.chain.db().insert_account_info(address, info);
-
-        Ok(())
+    pub fn deal(&self, address: Address, amount: U256) -> Result<(), ProviderError> {
+        Ok(self.chain.deal(address, amount)?)
     }
 
     /// Sets the ERC20 token balance for a given address.
     pub fn deal_erc20(
-        &mut self,
+        &self,
         address: Address,
         token: Address,
         amount: U256,
-    ) -> Result<(), ProviderError<DB>> {
-        let slot = if let Some(erc20) = get_erc20_by_address(&token) {
-            erc20.slot
-        } else {
-            warn!("Attempting to deal ERC20 for unknown token: {:?}", token);
-            0
-        };
-
-        // Storage key = keccak256(abi.encode(holder, slot))
-        // holder is left-padded to 32 bytes, then slot as 32 bytes
-        let mut key_preimage = [0u8; 64];
-        key_preimage[12..32].copy_from_slice(address.as_slice()); // address at bytes 12-31
-        key_preimage[32..64].copy_from_slice(&U256::from(slot).to_be_bytes::<32>()); // slot at bytes 32-63
-
-        let storage_key = keccak256(key_preimage);
-
-        self.chain
-            .db()
-            .insert_account_storage(token, storage_key.into(), amount)
-            .map_err(|e| ChainError::Db(e.to_string()))?;
-
-        Ok(())
+    ) -> Result<(), ProviderError> {
+        Ok(self.chain.deal_erc20(address, token, amount)?)
     }
 
     /// Mines a new block.
-    pub fn mine(&mut self) -> Result<(), ProviderError<DB>> {
+    pub fn mine(&self) -> Result<(), ProviderError> {
         self.chain.mine()?;
         Ok(())
-    }
-}
-
-impl<DB: DatabaseRef> Provider<DB> {
-    fn is_latest(&self, block: BlockId) -> bool {
-        match block {
-            BlockId::Number(BlockNumberOrTag::Latest) => true,
-            BlockId::Number(num) => num == BlockNumberOrTag::Number(self.chain.latest()),
-            _ => false,
-        }
     }
 }
 

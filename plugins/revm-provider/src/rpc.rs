@@ -170,7 +170,7 @@ pub fn result_to_tx_receipt(
 ) -> rpc::types::TransactionReceipt {
     let tx_type = tx_envelope.tx_type().clone();
     let tx_hash = tx_envelope.hash().clone();
-    let tx_info = execution_result_to_transaction_info(block, result);
+    let tx_info = execution_result_to_transaction_info(block, tx_hash, result);
     let recovered = Recovered::new_unchecked(tx_envelope, from);
     let tx = rpc::types::Transaction::from_transaction(recovered, tx_info);
 
@@ -211,6 +211,7 @@ pub fn result_to_tx_receipt(
 
 fn execution_result_to_transaction_info(
     block: &SimulatedBlock,
+    tx_hash: TxHash,
     result: &ExecutionResult,
 ) -> rpc::types::TransactionInfo {
     let idx = block
@@ -219,7 +220,7 @@ fn execution_result_to_transaction_info(
         .position(|r| r == result)
         .unwrap_or_default();
 
-    let tx_hash = compute_tx_hash(block.env.number.saturating_to(), idx);
+    // let tx_hash =
     let tx_info = rpc::types::TransactionInfo {
         hash: Some(tx_hash),
         index: Some(idx as u64),

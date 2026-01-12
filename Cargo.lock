@@ -7210,12 +7210,14 @@ dependencies = [
 name = "revm-provider"
 version = "0.1.0"
 dependencies = [
+ "alloy",
  "alloy-consensus",
  "erc20s",
  "revm",
  "serde",
  "serde_json",
  "thiserror 2.0.17",
+ "tlock-alloy",
  "tlock-pdk",
  "tracing",
  "tracing-subscriber 0.3.22",
