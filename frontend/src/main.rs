@@ -14,7 +14,6 @@ use frontend::{
 };
 use host::{host::Host, host_state::PluginSource};
 use tlock_hdk::tlock_api::{
-    self,
     entities::{EntityId, PageId},
     host::NotifyLevel,
 };

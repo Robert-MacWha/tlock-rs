@@ -1,6 +1,5 @@
 use dioxus::prelude::*;
 use tlock_hdk::tlock_api::{
-    alloy::primitives::Address,
     caip::{AccountAddress, AssetType},
     component::Component,
     page::PageEvent,

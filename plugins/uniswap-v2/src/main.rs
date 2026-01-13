@@ -456,8 +456,13 @@ fn build_swap_operations(
 
 fn build_ui(state: &PluginState) -> tlock_pdk::tlock_api::component::Component {
     let mut sections = vec![
-        heading("Uniswap V2 Swap"),
-        text("Swap ERC20 tokens on Sepolia using Uniswap V2"),
+        heading("Uniswap V2"),
+        text(
+            r#"Demo Uniswap V2 plugin that facilitates ERC20 token swaps. For 
+demonstration purposes it includes a set of predefined ERC20 tokens. Internally 
+it relies on a eth-provider to read on-chain data, and a coordinator to execute
+proposed swaps."#,
+        ),
     ];
 
     // Status message
