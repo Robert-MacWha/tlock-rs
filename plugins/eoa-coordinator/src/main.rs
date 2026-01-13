@@ -444,11 +444,16 @@ async fn return_eth<T: Provider>(
         return Ok(());
     }
 
+    let nonce = provider
+        .get_transaction_count(state_account_address)
+        .await
+        .rpc_err()?;
     let tx_hash = provider
         .send_transaction(
             TransactionRequest::default()
                 .to(deposit_address)
-                .value(return_amount),
+                .value(return_amount)
+                .nonce(nonce),
         )
         .await
         .rpc_err()?
@@ -480,8 +485,13 @@ async fn return_erc20<T: Provider>(
         return Ok(());
     }
 
+    let nonce = provider
+        .get_transaction_count(state_account_address)
+        .await
+        .rpc_err()?;
     let tx_hash = erc20
         .transfer(deposit_address, balance)
+        .nonce(nonce)
         .send()
         .await
         .rpc_err()?

@@ -336,6 +336,7 @@ fn build_ui(provider: Provider) -> Result<Component, RpcError> {
     // Show transactions by block
     let mut sorted_blocks: Vec<_> = provider.state.transactions.iter().collect();
     sorted_blocks.sort_by_key(|(block_num, _)| *block_num);
+    let receipts = provider.state.receipts.clone();
     sections.push(unordered_list(sorted_blocks.iter().flat_map(
         |(number, txs)| {
             let block_header = (
@@ -343,21 +344,42 @@ fn build_ui(provider: Provider) -> Result<Component, RpcError> {
                 text(format!("Block {}: {} transaction(s)", number, txs.len())),
             );
 
+            let receipts = receipts.clone();
             let tx_items = txs.iter().enumerate().map(move |(i, tx)| {
                 use alloy_consensus::Transaction;
+
+                let tx_hash = tx.inner.hash();
+                let receipt = receipts.get(tx_hash);
+                let status_icon = match receipt {
+                    Some(r) if r.status() => "✓",
+                    Some(_) => "✗",
+                    None => "?",
+                };
+
+                let sig_display = if tx.input().len() >= 4 {
+                    format!("0x{}", hex::encode(&tx.input()[..4]))
+                } else {
+                    "0x".to_string()
+                };
+
+                let mut display = format!(
+                    "  - {} {} -> {} | value: {} wei | sig: {}",
+                    status_icon,
+                    tx.inner.signer(),
+                    tx.to().unwrap_or(Address::ZERO),
+                    tx.value(),
+                    sig_display
+                );
+
+                if let Some(r) = receipt {
+                    if !r.status() {
+                        display.push_str(" | REVERTED");
+                    }
+                }
+
                 (
                     format!("block_{}_tx_{}", number, i),
-                    text(format!(
-                        "  - {} -> {} | value: {} wei | sig: {}",
-                        tx.inner.signer(),
-                        tx.to().unwrap_or(Address::ZERO),
-                        tx.value(),
-                        if tx.input().len() >= 4 {
-                            format!("0x{}", hex::encode(&tx.input()[..4]))
-                        } else {
-                            "0x".to_string()
-                        }
-                    )),
+                    text(display),
                 )
             });
 

@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use erc20s::{ERC20S, get_erc20_by_address};
+use erc20s::get_erc20_by_address;
 use revm::{
     Context, DatabaseRef, ExecuteEvm, MainBuilder, MainContext,
     bytecode::LegacyAnalyzedBytecode,
@@ -277,15 +277,6 @@ impl Chain {
 
     /// Mines a block containing the transaction and updates the chain state.
     pub fn transact_commit(&self, tx: TxEnv) -> Result<ExecutionResult, ChainError> {
-        //? Inspect the erc20 balances of the sender before executing the tx
-        for erc20 in ERC20S.iter() {
-            let balance = self.inspect_erc20(tx.caller, erc20.address)?;
-            info!(
-                "Pre-Tx Balance of {} for {:?}: {}",
-                erc20.symbol, tx.caller, balance
-            );
-        }
-
         let state_key = get_chain_key(&self.key);
         let mut state = self
             .transport
@@ -513,40 +504,6 @@ impl Chain {
             .or_default() = EvmStorageSlot::new(amount, 0);
 
         self.mine_with_state(&mut state, evm_state, vec![])
-    }
-
-    /// Inspects the ERC20 token balance of the specified address.
-    fn inspect_erc20(&self, address: Address, token: Address) -> Result<U256, ChainError> {
-        let state = self.clone_state()?;
-
-        let latest: u64 = state.pending.env.number.saturating_to();
-        let latest = latest.saturating_sub(1);
-        let db = construct_db::<Ethereum>(
-            self.transport.clone(),
-            self.key.clone(),
-            self.fork_url.clone(),
-            state.fork_block_number,
-            latest,
-        )?;
-
-        let slot = if let Some(erc20) = get_erc20_by_address(&token) {
-            erc20.slot
-        } else {
-            warn!("Attempting to inspect ERC20 for unknown token: {:?}", token);
-            0
-        };
-
-        // Storage key = keccak256(abi.encode(holder, slot))
-        // holder is left-padded to 32 bytes, then slot as 32 bytes
-        let mut key_preimage = [0u8; 64];
-        key_preimage[12..32].copy_from_slice(address.as_slice()); // address at bytes 12-31
-        key_preimage[32..64].copy_from_slice(&U256::from(slot).to_be_bytes::<32>()); // slot at bytes 32-63
-
-        let storage_key = keccak256(key_preimage);
-        let storage_key = storage_key.into_u256();
-
-        let balance = db.storage_ref(token, storage_key).rpc_err()?;
-        Ok(balance)
     }
 }
 

@@ -245,7 +245,7 @@ impl<'de> Deserialize<'de> for AccountId {
 pub struct AssetId {
     pub chain_id: ChainId,
     pub asset: AssetType,
-}
+}t
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum AssetType {

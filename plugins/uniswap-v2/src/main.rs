@@ -166,9 +166,6 @@ async fn on_update(
         page::PageEvent::ButtonClicked(button_id) if button_id == "execute_swap" => {
             handle_execute_swap(&transport, &mut state).await?;
         }
-        page::PageEvent::ButtonClicked(button_id) if button_id == "refresh_quote" => {
-            handle_refresh_quote(&transport, &mut state).await?;
-        }
         _ => {
             warn!("Unhandled page event: {:?}", event);
             return Ok(());
@@ -235,22 +232,6 @@ async fn handle_swap_form_update(
         state.last_message = Some("Select both tokens to calculate quote".into());
     }
 
-    Ok(())
-}
-
-async fn handle_refresh_quote(
-    transport: &Transport,
-    state: &mut PluginState,
-) -> Result<(), RpcError> {
-    if state.selected_from_token.is_some()
-        && state.selected_to_token.is_some()
-        && state.input_amount != 0.0
-    {
-        calculate_quote(transport, state).await?;
-        state.last_message = Some("Quote refreshed".into());
-    } else {
-        state.last_message = Some("Fill all fields first".into());
-    }
     Ok(())
 }
 
@@ -524,7 +505,6 @@ fn build_ui(state: &PluginState) -> tlock_pdk::tlock_api::component::Component {
         sections.push(text(format!("To: {} ({:?})", token.symbol, token.address)));
     }
 
-    sections.push(button_input("refresh_quote", "Refresh Quote"));
     sections.push(button_input("execute_swap", "Execute Swap"));
 
     container(sections)
