@@ -131,6 +131,14 @@ pub mod host {
         pub body: Option<Vec<u8>>,
     }
 
+    /// TODO: Consider adding more levels based on android/iOS notification levels
+    #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+    pub enum NotifyLevel {
+        Trace,
+        Info,
+        Error,
+    }
+
     impl fmt::Debug for Request {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             let headers_debug: Vec<_> = self
@@ -184,22 +192,14 @@ pub mod host {
         host_fetch, Fetch, Request, Result<Vec<u8>, String>
     );
 
-    // TODO: [Update state management](docs/state.md)
-    // rpc_method!(
-    //     /// Gets the plugin's persistent state from the host.
-    //     ///
-    //     /// Returns `None` if no state has been stored.
-    //     host_get_state, GetState, (), Option<Vec<u8>>
-    // );
-
-    // rpc_method!(
-    //     /// Sets the plugin's persistent state to the host.
-    //     host_set_state, SetState, Vec<u8>, ()
-    // );
-
     rpc_method!(
         /// Sets a specific page to the given component.
         host_set_page, SetPage, (PageId, Component), ()
+    );
+
+    rpc_method!(
+        /// Sends a notification to the host to be displayed
+        host_notify, Notify, (NotifyLevel, String), ()
     );
 }
 

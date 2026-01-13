@@ -99,15 +99,20 @@ async fn on_update(
     let (page_id, event) = params;
     info!("Page updated: {:?}", event);
 
+    #[allow(unused_assignments)]
+    let mut notification = None;
     match event {
         page::PageEvent::ButtonClicked(button_id) if button_id == "reset_fork" => {
             handle_reset_fork(transport.clone())?;
+            notification = Some("Fork reset to chain head".to_string());
         }
         page::PageEvent::ButtonClicked(button_id) if button_id == "mine_fork" => {
             handle_mine(transport.clone())?;
+            notification = Some("Mined one block".to_string());
         }
         page::PageEvent::FormSubmitted(form_id, form_data) if form_id == "deal_form" => {
             handle_deal(transport.clone(), form_data)?;
+            notification = Some("Deal executed".to_string());
         }
         _ => {
             warn!("Unhandled page event: {:?}", event);
@@ -120,6 +125,14 @@ async fn on_update(
     host::SetPage
         .call_async(transport.clone(), (page_id, component))
         .await?;
+    if let Some(message) = notification {
+        host::Notify
+            .call_async(
+                transport,
+                (tlock_pdk::tlock_api::host::NotifyLevel::Info, message),
+            )
+            .await?;
+    }
 
     Ok(())
 }
@@ -320,7 +333,7 @@ fn build_ui(provider: Provider) -> Result<Component, RpcError> {
             "deal_form",
             vec![
                 text_input("account", "Account", "eip155:1:0xabc123..."),
-                text_input("amount", "Amount (wei)", "10000"),
+                text_input("amount", "Amount", "1.0"),
                 dropdown("asset", "Asset", asset_symbols, Some("ETH".to_string())),
                 submit_input("Execute Deal"),
             ],
@@ -350,11 +363,6 @@ fn build_ui(provider: Provider) -> Result<Component, RpcError> {
 
                 let tx_hash = tx.inner.hash();
                 let receipt = receipts.get(tx_hash);
-                let status_icon = match receipt {
-                    Some(r) if r.status() => "✓",
-                    Some(_) => "✗",
-                    None => "?",
-                };
 
                 let sig_display = if tx.input().len() >= 4 {
                     format!("0x{}", hex::encode(&tx.input()[..4]))
@@ -363,8 +371,7 @@ fn build_ui(provider: Provider) -> Result<Component, RpcError> {
                 };
 
                 let mut display = format!(
-                    "  - {} {} -> {} | value: {} wei | sig: {}",
-                    status_icon,
+                    "  - {} -> {} | value: {} wei | sig: {}",
                     tx.inner.signer(),
                     tx.to().unwrap_or(Address::ZERO),
                     tx.value(),
@@ -377,10 +384,7 @@ fn build_ui(provider: Provider) -> Result<Component, RpcError> {
                     }
                 }
 
-                (
-                    format!("block_{}_tx_{}", number, i),
-                    text(display),
-                )
+                (format!("block_{}_tx_{}", number, i), text(display))
             });
 
             std::iter::once(block_header).chain(tx_items)
@@ -437,15 +441,20 @@ fn handle_deal(transport: Transport, form_data: HashMap<String, String>) -> Resu
     let fork = load_provider(transport.clone())?;
     match asset_symbol {
         "ETH" => {
-            fork.deal(address, amount)?;
+            let amount_wei = amount * U256::from(10).pow(U256::from(18));
+            fork.deal(address, amount_wei)?;
         }
         other => {
-            let token_address = ERC20S
+            let erc20 = ERC20S
                 .iter()
                 .find(|e| e.symbol == other)
-                .map(|e| e.address)
+                .cloned()
                 .context("Unknown ERC20 asset")?;
-            fork.deal_erc20(address, token_address, amount)?;
+            let token_address = erc20.address;
+            let decimals = erc20.decimals;
+
+            let amount_raw = amount * U256::from(10).pow(U256::from(decimals));
+            fork.deal_erc20(address, token_address, amount_raw)?;
         }
     }
 

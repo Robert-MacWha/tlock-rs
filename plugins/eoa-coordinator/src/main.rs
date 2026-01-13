@@ -206,20 +206,20 @@ async fn propose(
     )
     .await?;
     withdraw_assets(transport.clone(), &state, &coordinator.account, &bundle).await?;
-    //? Log the error, but continue to the return step regardless
-    let _ = execute_bundle(&provider, bundle).await.map_err(|e| {
-        // TODO: Notify host on error
-        error!("Error executing bundle: {:?}", e);
-    });
+
+    //? We always want to attempt to return assets, even if execution fails,
+    //? so defer the error handling
+    let execution_result = execute_bundle(&provider, bundle).await;
     return_outstanding_assets(
         &provider,
+        transport.clone(),
         evm_address,
         return_assets,
         initial_native_balance,
     )
     .await?;
 
-    Ok(())
+    execution_result
 }
 
 async fn verify_vault_balance(
@@ -239,8 +239,8 @@ async fn verify_vault_balance(
 
         if &vault_amount < amount {
             return Err(RpcError::Custom(format!(
-                "Insufficient asset {asset_id} in vault {} ({} < {})",
-                state.vault_id, vault_amount, amount
+                "Insufficient assets ({} < {})",
+                state.vault_id, amount
             )));
         }
     }
@@ -391,32 +391,46 @@ async fn execute_bundle<T: Provider>(
 
 async fn return_outstanding_assets<T: Provider>(
     provider: &T,
+    transport: Transport,
     state_account_address: Address,
     return_assets: Vec<ReturnAsset>,
     initial_native_balance: U256,
 ) -> Result<(), RpcError> {
     for return_asset in return_assets {
         info!("Returning to vault: {:?}...", &return_asset.asset);
-        match return_asset.asset {
+        let result = match return_asset.asset {
             EvmAsset::Eth => {
-                let _ = return_eth(
+                return_eth(
                     provider,
                     state_account_address,
                     return_asset.deposit_address,
                     initial_native_balance,
                 )
                 .await
-                .map_err(|e| error!("Error returning {:?}: {}", &return_asset.asset, e));
             }
             EvmAsset::Erc20(address) => {
-                let _ = return_erc20(
+                return_erc20(
                     provider,
                     state_account_address,
                     return_asset.deposit_address,
                     address,
                 )
                 .await
-                .map_err(|e| error!("Error returning {:?}: {}", &return_asset.asset, e));
+            }
+        };
+
+        match result {
+            Ok(_) => {}
+            Err(e) => {
+                let err_msg = format!("Error returning asset {:?}: {:?}", return_asset.asset, e);
+                let _ = host::Notify.call(
+                    transport.clone(),
+                    (host::NotifyLevel::Error, err_msg.clone()),
+                );
+                error!(
+                    "Error returning asset {:?}: {}",
+                    return_asset.asset, err_msg
+                );
             }
         }
     }

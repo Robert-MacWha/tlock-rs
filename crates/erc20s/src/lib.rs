@@ -8,6 +8,7 @@ pub struct ERC20 {
     pub chain_id: u64,
     pub symbol: &'static str,
     pub slot: u64,
+    pub decimals: u8,
 }
 
 pub const CHAIN_ID: u64 = 1;
@@ -22,6 +23,7 @@ pub const ERC20S: [ERC20; 3] = [
         chain_id: CHAIN_ID,
         symbol: "WETH",
         slot: 3,
+        decimals: 18,
     },
     ERC20 {
         address: address!("0x6b175474e89094c44da98b954eedeac495271d0f"),
@@ -32,6 +34,7 @@ pub const ERC20S: [ERC20; 3] = [
         chain_id: CHAIN_ID,
         symbol: "DAI",
         slot: 2,
+        decimals: 18,
     },
     ERC20 {
         address: address!("0xDe30da39c46104798bB5aA3fe8B9e0e1F348163F"),
@@ -42,6 +45,7 @@ pub const ERC20S: [ERC20; 3] = [
         chain_id: CHAIN_ID,
         symbol: "GTC",
         slot: 5,
+        decimals: 18,
     },
 ];
 

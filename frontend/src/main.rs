@@ -13,7 +13,11 @@ use frontend::{
     },
 };
 use host::{host::Host, host_state::PluginSource};
-use tlock_hdk::tlock_api::entities::{EntityId, PageId};
+use tlock_hdk::tlock_api::{
+    self,
+    entities::{EntityId, PageId},
+    host::NotifyLevel,
+};
 
 #[derive(Copy, Clone)]
 struct UiContext {
@@ -51,6 +55,7 @@ fn app() -> Element {
             toast_container {}
             requests_modal {}
             events_modal {}
+            events_toast_handler {}
             div { class: "drawer md:drawer-open",
                 input {
                     id: "my-drawer",
@@ -378,4 +383,37 @@ fn events_modal() -> Element {
             }
         }
     }
+}
+
+#[component]
+fn events_toast_handler() -> Element {
+    let ctx: HostContext = use_context();
+    let toast_ctx: ToastContext = use_context();
+    let mut last_count = use_signal(|| 0usize);
+
+    use_effect(move || {
+        let events = ctx.events();
+        let new_count = events.len();
+        let old_count = *last_count.peek();
+
+        if new_count <= old_count {
+            return;
+        }
+
+        for event in events.iter().skip(old_count) {
+            match event.level {
+                NotifyLevel::Trace => {}
+                NotifyLevel::Info => {
+                    toast_ctx.push(event.message.clone(), ToastKind::Info);
+                }
+                NotifyLevel::Error => {
+                    toast_ctx.push(event.message.clone(), ToastKind::Error);
+                }
+            }
+        }
+
+        last_count.set(new_count);
+    });
+
+    rsx! {}
 }

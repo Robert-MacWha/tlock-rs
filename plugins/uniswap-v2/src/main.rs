@@ -382,13 +382,30 @@ async fn handle_execute_swap(
     };
 
     // Propose to coordinator
-    coordinator::Propose
+    let proposal = coordinator::Propose
         .call_async(transport.clone(), (coordinator_id, account_id, bundle))
-        .await?;
+        .await;
+    if let Err(err) = proposal {
+        state.last_message = Some(format!("Swap failed: {}", err));
+        host::Notify
+            .call_async(
+                transport.clone(),
+                (host::NotifyLevel::Error, format!("Swap failed")),
+            )
+            .await?;
+        return Ok(());
+    }
 
-    state.last_message = Some("Swap executed successfully!".into());
+    state.last_message = Some("Swap executed".into());
     state.input_amount = 0.0;
     state.expected_output = 0.0;
+
+    host::Notify
+        .call_async(
+            transport.clone(),
+            (host::NotifyLevel::Info, format!("Swap executed")),
+        )
+        .await?;
 
     Ok(())
 }

@@ -70,6 +70,7 @@ pub enum UserRequest {
 pub struct Event {
     pub id: Uuid,
     pub message: String,
+    pub level: host::NotifyLevel,
     pub timestamp: chrono::DateTime<chrono::Local>,
 }
 
@@ -185,7 +186,7 @@ impl Host {
         self.observers.lock().unwrap().push(tx);
     }
 
-    fn notify(&self) {
+    fn notify_observers(&self) {
         let mut observers = self.observers.lock().unwrap();
         observers.retain(|tx| tx.unbounded_send(()).is_ok());
     }
@@ -257,6 +258,7 @@ impl Host {
             .with_method(host::RequestVault, request_vault)
             .with_method(host::RequestCoordinator, request_coordinator)
             .with_method(host::Fetch, fetch)
+            .with_method(host::Notify, notify)
             .with_method(state::LockKey, lock_key)
             .with_method(state::SetKey, set_key)
             .with_method(state::UnlockKey, unlock_key)
@@ -371,7 +373,7 @@ impl Host {
             .unwrap()
             .insert(request_id.clone(), sender);
 
-        self.notify();
+        self.notify_observers();
         let resp = receiver.await;
 
         // Remove the request from the list
@@ -434,6 +436,7 @@ impl Host {
         log.push(Event {
             id: Uuid::new_v4(),
             message: event,
+            level: host::NotifyLevel::Trace,
             timestamp: chrono::Local::now(),
         });
     }
@@ -556,6 +559,31 @@ impl Host {
         Ok(Ok(bytes.to_vec()))
     }
 
+    pub async fn notify(
+        &self,
+        instance_id: &InstanceId,
+        params: (host::NotifyLevel, String),
+    ) -> Result<(), RpcError> {
+        {
+            let (level, message) = params;
+
+            let plugin_name = match self.get_plugin(&instance_id.plugin) {
+                Some(plugin) => plugin.name().to_string(),
+                None => "Unknown Plugin".to_string(),
+            };
+
+            self.events.lock().unwrap().push(Event {
+                id: uuid::Uuid::new_v4(),
+                message: format!("[{}] {}", plugin_name, message).to_string(),
+                level,
+                timestamp: chrono::Local::now(),
+            });
+        }
+
+        self.notify_observers();
+        Ok(())
+    }
+
     pub async fn lock_key(
         &self,
         instance_id: &InstanceId,
@@ -575,7 +603,7 @@ impl Host {
                             state_key.1
                         )));
                     }
-                    Some((holder, event)) => {
+                    Some((_holder, event)) => {
                         // Different holder - wait
                         event.listen()
                     }
@@ -662,7 +690,7 @@ impl Host {
         info!("Setting interface for page {}", params.0);
         let (page_id, component) = params;
         self.interfaces.lock().unwrap().insert(page_id, component);
-        self.notify();
+        self.notify_observers();
         Ok(())
     }
 
@@ -953,6 +981,7 @@ impl_host_rpc!(Host, state::LockKey, lock_key);
 impl_host_rpc!(Host, state::SetKey, set_key);
 impl_host_rpc!(Host, state::UnlockKey, unlock_key);
 impl_host_rpc!(Host, host::SetPage, set_interface);
+impl_host_rpc!(Host, host::Notify, notify);
 impl_host_rpc_no_id!(Host, vault::GetAssets, vault_get_assets);
 impl_host_rpc_no_id!(Host, vault::Withdraw, vault_withdraw);
 impl_host_rpc_no_id!(Host, vault::GetDepositAddress, vault_get_deposit_address);

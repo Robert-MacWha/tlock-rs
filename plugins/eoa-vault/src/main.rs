@@ -254,6 +254,7 @@ async fn on_update(
     let (page_id, event) = params;
     info!("Page updated in Vault Plugin: {:?}", event);
 
+    let mut notification = None;
     match event {
         page::PageEvent::ButtonClicked(id) if id == "generate_dev_key" => {
             let signer = PrivateKeySigner::random();
@@ -261,12 +262,14 @@ async fn on_update(
         }
         page::PageEvent::ButtonClicked(id) if id == "refresh_assets" => {
             // Simply rebuild the UI to refresh asset balances
+            notification = Some("Balances refreshed.".to_string());
         }
         page::PageEvent::FormSubmitted(id, form_data) if id == "private_key_form" => {
             handle_dev_private_key(transport.clone(), form_data).await?;
         }
         _ => {
             warn!("Unhandled page event: {:?}", event);
+            return Ok(());
         }
     }
 
@@ -275,6 +278,15 @@ async fn on_update(
     host::SetPage
         .call_async(transport.clone(), (page_id, component))
         .await?;
+
+    if let Some(notification) = notification {
+        host::Notify
+            .call_async(
+                transport.clone(),
+                (host::NotifyLevel::Info, notification.to_string()),
+            )
+            .await?;
+    }
 
     Ok(())
 }
