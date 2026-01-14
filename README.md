@@ -26,6 +26,8 @@ Plugins provide features through entities, which come in many flavours including
  - Coordinators: Interact with vaults securely, providing atomic-like interactions
  - Pages: Create pages with react-like components for arbitrary user interaction (vault managers, swapping dapp, staking dapp, settings, etc)
 
+For more information, view the [Architecture Overview](./docs/ARCHITECTURE.md).
+
 ## Status Quo
 
 The current wallet landscape is dominated by monolithic walled gardens that bundle a fixed set of features and applications. DeFi's origin as websites has been a saving grace, allowing users to access a broader ecosystem of applications. However, wallets have not embraced this modularity, instead opting for closed systems that limit user choice and stifle innovation.
