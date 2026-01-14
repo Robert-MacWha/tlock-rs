@@ -7,7 +7,7 @@ use dioxus::{
 use futures::StreamExt;
 use host::{
     host::{Event, Host, PluginError, UserRequest},
-    host_state::PluginSource,
+    host_state::{HostState, PluginSource},
 };
 use tlock_hdk::{
     tlock_api::{
@@ -51,6 +51,11 @@ impl HostContext {
     }
 
     //? --- Reactive Getters ---
+    pub fn state(&self) -> HostState {
+        let _ = self.revision.read();
+        self.host.read().state()
+    }
+
     pub fn plugin_ids(&self) -> Vec<PluginId> {
         let _ = self.revision.read();
         self.host.read().get_plugins()

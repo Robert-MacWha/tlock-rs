@@ -455,15 +455,7 @@ fn build_swap_operations(
 // ---------- UI Builder Function ----------
 
 fn build_ui(state: &PluginState) -> tlock_pdk::tlock_api::component::Component {
-    let mut sections = vec![
-        heading("Uniswap V2"),
-        text(
-            r#"Demo Uniswap V2 plugin that facilitates ERC20 token swaps. For 
-demonstration purposes it includes a set of predefined ERC20 tokens. Internally 
-it relies on a eth-provider to read on-chain data, and a coordinator to execute
-proposed swaps."#,
-        ),
-    ];
+    let mut sections = vec![heading("Uniswap V2"), text("Swap ERC20s with Uniswap V2")];
 
     // Status message
     if let Some(msg) = &state.last_message {
@@ -514,20 +506,20 @@ proposed swaps."#,
     }
 
     // Display selected token info
-    if let Some(from_idx) = state.selected_from_token {
+    if let Some(from_idx) = state.selected_from_token
+        && let Some(to_idx) = state.selected_to_token
+    {
         let token = &ERC20S[from_idx];
         sections.push(text(format!(
             "From: {} ({:?})",
             token.symbol, token.address
         )));
-    }
 
-    if let Some(to_idx) = state.selected_to_token {
         let token = &ERC20S[to_idx];
         sections.push(text(format!("To: {} ({:?})", token.symbol, token.address)));
-    }
 
-    sections.push(button_input("execute_swap", "Execute Swap"));
+        sections.push(button_input("execute_swap", "Execute Swap"));
+    }
 
     container(sections)
 }

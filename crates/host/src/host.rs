@@ -159,7 +159,7 @@ impl Host {
         Ok(host)
     }
 
-    pub fn to_state(&self) -> HostState {
+    pub fn state(&self) -> HostState {
         let plugins = self.plugins.lock().unwrap();
         let plugin_sources = self.plugin_sources.lock().unwrap();
 

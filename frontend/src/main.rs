@@ -8,6 +8,8 @@ use frontend::{
         host::HostContext,
         toast::{ToastContext, ToastKind, toast_container},
     },
+    download_util::download_bytes,
+    focus_helper::blur_active_element,
 };
 use host::{host::Host, host_state::PluginSource};
 use tlock_hdk::tlock_api::{
@@ -141,6 +143,7 @@ fn sidebar_component() -> Element {
     rsx! {
         div { class: "flex flex-col h-full bg-base-200 w-xs menu",
             h1 { class: "menu-title text-xl text-primary", "Lodgelock" }
+            states_dropdown {}
             div { class: "divider" }
             h2 { class: "menu-title", "Pages" }
             ul {
@@ -205,9 +208,58 @@ fn sidebar_component() -> Element {
                 li {
                     button { onclick: move |_| show_plugin_registry.set(true), "Load Plugin" }
                 }
+                li {
+                    button {
+                        onclick: move |_| {
+                            let state = ctx.state();
+                            if let Ok(data) = serde_json::to_vec_pretty(&state) {
+                                if let Err(e) = download_bytes(&data, "state.json", "application/json") {
+                                    error!("Failed to download state: {:?}", e);
+                                }
+                            }
+                        },
+                        "Download State"
+                    }
+                }
+                        // fieldset { class: "px-3 py-2",
+            //     legend { "Upload State file" }
+            //     input {
+            //         class: "file-input file-input-sm px-0 py-0",
+            //         r#type: "file",
+            //         accept: ".json",
+            //         onchange: move |e| async move {
+            //             let toast_ctx: ToastContext = use_context();
+            //             if let Err(e) = handle_upload_state(e).await {
+            //                 error!("State upload failed: {:?}", e);
+            //                 toast_ctx.push(format!("State upload failed: {:?}", e), ToastKind::Error);
+            //             } else {
+            //                 toast_ctx.push("State uploaded", ToastKind::Info);
+            //             }
+            //         },
+            //     }
+            // }
             }
         }
     }
+}
+
+async fn handle_upload_state(event: Event<FormData>) -> anyhow::Result<()> {
+    let files = event.files();
+    let file = files.get(0).ok_or_else(|| anyhow!("No file selected"))?;
+    let bytes = file
+        .read_bytes()
+        .await
+        .map_err(|e| anyhow!("Failed to read file bytes: {:?}", e))?;
+
+    let state: host::host_state::HostState = serde_json::from_slice(&bytes)?;
+    let host = Host::from_state(state)
+        .await
+        .map_err(|e| anyhow!("Failed to create host from state: {:?}", e))?;
+
+    let mut ctx: HostContext = consume_context();
+    ctx.set_host(host);
+
+    Ok(())
 }
 
 #[component]
@@ -433,6 +485,83 @@ fn plugins_modal() -> Element {
             }
         }
     )
+}
+
+#[component]
+fn states_dropdown() -> Element {
+    let states_folder = asset!("/assets/states");
+    let manifest = use_resource(move || async move {
+        let manifest_path = format!("{}/manifest.json", states_folder);
+        let manifest = dioxus::asset_resolver::read_asset_bytes(&manifest_path)
+            .await
+            .unwrap();
+        let manifest: Vec<String> = serde_json::from_slice(&manifest).unwrap();
+        manifest
+    });
+
+    rsx! {
+        if let Some(states) = manifest.read().as_ref() {
+            div { class: "dropdown",
+                div {
+                    tabindex: "0",
+                    role: "button",
+                    class: "btn btn-primary w-full m-1",
+                    "Load Demo"
+                }
+                ul {
+                    tabindex: "-1",
+                    class: "dropdown-content menu w-full bg-base-100 rounded-box z-1 p-2 shadow-sm",
+                    for state_name in states.iter() {
+                        {
+                            let state_name = state_name.clone();
+                            rsx! {
+                                li { key: "state-{state_name}",
+                                    button {
+                                        class: "text-sm break-all",
+                                        onclick: move |_| {
+                                            let state_name = state_name.clone();
+                                            async move {
+                                                blur_active_element();
+
+
+                                                let state_path = format!("{}/{}.json", states_folder, state_name);
+                                                if let Err(e) = handle_load_state(&state_path).await {
+                                                    error!("Failed to load state {}: {:?}", state_name, e);
+                                                } else {
+                                                    info!("Successfully loaded state {}", state_name);
+                                                }
+                                            }
+                                        },
+                                        "{state_name}"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } else {
+            p { "Loading states..." }
+        }
+    }
+}
+
+async fn handle_load_state(path: &str) -> anyhow::Result<()> {
+    info!("Loading state from path: {}", path);
+    let state_bytes = dioxus::asset_resolver::read_asset_bytes(path)
+        .await
+        .map_err(|e| anyhow!("Failed to read state asset bytes: {:?}", e))?;
+
+    let state: host::host_state::HostState = serde_json::from_slice(&state_bytes)
+        .map_err(|e| anyhow!("Failed to deserialize state JSON: {:?}", e))?;
+    let host = Host::from_state(state)
+        .await
+        .map_err(|e| anyhow!("Failed to create host from state: {:?}", e))?;
+
+    let mut ctx: HostContext = consume_context();
+    ctx.set_host(host);
+
+    Ok(())
 }
 
 async fn handle_load_plugin(path: String) -> anyhow::Result<()> {

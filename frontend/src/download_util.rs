@@ -1,42 +1,37 @@
-use dioxus::prelude::*;
-use wasm_bindgen::JsValue;
+use wasm_bindgen::JsCast;
+use web_sys::{Blob, BlobPropertyBag, HtmlAnchorElement, Url, js_sys};
 
-pub fn trigger_file_download<'a>(
-    filename: &str,
-    mime_type: &str,
-    data: Vec<u8>,
-) -> Result<(), String> {
-    let url = generate_blob_url_from_data(data, mime_type)?;
+pub fn download_bytes(data: &[u8], filename: &str, mime_type: &str) -> anyhow::Result<()> {
+    let array = js_sys::Uint8Array::from(data);
+    let blob_parts = js_sys::Array::new();
+    blob_parts.push(&array);
 
-    let script = format!(
-        r#"
-            const link = document.createElement('a');
-            link.href = "{url}";
-            link.download = "{filename}";
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            URL.revokeObjectURL(link.href);
-        "#,
-        url = url,
-        filename = filename
-    );
+    let blob_props = BlobPropertyBag::new();
+    blob_props.set_type(mime_type);
 
-    document::eval(&script);
+    let blob = Blob::new_with_u8_array_sequence_and_options(&blob_parts, &blob_props)
+        .map_err(|e| anyhow::anyhow!("Failed to create blob for download: {:?}", e))?;
+    let url = Url::create_object_url_with_blob(&blob)
+        .map_err(|e| anyhow::anyhow!("Failed to create object URL for download blob: {:?}", e))?;
+
+    let window = web_sys::window().unwrap();
+    let document = window.document().unwrap();
+    let anchor = document
+        .create_element("a")
+        .map_err(|e| anyhow::anyhow!("Failed to create anchor element: {:?}", e))?
+        .dyn_into::<HtmlAnchorElement>()
+        .map_err(|e| {
+            anyhow::anyhow!(
+                "Failed to cast anchor element to HtmlAnchorElement: {:?}",
+                e
+            )
+        })?;
+
+    anchor.set_href(&url);
+    anchor.set_download(filename);
+    anchor.click();
+
+    Url::revoke_object_url(&url)
+        .map_err(|e| anyhow::anyhow!("Failed to revoke object URL: {:?}", e))?;
     Ok(())
-}
-
-fn generate_blob_url_from_data(data: Vec<u8>, mime_type: &str) -> Result<String, String> {
-    let properties = web_sys::BlobPropertyBag::new();
-    properties.set_type(mime_type);
-
-    let js_array: JsValue = web_sys::js_sys::Uint8Array::from(&data[..]).into();
-    let buffer: web_sys::js_sys::Array = IntoIterator::into_iter([js_array]).collect();
-    let blob = web_sys::Blob::new_with_buffer_source_sequence_and_options(&buffer, &properties)
-        .map_err(|e| format!("Failed to create Blob: {:?}", e))?;
-
-    let url = web_sys::Url::create_object_url_with_blob(&blob)
-        .map_err(|e| format!("Failed to create Object URL: {:?}", e))?;
-
-    Ok(url)
 }

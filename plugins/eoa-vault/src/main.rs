@@ -324,11 +324,7 @@ async fn handle_new_signer(transport: Transport, signer: PrivateKeySigner) -> Re
 async fn build_ui(transport: Transport, state: &PluginState) -> Component {
     let mut sections = vec![
         heading("EOA Vault"),
-        text(
-            r#"A basic vault plugin managing an externally owned account using 
-an internal private key. This vault includes its own page UI, but in the future 
-a single plugin could manage many different kinds of vaults from the same interface."#,
-        ),
+        text("Store and manage assets in an EOA using your private key"),
     ];
 
     let Some(vault) = &state.vault else {

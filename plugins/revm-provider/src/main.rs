@@ -306,13 +306,7 @@ fn load_provider(transport: Transport) -> Result<Provider, RpcError> {
 fn build_ui(provider: Provider) -> Result<Component, RpcError> {
     let mut sections = vec![
         heading("REVM Provider"),
-        text(
-            r#"A forked Ethereum provider running on REVM. This forked instance 
-runs locally inside the plugin's wasm sandbox. Given those constraints it's still 
-resonably fast, with slowdowns dominated by currently-inefficient network request 
-handling. Once data is cached, it can be accessed lighting-fast. The fork also has
-some basic cheatcodes to make testing easier!"#,
-        ),
+        text("Use a forked Ethereum provided, running locally in your browser"),
     ];
 
     // Fork info section

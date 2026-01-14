@@ -211,18 +211,8 @@ async fn handle_unstake(
 
 fn build_ui(state: &PluginState) -> tlock_pdk::tlock_api::component::Component {
     let mut sections = vec![
-        heading("Example Staker"),
-        text(
-            r#"Demo staking plugin that facilitates staking ETH in a custodial vault.
-This plugin both provides and consumes a vault entity. 
-
-When staking / unstaking, it requests a vault to transfer assets to/from.
-
-While holding staked assets, it exposes a vault entity that can be used just like 
-any other vault. Even though the assets are held custodially, they are still
-visible within lodgelock's vaults framework.
-"#,
-        ),
+        heading("Custodial Staker"),
+        text("Stake your ETH in a custodial vault managed by this plugin."),
     ];
 
     sections.push(heading2("Staked Balance"));

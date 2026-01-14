@@ -22,7 +22,9 @@ wasm-bindgen = { workspace = true }
 web-sys = { workspace = true, features = [
     "BlobPropertyBag",
     "Blob",
-    "Url"
+    "Url",
+    "HtmlAnchorElement",
+    "Document"
 ] }
 uuid = { workspace = true }
 hex = { workspace = true }
