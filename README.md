@@ -20,6 +20,12 @@ Lodgelock is designed around three core ideals:
 
 Lodgelock is built around a secure host that loads and manages untrusted arbitrary plugins. The host provides core services like storage, networking, and plugin management. Plugins implement wallet functionality by registering entities with the host. This way, plugins can be installed independently and provide arbitrary features (key management, blockchain providers, DeFi protocols, UI components, etc) without requiring any host updates.
 
+Plugins provide features through entities, which come in many flavours including:
+ - Vaults: Unified asset custody interface (EOAs, hardware wallets, multisigs, CEXs, custodial dapps, bank accounts, etc)
+ - Eth Providers: Standardized access to eth json-rpc methods (json-rpc provider, revm fork, helios lite client, tor proxy, etc)
+ - Coordinators: Interact with vaults securely, providing atomic-like interactions
+ - Pages: Create pages with react-like components for arbitrary user interaction
+
 ## Status Quo
 
 The current wallet landscape is dominated by monolithic walled gardens that bundle a fixed set of features and applications. DeFi's origin as websites has been a saving grace, allowing users to access a broader ecosystem of applications. However, wallets have not embraced this modularity, instead opting for closed systems that limit user choice and stifle innovation.
