@@ -24,7 +24,7 @@ Plugins provide features through entities, which come in many flavours including
  - Vaults: Unified asset custody interface (EOAs, hardware wallets, multisigs, CEXs, custodial dapps, bank accounts, etc)
  - Eth Providers: Standardized access to eth json-rpc methods (json-rpc provider, revm fork, helios lite client, tor proxy, etc)
  - Coordinators: Interact with vaults securely, providing atomic-like interactions
- - Pages: Create pages with react-like components for arbitrary user interaction
+ - Pages: Create pages with react-like components for arbitrary user interaction (vault managers, swapping dapp, staking dapp, settings, etc)
 
 ## Status Quo
 
