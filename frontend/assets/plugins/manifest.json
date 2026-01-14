@@ -1,0 +1,7 @@
+[
+    "eoa-coordinator",
+    "eoa-vault",
+    "revm-provider",
+    "staking",
+    "uniswap-v2"
+]

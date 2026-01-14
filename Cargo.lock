@@ -3702,6 +3702,7 @@ dependencies = [
  "gloo-timers",
  "hex",
  "host",
+ "serde",
  "serde_json",
  "tlock-hdk",
  "uuid",

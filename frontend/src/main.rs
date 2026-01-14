@@ -1,10 +1,7 @@
 use std::sync::Arc;
 
 use anyhow::anyhow;
-use dioxus::{
-    logger::tracing::{error, info},
-    prelude::*,
-};
+use dioxus::{logger::tracing::info, prelude::*};
 use frontend::{
     components::{page::Page, user_requests::UserRequestComponent},
     contexts::{
@@ -22,6 +19,7 @@ use tlock_hdk::tlock_api::{
 struct UiContext {
     show_request_sidebar: Signal<bool>,
     show_events_sidebar: Signal<bool>,
+    show_plugin_registry_sidebar: Signal<bool>,
     selected_page: Signal<Option<PageId>>,
 }
 
@@ -40,6 +38,7 @@ fn app() -> Element {
     let ui_signals = UiContext {
         show_request_sidebar: use_signal(|| false),
         show_events_sidebar: use_signal(|| false),
+        show_plugin_registry_sidebar: use_signal(|| false),
         selected_page: use_signal(|| None),
     };
     use_context_provider(|| ui_signals);
@@ -54,6 +53,7 @@ fn app() -> Element {
             toast_container {}
             requests_modal {}
             events_modal {}
+            plugins_modal {}
             events_toast_handler {}
             div { class: "drawer md:drawer-open",
                 input {
@@ -99,6 +99,7 @@ fn sidebar_component() -> Element {
     let mut show_requests = use_context::<UiContext>().show_request_sidebar;
     let mut show_events = use_context::<UiContext>().show_events_sidebar;
     let mut selected_page = use_context::<UiContext>().selected_page;
+    let mut show_plugin_registry = use_context::<UiContext>().show_plugin_registry_sidebar;
 
     let named_pages = use_memo(move || {
         let pages = ctx.page_ids();
@@ -201,22 +202,8 @@ fn sidebar_component() -> Element {
                 li {
                     button { onclick: move |_| show_events.set(true), "Events" }
                 }
-                div { class: "px-3 py-1.5",
-                    fieldset { class: "fieldset",
-                        legend { class: "fieldset-legend", "Load WASM Plugin" }
-                        input {
-                            class: "file-input file-input-sm px-0 py-0",
-                            r#type: "file",
-                            accept: ".wasm",
-                            onchange: move |e| async move {
-                                let toast_ctx: ToastContext = use_context();
-                                if let Err(e) = handle_wasm_upload(e).await {
-                                    error!("WASM upload failed: {:?}", e);
-                                    toast_ctx.push(format!("WASM upload failed: {:?}", e), ToastKind::Error);
-                                }
-                            },
-                        }
-                    }
+                li {
+                    button { onclick: move |_| show_plugin_registry.set(true), "Load Plugin" }
                 }
             }
         }
@@ -264,30 +251,6 @@ fn main_component() -> Element {
             }
         }
     }
-}
-
-async fn handle_wasm_upload(e: Event<FormData>) -> anyhow::Result<()> {
-    let files = e.files();
-    let file = files.first().context("No file selected")?;
-    let name = file.name();
-    let data = file
-        .read_bytes()
-        .await
-        .map_err(|e| anyhow!("Read fail {}: {:?}", name, e))?;
-
-    let plugin_source = PluginSource::Embedded(data.to_vec());
-    let name = name.strip_suffix(".wasm").unwrap_or(&name);
-
-    let mut ctx: HostContext = consume_context();
-    let id = ctx
-        .new_plugin(plugin_source, name)
-        .await
-        .map_err(|e| anyhow!("Plugin load fail: {:?}", e))?;
-
-    info!("Loaded plugin {} [{}]", name, id);
-    consume_context::<ToastContext>().push(format!("Loaded {}", name), ToastKind::Success);
-
-    Ok(())
 }
 
 #[component]
@@ -382,6 +345,124 @@ fn events_modal() -> Element {
             }
         }
     }
+}
+
+#[component]
+fn plugins_modal() -> Element {
+    let ctx: HostContext = use_context();
+    let mut show_plugins = use_context::<UiContext>().show_plugin_registry_sidebar;
+    let toast_ctx: ToastContext = use_context();
+
+    let loaded_plugins = ctx.plugins();
+
+    let plugins_folder = asset!("/assets/plugins");
+    let manifest = use_resource(move || async move {
+        let manifest_path = format!("{}/manifest.json", plugins_folder);
+        let manifest = dioxus::asset_resolver::read_asset_bytes(&manifest_path)
+            .await
+            .unwrap();
+        let manifest: Vec<String> = serde_json::from_slice(&manifest).unwrap();
+        manifest
+    });
+
+    let modal_class = if *show_plugins.read() {
+        "modal-open"
+    } else {
+        ""
+    };
+
+    // Filter out already loaded plugins based on their names
+    let plugins = manifest.read();
+    let plugins = plugins.as_ref().map(|m| {
+        m.iter()
+            .cloned()
+            .filter(|name| !loaded_plugins.iter().any(|p| p.name() == name.as_str()))
+            .collect::<Vec<_>>()
+    });
+
+    rsx!(
+        dialog { class: "modal modal-start {modal_class}",
+            div { class: "modal-box bg-base-200 w-md flex flex-col h-full",
+                div { class: "flex-none w-full menu",
+                    h3 { class: "font-bold text-lg", "Plugins" }
+                    div { class: "divider" }
+
+                    ul { class: "flex-1 overflow-y-auto min-h-0",
+                        if let Some(plugins) = plugins {
+                            for plugin_name in plugins.iter() {
+                                {
+                                    let plugin_name = plugin_name.clone();
+                                    rsx! {
+                                        li { key: "plugin-{plugin_name}",
+                                            button {
+                                                class: "text-sm break-all",
+                                                onclick: move |_| {
+                                                    let plugin_name = plugin_name.clone();
+                                                    async move {
+                                                        let plugin_path = format!("{}/{}.wasm", plugins_folder, plugin_name);
+                                                        show_plugins.set(false);
+                                                        if let Err(e) = handle_load_plugin(plugin_path).await {
+                                                            error!("Failed to load plugin {}: {:?}", plugin_name, e);
+                                                            toast_ctx
+                                                                .push(
+                                                                    format!("Failed to load plugin {}: {:?}", plugin_name, e),
+                                                                    ToastKind::Error,
+                                                                );
+                                                        } else {
+                                                            info!("Successfully loaded plugin {}", plugin_name);
+                                                            toast_ctx
+                                                                .push(format!("Loaded plugin {}", plugin_name), ToastKind::Info);
+                                                        }
+                                                    }
+                                                },
+                                                "{plugin_name}"
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            form {
+                method: "dialog",
+                class: "modal-backdrop",
+                onmousedown: move |_| show_plugins.set(false),
+                button { "Close" }
+            }
+        }
+    )
+}
+
+async fn handle_load_plugin(path: String) -> anyhow::Result<()> {
+    info!("Loading plugin from path: {}", path);
+
+    // Get the current origin and make the URL absolute
+    let window = web_sys::window().ok_or_else(|| anyhow::anyhow!("No window"))?;
+    let location = window.location();
+    let origin = location
+        .origin()
+        .map_err(|_| anyhow::anyhow!("Failed to get origin"))?;
+    let full_url = format!("{}{}", origin, path);
+
+    info!("Full URL: {}", full_url);
+    let plugin_source = PluginSource::Url(full_url);
+    let name = path
+        .split('/')
+        .last()
+        .and_then(|s| s.strip_suffix(".wasm"))
+        .unwrap_or("unknown_plugin");
+
+    let mut ctx: HostContext = consume_context();
+    let id = ctx
+        .new_plugin(plugin_source, name)
+        .await
+        .map_err(|e| anyhow!("Plugin load fail: {:?}", e))?;
+
+    info!("Loaded plugin {} [{}]", name, id);
+
+    Ok(())
 }
 
 #[component]

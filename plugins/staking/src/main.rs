@@ -214,9 +214,14 @@ fn build_ui(state: &PluginState) -> tlock_pdk::tlock_api::component::Component {
         heading("Example Staker"),
         text(
             r#"Demo staking plugin that facilitates staking ETH in a custodial vault.
-This plugin provides a vault entity that reflects the staked assets. This means that
-even though the assets are custodially held by another address, they're visible within
-lodgelock's UI and can be used anywhere a vault can."#,
+This plugin both provides and consumes a vault entity. 
+
+When staking / unstaking, it requests a vault to transfer assets to/from.
+
+While holding staked assets, it exposes a vault entity that can be used just like 
+any other vault. Even though the assets are held custodially, they are still
+visible within lodgelock's vaults framework.
+"#,
         ),
     ];
 
