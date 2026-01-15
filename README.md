@@ -20,13 +20,21 @@ Lodgelock is designed around three core ideals:
 
 Lodgelock is built around a secure host that loads and manages untrusted arbitrary plugins. The host provides core services like storage, networking, and plugin management. Plugins implement wallet functionality by registering entities with the host. This way, plugins can be installed independently and provide arbitrary features (key management, blockchain providers, DeFi protocols, UI components, etc) without requiring any host updates.
 
+Plugins provide features through entities, which come in many flavours including:
+ - Vaults: Unified asset custody interface (EOAs, hardware wallets, multisigs, CEXs, custodial dapps, bank accounts, etc)
+ - Eth Providers: Standardized access to eth json-rpc methods (json-rpc provider, revm fork, helios lite client, tor proxy, etc)
+ - Coordinators: Interact with vaults securely, providing atomic-like interactions
+ - Pages: Create pages with react-like components for arbitrary user interaction (vault managers, swapping dapp, staking dapp, settings, etc)
+
+For more information, view the [Architecture Overview](./docs/ARCHITECTURE.md).
+
 ## Status Quo
 
 The current wallet landscape is dominated by monolithic walled gardens that bundle a fixed set of features and applications. DeFi's origin as websites has been a saving grace, allowing users to access a broader ecosystem of applications. However, wallets have not embraced this modularity, instead opting for closed systems that limit user choice and stifle innovation.
 
 This lack of modularity has created a dangerous example of the **Power of Defaults**. Wallets decree what features and applications are present within their walls, shaping behavior and experience for millions. For a prime example, simply look at the exchange rates provided by Metamask's built-in swap versus uniswap or 1inch. When the gateway to web3 is a profit-seeking entity, the default becomes a toll-bridge rather than an open road.
 
-Wallets also suffer from **Extractive Incentives**. When the wallet controls the default experience, it is incentivised to prioritize features that enrich itself over those that benefit users. Consider Polymarket integrating kalshi prediction markets into their app, adding gambling features to the homepage of a financial application without user consent, warning, age verification, or an option to disable it. While users should undoubtedly have the freedom to have such features, they should not be forced upon them.
+Wallets also suffer from **Extractive Incentives**. When the wallet controls the default experience, it is incentivised to prioritize features that enrich itself over those that benefit users. Consider Phantom integrating kalshi prediction markets into their app, adding gambling features to the homepage of a financial application without user consent, warning, age verification, or an option to disable it. While users should undoubtedly have the freedom to have such features, they should not be forced upon them.
 
 ## Getting Started
 
