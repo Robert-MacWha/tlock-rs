@@ -382,6 +382,12 @@ async fn handle_execute_swap(
     };
 
     // Propose to coordinator
+    host::Notify
+        .call_async(
+            transport.clone(),
+            (host::NotifyLevel::Info, format!("Executing swap...")),
+        )
+        .await?;
     let proposal = coordinator::Propose
         .call_async(transport.clone(), (coordinator_id, account_id, bundle))
         .await;

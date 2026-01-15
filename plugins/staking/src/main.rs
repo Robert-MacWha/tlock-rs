@@ -47,12 +47,10 @@ struct PluginState {
 async fn init(transport: Transport, _params: ()) -> Result<(), RpcError> {
     info!("Initializing Staking Plugin");
 
-    let provider_id = host::RequestEthProvider
-        .call_async(transport.clone(), ChainId::new_evm(CHAIN_ID))
-        .await?;
-    host::RegisterEntity
-        .call_async(transport.clone(), Domain::Page)
-        .await?;
+    let provider_id =
+        host::RequestEthProvider.call(transport.clone(), ChainId::new_evm(CHAIN_ID))?;
+    host::RegisterEntity.call(transport.clone(), Domain::Vault)?;
+    host::RegisterEntity.call(transport.clone(), Domain::Page)?;
 
     let signer = PrivateKeySigner::random();
     let address = signer.address();
@@ -69,7 +67,7 @@ async fn init(transport: Transport, _params: ()) -> Result<(), RpcError> {
 }
 
 async fn ping(transport: Transport, _params: ()) -> Result<String, RpcError> {
-    global::Ping.call_async(transport, ()).await?;
+    global::Ping.call(transport, ())?;
     Ok("pong".to_string())
 }
 
@@ -80,9 +78,7 @@ async fn on_load(transport: Transport, page_id: PageId) -> Result<(), RpcError> 
 
     let state: PluginState = transport.state().read()?;
     let component = build_ui(&state);
-    host::SetPage
-        .call_async(transport.clone(), (page_id, component))
-        .await?;
+    host::SetPage.call(transport.clone(), (page_id, component))?;
 
     Ok(())
 }
@@ -109,9 +105,7 @@ async fn on_update(
     }
 
     let component = build_ui(&state);
-    host::SetPage
-        .call_async(transport.clone(), (page_id, component))
-        .await?;
+    host::SetPage.call(transport.clone(), (page_id, component))?;
 
     Ok(())
 }

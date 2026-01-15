@@ -25,10 +25,11 @@ use tlock_pdk::{
         RpcMethod,
         alloy::primitives::U256,
         caip::{AccountId, AssetId, AssetType, ChainId},
+        component::{Component, container, heading, text},
         coordinator,
         domains::Domain,
-        entities::{CoordinatorId, EntityId, EthProviderId, VaultId},
-        global, host, plugin, vault,
+        entities::{CoordinatorId, EntityId, EthProviderId, PageId, VaultId},
+        global, host, page, plugin, vault,
     },
     wasmi_plugin_pdk::{
         rpc_message::{RpcError, RpcErrorContext, ToRpcResult},
@@ -44,6 +45,7 @@ struct State {
     vault_id: VaultId,
     provider_id: EthProviderId,
     coordinator: Coordinator,
+    operations: u64,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -83,14 +85,12 @@ async fn ping(transport: Transport, _: ()) -> Result<String, RpcError> {
 }
 
 async fn init(transport: Transport, _: ()) -> Result<(), RpcError> {
-    let provider_id = host::RequestEthProvider
-        .call_async(transport.clone(), ChainId::new_evm(CHAIN_ID))
-        .await?;
-    let vault_id = host::RequestVault.call_async(transport.clone(), ()).await?;
-
-    let coordinator_id = host::RegisterEntity
-        .call_async(transport.clone(), Domain::Coordinator)
-        .await?;
+    let provider_id =
+        host::RequestEthProvider.call(transport.clone(), ChainId::new_evm(CHAIN_ID))?;
+    let vault_id = host::RequestVault.call(transport.clone(), ())?;
+    let coordinator_id = host::RegisterEntity.call(transport.clone(), Domain::Coordinator)?;
+    host::RegisterEntity.call(transport.clone(), Domain::Page)?;
+    host::RegisterEntity.call(transport.clone(), Domain::Vault)?;
 
     let signer = PrivateKeySigner::random();
     let address = signer.address();
@@ -104,6 +104,7 @@ async fn init(transport: Transport, _: ()) -> Result<(), RpcError> {
             private_key: signer.to_bytes(),
             account: account_id,
         },
+        operations: 0,
     };
 
     transport.state().lock_or(|| state)?;
@@ -164,9 +165,12 @@ async fn propose(
     params: (CoordinatorId, AccountId, coordinator::EvmBundle),
 ) -> Result<(), RpcError> {
     info!("Received proposal: {:?}", params);
-
-    let state: State = transport.state().read()?;
     let (coordinator_id, account_id, bundle) = params;
+
+    let mut state = transport.state().try_lock::<State>()?;
+    state.operations += bundle.operations.len() as u64;
+    let state = state.into_inner();
+
     let coordinator = state.coordinator.clone();
 
     let coordinator_id: EntityId = coordinator_id.into();
@@ -219,7 +223,34 @@ async fn propose(
     )
     .await?;
 
+    let ui = build_ui(&state);
+    host::SetPage.call(transport.clone(), (PageId::default(), ui))?;
+
     execution_result
+}
+
+async fn on_load(transport: Transport, page_id: PageId) -> Result<(), RpcError> {
+    let state: State = transport.state().read()?;
+
+    let ui = build_ui(&state);
+    host::SetPage.call(transport.clone(), (page_id, ui))?;
+
+    Ok(())
+}
+
+fn build_ui(state: &State) -> Component {
+    let sections = vec![
+        heading("Vault Coordinator"),
+        text("Orchestrates multi-step transactions between plugins and vaults"),
+        text("Status:"),
+        text("Active"),
+        text("Connected Vault:"),
+        text(format!("{}", state.vault_id)),
+        text("Completed operations:"),
+        text(format!("{}", state.operations)),
+    ];
+
+    container(sections)
 }
 
 async fn verify_vault_balance(
@@ -534,5 +565,6 @@ fn main() {
         .with_method(coordinator::GetSession, get_session)
         .with_method(coordinator::GetAssets, get_assets)
         .with_method(coordinator::Propose, propose)
+        .with_method(page::OnLoad, on_load)
         .run();
 }
