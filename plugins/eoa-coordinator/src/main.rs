@@ -167,9 +167,12 @@ async fn propose(
     info!("Received proposal: {:?}", params);
     let (coordinator_id, account_id, bundle) = params;
 
-    let mut state = transport.state().try_lock::<State>()?;
-    state.operations += bundle.operations.len() as u64;
-    let state = state.into_inner();
+    {
+        let mut state = transport.state().try_lock::<State>()?;
+        state.operations += bundle.operations.len() as u64;
+    }
+
+    let state: State = transport.state().read()?;
 
     let coordinator = state.coordinator.clone();
 
