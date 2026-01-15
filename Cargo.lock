@@ -3695,9 +3695,11 @@ dependencies = [
 name = "frontend"
 version = "0.1.0"
 dependencies = [
+ "alloy",
  "anyhow",
  "console_error_panic_hook",
  "dioxus",
+ "erc20s",
  "futures",
  "gloo-timers",
  "hex",
