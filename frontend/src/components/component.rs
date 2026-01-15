@@ -1,3 +1,4 @@
+use alloy::primitives::U256;
 use dioxus::prelude::*;
 use tlock_hdk::tlock_api::{
     caip::{AccountAddress, AssetType},
@@ -6,13 +7,40 @@ use tlock_hdk::tlock_api::{
 };
 use web_sys::js_sys::eval;
 
+fn format_balance(amount: U256, decimals: u8) -> String {
+    let amount_f64 = amount.to_string().parse::<f64>().unwrap_or(0.0);
+    format!("{:.4}", amount_f64 / 10_f64.powi(decimals as i32))
+}
+
+fn shorten_addr(addr: &str) -> String {
+    format!("{}...{}", &addr[..6], &addr[addr.len() - 4..])
+}
+
+fn get_asset_info(asset_type: &AssetType) -> (String, u8) {
+    match asset_type {
+        AssetType::Slip44(60) => ("ETH".to_string(), 18),
+        AssetType::Slip44(n) => (format!("slip44:{}", n), 18),
+        AssetType::Erc20(addr) => erc20s::get_erc20_by_address(addr)
+            .map(|t| (t.symbol.to_string(), t.decimals))
+            .unwrap_or_else(|| (format!("erc20:{}", shorten_addr(&format!("{:?}", addr))), 18)),
+        AssetType::Custom { namespace, reference } => (
+            format!(
+                "{}:{}...{}",
+                namespace,
+                &reference[..6.min(reference.len())],
+                &reference[reference.len().saturating_sub(4)..]
+            ),
+            18,
+        ),
+    }
+}
+
 #[derive(PartialEq, Clone, Props)]
 pub struct ComponentProps {
     component: Component,
     on_event: Callback<PageEvent, ()>,
 }
 
-/// Render a UI component recursively.
 #[component]
 pub fn RenderComponent(props: ComponentProps) -> Element {
     let component = props.component;
@@ -156,20 +184,16 @@ pub fn RenderComponent(props: ComponentProps) -> Element {
                 AccountAddress::Evm(a) => format!("{:?}", a),
                 AccountAddress::Custom(s) => s.clone(),
             };
-            let ns = id.chain_id.namespace().to_string();
-            let r = id.chain_id.reference().unwrap_or_else(|| "_".to_string());
-            let caip2 = format!("{}:{}", ns, r);
-            let short_addr = format!("{}...{}", &addr[..6], &addr[addr.len() - 4..]);
 
             rsx! {
                 div { class: "join border border-base-300 rounded-lg",
                     div { class: "join-item px-3 py-1 font-mono text-sm flex items-center",
-                        "{caip2}"
+                        "{id.chain_id.namespace()}:{id.chain_id.reference().unwrap_or_else(|| \"_\".to_string())}"
                     }
                     div {
                         class: "join-item px-3 py-1 font-mono text-sm flex items-center tooltip cursor-help before:max-w-md",
                         "data-tip": "{addr}",
-                        "{short_addr}"
+                        "{shorten_addr(&addr)}"
                     }
                     button {
                         class: "join-item btn btn-ghost btn-sm border-l border-base-300",
@@ -182,39 +206,21 @@ pub fn RenderComponent(props: ComponentProps) -> Element {
             }
         }
         Component::Asset { id, balance } => {
-            let asset = match id.asset.clone() {
-                AssetType::Slip44(n) => format!("slip44:{}", n),
-                AssetType::Erc20(a) => {
-                    let addr = format!("{:?}", a);
-                    format!("erc20:{}...{}", &addr[..6], &addr[addr.len() - 4..])
-                }
-                AssetType::Custom {
-                    namespace,
-                    reference,
-                } => format!(
-                    "{}:{}...{}",
-                    namespace,
-                    &reference[..6],
-                    &reference[reference.len() - 4..],
-                ),
-            };
-            let ns = id.chain_id.namespace().to_string();
-            let r = id.chain_id.reference().unwrap_or_else(|| "_".to_string());
-            let caip2 = format!("{}:{}", ns, r);
+            let (asset_display, decimals) = get_asset_info(&id.asset);
 
             rsx! {
                 div { class: "join border border-base-300 rounded-lg",
                     div { class: "join-item px-3 py-1 font-mono text-sm flex items-center",
-                        "{caip2}"
+                        "{id.chain_id.namespace()}:{id.chain_id.reference().unwrap_or_else(|| \"_\".to_string())}"
                     }
                     div {
                         class: "join-item px-3 py-1 font-mono text-sm flex items-center tooltip cursor-help before:max-w-md",
                         "data-tip": "{id.asset}",
-                        "{asset}"
+                        "{asset_display}"
                     }
                     if let Some(bal) = balance {
                         div { class: "join-item px-3 py-1 font-mono text-sm flex items-center",
-                            "{bal}"
+                            {format_balance(bal, decimals)}
                         }
                     }
                     button {

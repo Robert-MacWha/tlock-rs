@@ -10,8 +10,10 @@ desktop = ["dioxus/desktop"]
 mobile = ["dioxus/mobile"]
 
 [dependencies]
+alloy = { workspace = true }
 anyhow = { workspace = true }
 dioxus = { workspace = true }
+erc20s = { workspace = true }
 futures = { workspace = true }
 gloo-timers = { workspace = true }
 host = { workspace = true }
