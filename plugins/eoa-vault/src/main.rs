@@ -68,19 +68,21 @@ sol! {
 async fn init(transport: Transport, _params: ()) -> Result<(), RpcError> {
     info!("Calling Init on Vault Plugin");
 
-    // ? Register the vault's page
-    let provider_id = host::RequestEthProvider
-        .call_async(transport.clone(), ChainId::Evm(Some(CHAIN_ID)))
-        .await?;
-    let state = PluginState {
-        vault: None,
-        provider_id,
-    };
-    transport.state().lock_or(|| state)?;
+    let provider_id =
+        host::RequestEthProvider.call(transport.clone(), ChainId::Evm(Some(CHAIN_ID)))?;
+    let vault = host::RegisterEntity.call(transport.clone(), Domain::Vault)?;
 
-    host::RegisterEntity
-        .call_async(transport.clone(), Domain::Page)
-        .await?;
+    let signer = PrivateKeySigner::random();
+    transport.state().write(PluginState {
+        vault: Some(Vault {
+            entity_id: vault,
+            private_key: signer.to_bytes(),
+            address: signer.address(),
+        }),
+        provider_id,
+    })?;
+
+    host::RegisterEntity.call(transport.clone(), Domain::Page)?;
 
     Ok(())
 }
