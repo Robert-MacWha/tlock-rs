@@ -29,6 +29,7 @@ web-sys = { workspace = true, features = [
 uuid = { workspace = true }
 hex = { workspace = true }
 console_error_panic_hook = { workspace = true }
+reqwest = { workspace = true }
 
 [package.metadata.wasm-pack.profile.dev]
 wasm-opt = false

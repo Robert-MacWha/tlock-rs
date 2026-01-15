@@ -407,14 +407,23 @@ fn plugins_modal() -> Element {
 
     let loaded_plugins = ctx.plugins();
 
-    let plugins_folder = asset!("/assets/plugins");
+    let plugins_folder = "/plugins";
     let manifest = use_resource(move || async move {
-        let manifest_path = format!("{}/manifest.json", plugins_folder);
-        let manifest = dioxus::asset_resolver::read_asset_bytes(&manifest_path)
+        let path = format!("{}/manifest.json", plugins_folder);
+        let url = get_absolute_url(&path);
+        info!("Fetching plugin manifest from URL: {}", url);
+        let response = reqwest::get(url)
             .await
-            .unwrap();
-        let manifest: Vec<String> = serde_json::from_slice(&manifest).unwrap();
-        manifest
+            .map_err(|e| {
+                error!("Failed to fetch plugin manifest: {:?}", e);
+                e
+            })
+            .ok()?
+            .json::<Vec<String>>()
+            .await
+            .ok()?;
+
+        Some(response)
     });
 
     let modal_class = if *show_plugins.read() {
@@ -424,12 +433,12 @@ fn plugins_modal() -> Element {
     };
 
     // Filter out already loaded plugins based on their names
-    let plugins = manifest.read();
-    let plugins = plugins.as_ref().map(|m| {
+    let plugins: Option<Vec<String>> = manifest.read().as_ref().map(|m| {
         m.iter()
+            .flatten()
             .cloned()
-            .filter(|name| !loaded_plugins.iter().any(|p| p.name() == name.as_str()))
-            .collect::<Vec<_>>()
+            .filter(|name| !loaded_plugins.iter().any(|p| p.name() == name))
+            .collect()
     });
 
     rsx!(
@@ -489,7 +498,7 @@ fn plugins_modal() -> Element {
 
 #[component]
 fn states_dropdown() -> Element {
-    let states_folder = asset!("/assets/states");
+    let states_folder = asset!("/public/states");
     let manifest = use_resource(move || async move {
         let manifest_path = format!("{}/manifest.json", states_folder);
         let manifest = dioxus::asset_resolver::read_asset_bytes(&manifest_path)
@@ -548,12 +557,30 @@ fn states_dropdown() -> Element {
 
 async fn handle_load_state(path: &str) -> anyhow::Result<()> {
     info!("Loading state from path: {}", path);
-    let state_bytes = dioxus::asset_resolver::read_asset_bytes(path)
+
+    let full_url = get_absolute_url(path);
+
+    // Use reqwest to fetch the bytes from the public URL
+    let response = reqwest::get(&full_url)
         .await
-        .map_err(|e| anyhow!("Failed to read state asset bytes: {:?}", e))?;
+        .map_err(|e| anyhow!("Request failed for {}: {:?}", full_url, e))?;
+
+    if !response.status().is_success() {
+        return Err(anyhow!(
+            "Server returned error {}: {}",
+            response.status(),
+            full_url
+        ));
+    }
+
+    let state_bytes = response
+        .bytes()
+        .await
+        .map_err(|e| anyhow!("Failed to read response bytes: {:?}", e))?;
 
     let state: host::host_state::HostState = serde_json::from_slice(&state_bytes)
         .map_err(|e| anyhow!("Failed to deserialize state JSON: {:?}", e))?;
+
     let host = Host::from_state(state)
         .await
         .map_err(|e| anyhow!("Failed to create host from state: {:?}", e))?;
@@ -568,14 +595,9 @@ async fn handle_load_plugin(path: String) -> anyhow::Result<()> {
     info!("Loading plugin from path: {}", path);
 
     // Get the current origin and make the URL absolute
-    let window = web_sys::window().ok_or_else(|| anyhow::anyhow!("No window"))?;
-    let location = window.location();
-    let origin = location
-        .origin()
-        .map_err(|_| anyhow::anyhow!("Failed to get origin"))?;
-    let full_url = format!("{}{}", origin, path);
-
+    let full_url = get_absolute_url(&path);
     info!("Full URL: {}", full_url);
+
     let plugin_source = PluginSource::Url(full_url);
     let name = path
         .split('/')
@@ -625,4 +647,14 @@ fn events_toast_handler() -> Element {
     });
 
     rsx! {}
+}
+
+fn get_absolute_url(path: &str) -> String {
+    let window = web_sys::window().unwrap();
+    let origin = window.location().origin().unwrap();
+    format!(
+        "{}/{}",
+        origin.trim_end_matches('/'),
+        path.trim_start_matches('/')
+    )
 }

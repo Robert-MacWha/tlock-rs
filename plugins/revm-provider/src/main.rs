@@ -294,8 +294,6 @@ async fn fee_history(
 
 /// Returns a fork provider based on the saved state.  If the saved fork
 /// is significantly behind the chain head, resets the fork to the latest block.
-///
-/// Errors if no tokio runtime is available.
 fn load_provider(transport: Transport) -> Result<Provider, RpcError> {
     let provider = Provider::load(
         transport.clone(),

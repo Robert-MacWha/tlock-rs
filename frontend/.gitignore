@@ -7,4 +7,4 @@
 **/*.rs.bk
 node_modules
 assets/tailwind.css
-assets/plugins/*.wasm
+**/plugins/*.wasm
