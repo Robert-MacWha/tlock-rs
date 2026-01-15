@@ -292,15 +292,36 @@ async fn fee_history(
     Ok(fork.fee_history(block_count, newest_block, reward_percentiles)?)
 }
 
-/// Returns a fork provider based on the saved state.
+/// Returns a fork provider based on the saved state.  If the saved fork
+/// is significantly behind the chain head, resets the fork to the latest block.
 ///
 /// Errors if no tokio runtime is available.
 fn load_provider(transport: Transport) -> Result<Provider, RpcError> {
-    Ok(Provider::load(
-        transport,
+    let provider = Provider::load(
+        transport.clone(),
         PROVIDER_KEY.to_string(),
         RPC_URL.to_string(),
-    )?)
+    )?;
+
+    let header = get_latest_block_header(transport.clone(), RPC_URL.to_string())
+        .context("Error getting latest block header")?;
+
+    info!(
+        "Fork block: {}, Chain head: {}",
+        provider.state.fork_block, header.number
+    );
+    if provider.state.fork_block < header.number - 1000 {
+        warn!("Fork is significantly behind chain head. Resetting the fork.");
+        handle_reset_fork(transport.clone())?;
+    }
+
+    let provider = Provider::load(
+        transport.clone(),
+        PROVIDER_KEY.to_string(),
+        RPC_URL.to_string(),
+    )?;
+
+    Ok(provider)
 }
 
 fn build_ui(provider: Provider) -> Result<Component, RpcError> {
