@@ -22,7 +22,7 @@ use tlock_pdk::{
         RpcMethod,
         caip::{AssetId, AssetType, ChainId},
         component::{
-            button_input, container, dropdown, form, heading, submit_input, text, text_input,
+            asset, button_input, container, dropdown, form, heading, submit_input, text, text_input,
         },
         coordinator,
         domains::Domain,
@@ -43,17 +43,20 @@ const UNISWAP_V2_FACTORY: Address = address!("0x5C69bEe701ef814a2B6a3EDD4B1652CB
 
 // ---------- Plugin State ----------
 
+#[derive(Serialize, Deserialize, Debug, Clone)]
+struct Quote {
+    from_token_idx: usize,
+    to_token_idx: usize,
+    input_amount: U256,
+    expected_output: U256,
+}
+
 #[derive(Serialize, Deserialize, Debug)]
 struct PluginState {
     coordinator_id: CoordinatorId,
     provider_id: EthProviderId,
     page_id: PageId,
-    selected_from_token: Option<usize>,
-    selected_to_token: Option<usize>,
-    input_amount: f64,
-    expected_output: f64,
-    input_decimals: u8,
-    output_decimals: u8,
+    quote: Option<Quote>,
     last_message: Option<String>,
 }
 
@@ -117,13 +120,8 @@ async fn init(transport: Transport, _params: ()) -> Result<(), RpcError> {
     let state = PluginState {
         coordinator_id,
         provider_id,
-        page_id: page_id,
-        selected_from_token: None,
-        selected_to_token: None,
-        input_amount: 0.0,
-        expected_output: 0.0,
-        input_decimals: 0,
-        output_decimals: 0,
+        page_id,
+        quote: None,
         last_message: None,
     };
 
@@ -197,84 +195,75 @@ async fn handle_swap_form_update(
         return Ok(());
     };
 
-    let Some(amount) = form_data.get("amount") else {
+    let Some(amount_str) = form_data.get("amount") else {
         error!("Amount field missing in form data");
         return Ok(());
     };
 
-    if amount.is_empty() {
-        state.input_amount = 0.0;
-        state.expected_output = 0.0;
+    if amount_str.is_empty() {
+        state.quote = None;
         warn!("Amount is empty, cannot calculate quote");
         return Ok(());
     }
 
-    let Ok(amount) = amount.parse::<f64>() else {
+    let Ok(amount_f64) = amount_str.parse::<f64>() else {
         state.last_message = Some("Invalid amount - must be a valid number".into());
         return Ok(());
     };
 
-    state.selected_from_token = from_token
+    let from_token_idx = from_token
         .split(':')
         .next()
         .and_then(|idx_str| idx_str.trim().parse::<usize>().ok());
-    state.selected_to_token = to_token
+    let to_token_idx = to_token
         .split(':')
         .next()
         .and_then(|idx_str| idx_str.trim().parse::<usize>().ok());
 
-    state.input_amount = amount;
+    if let Some(from_idx) = from_token_idx && let Some(to_idx) = to_token_idx {
+        let from_decimals = ERC20S[from_idx].decimals;
+        let input_amount = to_units(amount_f64, from_decimals);
 
-    if state.selected_from_token.is_some() && state.selected_to_token.is_some() {
-        state.input_amount = amount;
+        state.quote = Some(Quote {
+            from_token_idx: from_idx,
+            to_token_idx: to_idx,
+            input_amount,
+            expected_output: U256::ZERO,
+        });
+
         calculate_quote(transport, state).await?;
     } else {
         state.last_message = Some("Select both tokens to calculate quote".into());
+        state.quote = None;
     }
 
     Ok(())
 }
 
 async fn calculate_quote(transport: &Transport, state: &mut PluginState) -> Result<(), RpcError> {
-    let Some(from_idx) = state.selected_from_token else {
-        error!("From token not selected");
-        return Ok(());
-    };
-    let Some(to_idx) = state.selected_to_token else {
-        error!("To token not selected");
+    let Some(quote) = &mut state.quote else {
+        error!("Quote not initialized");
         return Ok(());
     };
 
-    if from_idx == to_idx {
+    if quote.from_token_idx == quote.to_token_idx {
         state.last_message = Some("Cannot swap same token".into());
+        state.quote = None;
         return Ok(());
     }
 
-    let from_token = &ERC20S[from_idx];
-    let to_token = &ERC20S[to_idx];
+    let from_token = &ERC20S[quote.from_token_idx];
+    let to_token = &ERC20S[quote.to_token_idx];
 
-    // Parse input amount
-    let amount_in = state.input_amount;
-
-    if amount_in == 0.0 {
+    if quote.input_amount == U256::ZERO {
         error!("Input amount is zero");
-        state.expected_output = 0.0;
+        state.quote = None;
         return Ok(());
     }
 
     // Get provider
     let provider = ProviderBuilder::new()
         .connect_client(AlloyBridge::new(transport.clone(), state.provider_id));
-
-    // Get token decimals
-    let from_token_contract = ERC20::new(from_token.address, &provider);
-    let to_token_contract = ERC20::new(to_token.address, &provider);
-
-    let from_decimals = from_token_contract.decimals().call().await.rpc_err()?;
-    let to_decimals = to_token_contract.decimals().call().await.rpc_err()?;
-
-    state.input_decimals = from_decimals;
-    state.output_decimals = to_decimals;
 
     // Get pair address from factory
     let factory = IUniswapV2Factory::new(UNISWAP_V2_FACTORY, &provider);
@@ -295,25 +284,23 @@ async fn calculate_quote(transport: &Transport, state: &mut PluginState) -> Resu
     // Get reserves
     let pair = IUniswapV2Pair::new(pair_address, &provider);
     let reserves = pair.getReserves().call().await.rpc_err()?;
-    let (reserve0, reserve1) = (reserves.reserve0, reserves.reserve1);
+    let (reserve0, reserve1) = (U256::from(reserves.reserve0), U256::from(reserves.reserve1));
 
     // Determine which reserve corresponds to which token
-    // Uniswap V2 pairs always store tokens sorted by address (token0 < token1)
     let (reserve_in, reserve_out) = if from_token.address < to_token.address {
         (reserve0, reserve1)
     } else {
         (reserve1, reserve0)
     };
 
-    let reserve_in: f64 = reserve_in.into();
-    let reserve_out: f64 = reserve_out.into();
-
     // Calculate output using x*y=k with 0.3% fee
-    // amountOut = (amountIn * 0.997 * reserveOut) / (reserveIn + amountIn * 0.997)
-    let amount_in_with_fee = amount_in * 0.997;
-    let amount_out = (amount_in_with_fee * reserve_out) / (reserve_in + amount_in_with_fee);
-    state.expected_output = amount_out;
+    // amountOut = (amountIn * 997 * reserveOut) / (reserveIn * 1000 + amountIn * 997)
+    let amount_in_with_fee = quote.input_amount * U256::from(997);
+    let numerator = amount_in_with_fee * reserve_out;
+    let denominator = reserve_in * U256::from(1000) + amount_in_with_fee;
+    let amount_out = numerator / denominator;
 
+    quote.expected_output = amount_out;
     state.last_message = Some("Quote calculated".into());
 
     Ok(())
@@ -325,20 +312,14 @@ async fn handle_execute_swap(
 ) -> Result<(), RpcError> {
     state.last_message = Some("Preparing swap...".into());
 
-    // Validate all required fields
-    let Some(from_idx) = state.selected_from_token else {
-        state.last_message = Some("Select from token".into());
-        return Ok(());
-    };
-
-    let Some(to_idx) = state.selected_to_token else {
-        state.last_message = Some("Select to token".into());
+    let Some(quote) = &state.quote else {
+        state.last_message = Some("No quote available".into());
         return Ok(());
     };
 
     let coordinator_id = state.coordinator_id;
-    let from_token = &ERC20S[from_idx];
-    let to_token = &ERC20S[to_idx];
+    let from_token = &ERC20S[quote.from_token_idx];
+    let to_token = &ERC20S[quote.to_token_idx];
 
     // Get coordinator session
     let account_id = coordinator::GetSession
@@ -353,16 +334,16 @@ async fn handle_execute_swap(
         return Err(RpcError::Custom("Invalid account address".into()));
     };
 
-    // Build swap operations
-    let amount_in_scaled = to_units(state.input_amount, state.input_decimals);
-    let amount_out_min_scaled = to_units(state.expected_output * 0.9, state.output_decimals);
+    // Build swap operations with 10% slippage tolerance
+    let amount_in = quote.input_amount;
+    let amount_out_min = quote.expected_output * U256::from(9) / U256::from(10);
 
     let operations = build_swap_operations(
         account_address,
         from_token,
         to_token,
-        amount_in_scaled,
-        amount_out_min_scaled,
+        amount_in,
+        amount_out_min,
     )?;
 
     // Build EvmBundle
@@ -376,7 +357,7 @@ async fn handle_execute_swap(
     };
 
     let bundle = coordinator::EvmBundle {
-        inputs: vec![(from_asset_id, amount_in_scaled)],
+        inputs: vec![(from_asset_id, amount_in)],
         outputs: vec![to_asset_id],
         operations,
     };
@@ -403,8 +384,7 @@ async fn handle_execute_swap(
     }
 
     state.last_message = Some("Swap executed".into());
-    state.input_amount = 0.0;
-    state.expected_output = 0.0;
+    state.quote = None;
 
     host::Notify
         .call_async(
@@ -478,11 +458,13 @@ fn build_ui(state: &PluginState) -> tlock_pdk::tlock_api::component::Component {
         .collect();
 
     let from_selected = state
-        .selected_from_token
-        .map(|i| format!("{}: {}", i, ERC20S[i].symbol));
+        .quote
+        .as_ref()
+        .map(|q| format!("{}: {}", q.from_token_idx, ERC20S[q.from_token_idx].symbol));
     let to_selected = state
-        .selected_to_token
-        .map(|i| format!("{}: {}", i, ERC20S[i].symbol));
+        .quote
+        .as_ref()
+        .map(|q| format!("{}: {}", q.to_token_idx, ERC20S[q.to_token_idx].symbol));
 
     sections.push(form(
         "swap_form",
@@ -499,31 +481,22 @@ fn build_ui(state: &PluginState) -> tlock_pdk::tlock_api::component::Component {
         ],
     ));
 
-    // Display quote if available
-    let formatted_out = state.expected_output;
+    // Display quote with asset balances
+    if let Some(quote) = &state.quote {
+        let from_token = &ERC20S[quote.from_token_idx];
+        let to_token = &ERC20S[quote.to_token_idx];
 
-    if formatted_out > 0.0 {
         sections.push(heading("Quote"));
-        sections.push(text(format!(
-            "You will receive approximately: {:.6} {}",
-            formatted_out,
-            ERC20S[state.selected_to_token.unwrap()].symbol
-        )));
-    }
-
-    // Display selected token info
-    if let Some(from_idx) = state.selected_from_token
-        && let Some(to_idx) = state.selected_to_token
-    {
-        let token = &ERC20S[from_idx];
-        sections.push(text(format!(
-            "From: {} ({:?})",
-            token.symbol, token.address
-        )));
-
-        let token = &ERC20S[to_idx];
-        sections.push(text(format!("To: {} ({:?})", token.symbol, token.address)));
-
+        sections.push(text("Input:"));
+        sections.push(asset(
+            AssetId::erc20(CHAIN_ID, from_token.address),
+            Some(quote.input_amount),
+        ));
+        sections.push(text("Output:"));
+        sections.push(asset(
+            AssetId::erc20(CHAIN_ID, to_token.address),
+            Some(quote.expected_output),
+        ));
         sections.push(button_input("execute_swap", "Execute Swap"));
     }
 

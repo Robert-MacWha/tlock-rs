@@ -21,9 +21,9 @@ use tlock_pdk::{
     tlock_api::{
         RpcMethod,
         caip::{AccountId, AssetId, ChainId},
-        component::{container, form, heading, heading2, submit_input, text, text_input},
+        component::{asset, container, form, heading, heading2, submit_input, text, text_input},
         domains::Domain,
-        entities::{EthProviderId, PageId},
+        entities::{EthProviderId, PageId, VaultId},
         global, host,
         page::{self},
         plugin, vault,
@@ -73,6 +73,27 @@ async fn ping(transport: Transport, _params: ()) -> Result<String, RpcError> {
 
 // ---------- Page Handlers ----------
 
+async fn get_deposit_address(
+    transport: Transport,
+    params: (VaultId, AssetId),
+) -> Result<AccountId, RpcError> {
+    let (_vault_id, asset_id) = params;
+    let state: PluginState = transport.state().read()?;
+    if asset_id != AssetId::eth(CHAIN_ID) {
+        return Err(RpcError::custom("Unsupported asset"));
+    }
+    let account_id = AccountId::new_evm(CHAIN_ID, state.address);
+    Ok(account_id)
+}
+
+async fn get_assets(
+    transport: Transport,
+    _vault_id: VaultId,
+) -> Result<Vec<(AssetId, U256)>, RpcError> {
+    let state: PluginState = transport.state().read()?;
+    Ok(vec![(AssetId::eth(CHAIN_ID), state.staked)])
+}
+
 async fn on_load(transport: Transport, page_id: PageId) -> Result<(), RpcError> {
     info!("Page loaded: {}", page_id);
 
@@ -90,13 +111,12 @@ async fn on_update(
     let (page_id, event) = params;
     info!("Page updated: {:?}", event);
 
-    let mut state = transport.state().try_lock::<PluginState>()?;
     match event {
         page::PageEvent::FormSubmitted(form_id, form_data) if form_id == "stake_form" => {
-            handle_stake(&transport, &mut state, form_data)?;
+            handle_stake(&transport, form_data)?;
         }
         page::PageEvent::FormSubmitted(form_id, form_data) if form_id == "unstake_form" => {
-            handle_unstake(&transport, &mut state, form_data).await?;
+            handle_unstake(&transport, form_data).await?;
         }
         _ => {
             warn!("Unhandled page event: {:?}", event);
@@ -104,19 +124,18 @@ async fn on_update(
         }
     }
 
+    let state = transport.state().read()?;
     let component = build_ui(&state);
     host::SetPage.call(transport.clone(), (page_id, component))?;
 
     Ok(())
 }
 
-fn handle_stake(
-    transport: &Transport,
-    state: &mut PluginState,
-    form_data: HashMap<String, String>,
-) -> Result<(), RpcError> {
+fn handle_stake(transport: &Transport, form_data: HashMap<String, String>) -> Result<(), RpcError> {
     let amount = form_data.get("amount").context("Missing amount")?;
     let amount: f64 = amount.parse().context("Invalid amount")?;
+
+    let state: PluginState = transport.state().read()?;
 
     let vault_id = host::RequestVault
         .call(transport.clone(), ())
@@ -133,20 +152,25 @@ fn handle_stake(
         )
         .context("Failed to withdraw from vault")?;
 
-    state.staked += amount_uint;
     host::Notify.call(
         transport.clone(),
         (host::NotifyLevel::Info, format!("Staked {:.4} ETH", amount)),
     )?;
+
+    {
+        let mut state = transport.state().try_lock::<PluginState>()?;
+        state.staked += amount_uint;
+    }
 
     Ok(())
 }
 
 async fn handle_unstake(
     transport: &Transport,
-    state: &mut PluginState,
     form_data: HashMap<String, String>,
 ) -> Result<(), RpcError> {
+    let state: PluginState = transport.state().read()?;
+
     let amount = form_data.get("amount").context("Missing amount")?;
     let amount: f64 = amount.parse().context("Invalid amount")?;
     let amount_uint = U256::from((amount * 1e18) as u64);
@@ -198,7 +222,11 @@ async fn handle_unstake(
             format!("Unstaked {:.4} ETH", amount),
         ),
     )?;
-    state.staked = bal;
+
+    {
+        let mut state = transport.state().try_lock::<PluginState>()?;
+        state.staked = bal;
+    }
 
     Ok(())
 }
@@ -210,11 +238,8 @@ fn build_ui(state: &PluginState) -> tlock_pdk::tlock_api::component::Component {
     ];
 
     sections.push(heading2("Staked Balance"));
-    let raw_total_staked: f64 = state.staked.into();
-    let total_staked_eth = raw_total_staked / 1e18;
-    let factor = 10f64.powi(4);
-    let floored = (total_staked_eth * factor).floor() / factor;
-    sections.push(text(&format!("Total Staked ETH: {:.4} ETH", floored)));
+    sections.push(text("Staked"));
+    sections.push(asset(AssetId::eth(CHAIN_ID), Some(state.staked)));
 
     sections.push(heading2("Stake ETH"));
     sections.push(form(
@@ -251,5 +276,7 @@ fn main() {
         .with_method(global::Ping, ping)
         .with_method(page::OnLoad, on_load)
         .with_method(page::OnUpdate, on_update)
+        .with_method(vault::GetDepositAddress, get_deposit_address)
+        .with_method(vault::GetAssets, get_assets)
         .run();
 }

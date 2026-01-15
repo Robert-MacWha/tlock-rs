@@ -45,7 +45,6 @@ struct State {
     vault_id: VaultId,
     provider_id: EthProviderId,
     coordinator: Coordinator,
-    operations: u64,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -90,7 +89,6 @@ async fn init(transport: Transport, _: ()) -> Result<(), RpcError> {
     let vault_id = host::RequestVault.call(transport.clone(), ())?;
     let coordinator_id = host::RegisterEntity.call(transport.clone(), Domain::Coordinator)?;
     host::RegisterEntity.call(transport.clone(), Domain::Page)?;
-    host::RegisterEntity.call(transport.clone(), Domain::Vault)?;
 
     let signer = PrivateKeySigner::random();
     let address = signer.address();
@@ -104,7 +102,6 @@ async fn init(transport: Transport, _: ()) -> Result<(), RpcError> {
             private_key: signer.to_bytes(),
             account: account_id,
         },
-        operations: 0,
     };
 
     transport.state().lock_or(|| state)?;
@@ -166,11 +163,6 @@ async fn propose(
 ) -> Result<(), RpcError> {
     info!("Received proposal: {:?}", params);
     let (coordinator_id, account_id, bundle) = params;
-
-    {
-        let mut state = transport.state().try_lock::<State>()?;
-        state.operations += bundle.operations.len() as u64;
-    }
 
     let state: State = transport.state().read()?;
 
@@ -245,12 +237,8 @@ fn build_ui(state: &State) -> Component {
     let sections = vec![
         heading("Vault Coordinator"),
         text("Orchestrates multi-step transactions between plugins and vaults"),
-        text("Status:"),
-        text("Active"),
-        text("Connected Vault:"),
-        text(format!("{}", state.vault_id)),
-        text("Completed operations:"),
-        text(format!("{}", state.operations)),
+        text("Status: Active"),
+        text(format!("Connected Vault: {}", state.vault_id)),
     ];
 
     container(sections)
