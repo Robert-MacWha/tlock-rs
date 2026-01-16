@@ -433,6 +433,11 @@ fn handle_reset_fork(transport: Transport) -> Result<(), RpcError> {
 }
 
 fn handle_mine(transport: Transport) -> Result<(), RpcError> {
+    host::Notify.call(
+        transport.clone(),
+        (host::NotifyLevel::Info, "Mining...".to_string()),
+    )?;
+
     let fork = load_provider(transport.clone())?;
     fork.mine()?;
     Ok(())

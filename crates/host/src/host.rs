@@ -72,6 +72,7 @@ pub struct Event {
     pub message: String,
     pub level: host::NotifyLevel,
     pub timestamp: chrono::DateTime<chrono::Local>,
+    pub plugin: Option<String>,
 }
 
 const PLUGIN_TIMEOUT_SECS: u64 = 300;
@@ -204,13 +205,13 @@ impl Host {
         match plugin::Init.call_async(plugin.clone(), ()).await {
             Err(RpcError::MethodNotFound) => {
                 info!("Plugin {} does not implement Init, skipping", plugin.id());
-                self.log_event(format!("[{}] Initialized", name));
+                self.log_event("Initialized", Some(name));
                 Ok(plugin_id)
             }
             Err(e) => Err(e.into()),
             Ok(_) => {
                 info!("Plugin {} initialized", plugin.id());
-                self.log_event(format!("[{}] Initialized", name));
+                self.log_event("Initialized", Some(name));
                 Ok(plugin_id)
             }
         }
@@ -431,13 +432,14 @@ impl Host {
         Ok(resp)
     }
 
-    pub fn log_event(&self, event: String) {
+    pub fn log_event(&self, event: &str, plugin: Option<&str>) {
         let mut log = self.events.lock().unwrap();
         log.push(Event {
             id: Uuid::new_v4(),
-            message: event,
+            message: event.to_string(),
             level: host::NotifyLevel::Trace,
             timestamp: chrono::Local::now(),
+            plugin: plugin.map(|p| p.to_string()),
         });
     }
 }
@@ -573,10 +575,11 @@ impl Host {
             };
 
             self.events.lock().unwrap().push(Event {
-                id: uuid::Uuid::new_v4(),
-                message: format!("[{}] {}", plugin_name, message).to_string(),
+                id: Uuid::new_v4(),
+                message,
                 level,
                 timestamp: chrono::Local::now(),
+                plugin: Some(plugin_name),
             });
         }
 
@@ -687,7 +690,6 @@ impl Host {
         _instance_id: &InstanceId,
         params: (PageId, Component),
     ) -> Result<(), RpcError> {
-        info!("Setting interface for page {}", params.0);
         let (page_id, component) = params;
         self.interfaces.lock().unwrap().insert(page_id, component);
         self.notify_observers();

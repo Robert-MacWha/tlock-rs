@@ -1,3 +1,5 @@
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
 use anyhow::anyhow;
@@ -243,24 +245,24 @@ fn sidebar_component() -> Element {
     }
 }
 
-async fn handle_upload_state(event: Event<FormData>) -> anyhow::Result<()> {
-    let files = event.files();
-    let file = files.get(0).ok_or_else(|| anyhow!("No file selected"))?;
-    let bytes = file
-        .read_bytes()
-        .await
-        .map_err(|e| anyhow!("Failed to read file bytes: {:?}", e))?;
+// async fn handle_upload_state(event: Event<FormData>) -> anyhow::Result<()> {
+//     let files = event.files();
+//     let file = files.get(0).ok_or_else(|| anyhow!("No file selected"))?;
+//     let bytes = file
+//         .read_bytes()
+//         .await
+//         .map_err(|e| anyhow!("Failed to read file bytes: {:?}", e))?;
 
-    let state: host::host_state::HostState = serde_json::from_slice(&bytes)?;
-    let host = Host::from_state(state)
-        .await
-        .map_err(|e| anyhow!("Failed to create host from state: {:?}", e))?;
+//     let state: host::host_state::HostState = serde_json::from_slice(&bytes)?;
+//     let host = Host::from_state(state)
+//         .await
+//         .map_err(|e| anyhow!("Failed to create host from state: {:?}", e))?;
 
-    let mut ctx: HostContext = consume_context();
-    ctx.set_host(host);
+//     let mut ctx: HostContext = consume_context();
+//     ctx.set_host(host);
 
-    Ok(())
-}
+//     Ok(())
+// }
 
 #[component]
 fn main_component() -> Element {
@@ -373,16 +375,21 @@ fn events_modal() -> Element {
                     p { "Load a plugin to see events" }
                 }
 
-                ul { class: "flex-1 overflow-y-auto min-h-0",
+                ul { class: "flex-1 overflow-auto min-h-0",
                     for event in ctx.events() {
                         {
                             let ts = event.timestamp.format("%H:%M:%S%.3f");
+                            let message: String = event.message.clone();
+                            let plugin: Option<String> = event.plugin.clone();
                             rsx! {
                                 li {
                                     key: "{event.id}",
-                                    class: "flex items-baseline gap-3 py-0.5 px-2 hover:bg-base-300 rounded transition-colors",
-                                    span { class: "font-mono text-[10px] uppercase opacity-80 shrink-0", "{ts}" }
-                                    span { class: "text-sm break-all", "{event.message}" }
+                                    class: "font-mono text-xs py-0.5 px-2 hover:bg-base-300 rounded transition-colors whitespace-nowrap",
+                                    span { class: "opacity-50", "[{ts}] " }
+                                    if let Some(plugin) = plugin {
+                                        span { style: "color: {plugin_color(&plugin)}", "[{plugin}] " }
+                                    }
+                                    span { "{message}" }
                                 }
                             }
                         }
@@ -657,4 +664,16 @@ fn get_absolute_url(path: &str) -> String {
         origin.trim_end_matches('/'),
         path.trim_start_matches('/')
     )
+}
+
+fn plugin_color(plugin_name: &str) -> String {
+    let mut hasher = DefaultHasher::new();
+    plugin_name.hash(&mut hasher);
+    let hash = hasher.finish();
+
+    // Convert to hue (0-360)
+    let hue = (hash % 360) as u16;
+
+    // Return HSL color with 70% saturation, 38% lightness for contrast
+    format!("hsl({}, 70%, 38%)", hue)
 }

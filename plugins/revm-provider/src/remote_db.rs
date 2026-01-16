@@ -19,6 +19,7 @@ use tlock_pdk::{
         transport::Transport,
     },
 };
+use tracing::info;
 
 #[derive(Debug, Error)]
 pub enum AlloyDBError {
@@ -211,6 +212,8 @@ fn rpc_call<T: for<'a> Deserialize<'a>>(
     payload: Value,
 ) -> Result<T, AlloyDBError> {
     let body = serde_json::to_vec(&payload)?;
+
+    info!("Cache Miss - RPC Call: {}", payload);
 
     let req = host::Request {
         url,

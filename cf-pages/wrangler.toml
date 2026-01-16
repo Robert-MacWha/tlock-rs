@@ -1,0 +1,4 @@
+compatibility_date = "2026-01-16"
+name = "tlock-rs"
+
+pages_build_output_dir = "../target/dx/frontend/release/web/public"

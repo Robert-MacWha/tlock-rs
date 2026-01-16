@@ -6275,15 +6275,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7edddbd0b52d732b21ad9a5fab5c704c14cd949e5e9a1ec5929a24fded1b904c"
 
 [[package]]
-name = "plugin-template"
-version = "0.1.0"
-dependencies = [
- "tlock-pdk",
- "tracing",
- "tracing-subscriber 0.3.22",
-]
-
-[[package]]
 name = "png"
 version = "0.17.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7351,19 +7342,6 @@ checksum = "bb919243f34364b6bd2fc10ef797edbfa75f33c252e7998527479c6d6b47e1ec"
 dependencies = [
  "bytes",
  "rustc-hex",
-]
-
-[[package]]
-name = "rpc-provider"
-version = "0.1.0"
-dependencies = [
- "alloy",
- "serde",
- "serde_json",
- "tlock-pdk",
- "tower-service",
- "tracing",
- "tracing-subscriber 0.3.22",
 ]
 
 [[package]]

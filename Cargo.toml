@@ -9,9 +9,9 @@ members = [
     "frontend",
     "plugins/eoa-coordinator",
     "plugins/eoa-vault",
-    "plugins/plugin-template",
+    # "plugins/plugin-template",
     "plugins/revm-provider",
-    "plugins/rpc-provider",
+    # "plugins/rpc-provider",
     "plugins/staking",
     "plugins/uniswap-v2",
 ]

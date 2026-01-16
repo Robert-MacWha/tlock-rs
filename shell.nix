@@ -68,6 +68,8 @@ pkgs.mkShell {
     wabt
     wasm-tools
 
+    wrangler
+
     # For dioxus-cli
     lld
     pkg-config
