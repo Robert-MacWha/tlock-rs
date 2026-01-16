@@ -260,6 +260,7 @@ impl Host {
             .with_method(host::RequestCoordinator, request_coordinator)
             .with_method(host::Fetch, fetch)
             .with_method(host::Notify, notify)
+            .with_method(state::ReadKey, read_key)
             .with_method(state::LockKey, lock_key)
             .with_method(state::SetKey, set_key)
             .with_method(state::UnlockKey, unlock_key)
@@ -585,6 +586,39 @@ impl Host {
 
         self.notify_observers();
         Ok(())
+    }
+
+    pub async fn read_key(
+        &self,
+        instance_id: &InstanceId,
+        key: String,
+    ) -> Result<Vec<u8>, RpcError> {
+        let state_key = (instance_id.plugin, key);
+
+        //? Iteratively wait for the lock to be released and our turn to access the key
+        loop {
+            let listener = {
+                let locks = self.locks.lock().unwrap();
+                match locks.get(&state_key) {
+                    Some((holder, _)) if holder == instance_id => {
+                        return Err(RpcError::custom(format!(
+                            "Deadlock: instance already holds lock on key '{}'",
+                            state_key.1
+                        )));
+                    }
+                    Some((_holder, event)) => {
+                        // Different holder - wait
+                        event.listen()
+                    }
+                    None => {
+                        // Not held, read it
+                        let state = self.state.lock().unwrap();
+                        return Ok(state.get(&state_key).cloned().unwrap_or_default());
+                    }
+                }
+            };
+            listener.await;
+        }
     }
 
     pub async fn lock_key(
@@ -979,6 +1013,7 @@ impl_host_rpc!(Host, host::RequestEthProvider, request_eth_provider);
 impl_host_rpc!(Host, host::RequestVault, request_vault);
 impl_host_rpc!(Host, host::RequestCoordinator, request_coordinator);
 impl_host_rpc!(Host, host::Fetch, fetch);
+impl_host_rpc!(Host, state::ReadKey, read_key);
 impl_host_rpc!(Host, state::LockKey, lock_key);
 impl_host_rpc!(Host, state::SetKey, set_key);
 impl_host_rpc!(Host, state::UnlockKey, unlock_key);

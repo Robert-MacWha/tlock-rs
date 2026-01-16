@@ -73,6 +73,8 @@ where
     _phantom: PhantomData<E>,
 }
 
+// TODO: Change API to follow mutex-style locking as closely as possible, with the
+// addition of keys of course.
 impl<T, E> StateHandle<T, E>
 where
     T: SyncTransport<E> + Clone,
@@ -80,10 +82,6 @@ where
 {
     pub fn read<V: Serialize + DeserializeOwned>(&self) -> Result<V, LockError> {
         self.read_key("")
-    }
-
-    pub fn try_read<V: Serialize + DeserializeOwned>(&self) -> Result<V, LockError> {
-        self.try_read_key("")
     }
 
     pub fn read_or<V: Serialize + DeserializeOwned>(
@@ -122,14 +120,13 @@ where
         &self,
         key: impl Into<String>,
     ) -> Result<V, LockError> {
-        Ok(self.try_lock_key::<V>(key)?.into_inner())
-    }
-
-    pub fn try_read_key<V: Serialize + DeserializeOwned>(
-        &self,
-        key: impl Into<String>,
-    ) -> Result<V, LockError> {
-        Ok(self.try_lock_key::<V>(key)?.into_inner())
+        let key = key.into();
+        let data = state::ReadKey.call(self.transport.clone(), key.clone())?;
+        if data.is_empty() {
+            return Err(LockError::Empty(key));
+        }
+        let value: V = serde_json::from_slice(&data)?;
+        Ok(value)
     }
 
     /// Read the state at `key` or return the result of `default` if the state is empty.
@@ -140,11 +137,23 @@ where
         key: impl Into<String>,
         default: impl FnOnce() -> V,
     ) -> Result<V, LockError> {
-        Ok(self.lock_key_or(key, default)?.into_inner())
+        let key = key.into();
+        let data = state::ReadKey.call(self.transport.clone(), key.clone())?;
+        if data.is_empty() {
+            return Ok(default());
+        }
+        let value: V = serde_json::from_slice(&data)?;
+        Ok(value)
     }
 
-    /// Discouraged.  When updating state unless you're certain you want to overwrite the entire state,
-    /// use `lock_key` or `lock_key_or` instead.
+    /// Writes the entire state at `key`.
+    ///
+    /// Discouraged. Use `lock_key` to modify the state unless you're certain you
+    /// want to overwrite the entire state. NEVER write a value you previously
+    /// read since other instances may have modified the state in the meantime.
+    ///
+    /// TODO: Consider some kind of global state + warning if someone writes to
+    /// a key after reading from it.
     pub fn write_key<V: Serialize + DeserializeOwned>(
         &self,
         key: impl Into<String>,
@@ -160,6 +169,7 @@ where
         Ok(())
     }
 
+    /// Lock the key, initializing with default if empty.
     pub fn lock_key<V: Serialize + DeserializeOwned + Default>(
         &self,
         key: impl Into<String>,
@@ -180,6 +190,7 @@ where
         })
     }
 
+    /// Try to lock the key, returning an error if the key is empty.
     pub fn try_lock_key<V: Serialize + DeserializeOwned>(
         &self,
         key: impl Into<String>,
@@ -200,6 +211,7 @@ where
         })
     }
 
+    /// Try to lock the key, returning the result of `default` if the key is empty.
     pub fn lock_key_or<V: Serialize + DeserializeOwned>(
         &self,
         key: impl Into<String>,

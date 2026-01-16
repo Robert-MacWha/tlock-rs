@@ -28,6 +28,9 @@ plugins-release:
 				--debuginfo \
 				target/wasm32-wasip1/release/$$plugin_name.wasm \
 				-o target/wasm32-wasip1/release/$$plugin_name.wasm
+			wasm-tools demangle \
+				target/wasm32-wasip1/release/$$plugin_name.wasm \
+				-o target/wasm32-wasip1/release/$$plugin_name.wasm; \
 			cp target/wasm32-wasip1/release/$$plugin_name.wasm frontend/public/plugins/$$plugin_name.wasm
 		fi
 	done

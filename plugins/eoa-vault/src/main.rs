@@ -264,7 +264,7 @@ async fn on_update(
         }
         page::PageEvent::ButtonClicked(id) if id == "refresh_assets" => {
             // Simply rebuild the UI to refresh asset balances
-            notification = Some("Balances refreshed.".to_string());
+            notification = Some("Balances refreshed".to_string());
         }
         page::PageEvent::FormSubmitted(id, form_data) if id == "private_key_form" => {
             handle_dev_private_key(transport.clone(), form_data).await?;

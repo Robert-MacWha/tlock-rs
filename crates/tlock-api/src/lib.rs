@@ -224,6 +224,14 @@ pub mod state {
     }
 
     rpc_method!(
+        /// Reads a key from this plugin's state.
+        ///
+        /// If the key is already locked, the host will block until it is
+        /// unlocked.
+        state_read_key, ReadKey, String, Vec<u8>
+    );
+
+    rpc_method!(
         /// Locks a key from this plugin's state. The key will remain
         /// locked until either `state_unlock_key` is called, or the plugin
         /// instance is terminated.
