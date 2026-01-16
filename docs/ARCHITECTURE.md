@@ -29,9 +29,39 @@ Plugins are untrusted code. Users should be able to install plugins from third p
 - The **Plugins** are modular implementations of wallet functionality. They implement defined domains (Vault, Provider, Coordinator, Page) and communicate through the host.
 - The **Frontend** is the user interface layer that interacts with users and presents data from plugins
 
+### Entities
+
+Entities are implementations of domains provided by plugins.  A single entity implements a single domain.  A single plugin may register multiple entities across multiple domains.
+
+```
+Plugin: eoa-vault
+  Entity: vault:abc123 (Vault domain)
+  Entity: page:def456 (Page domain)
+
+Plugin: eoa-coordinator
+  Entity: coordinator:ghi789 (Coordinator domain)
+  Entity: vault:jkl012 (Vault domain)
+  Entity: page:mno345 (Page domain)
+```
+
+Entities are designed as black boxes. The host and other plugins do not know about their implementation details. They only care what domain they implement. As such, entities communicate securely through their domain-defined interfaces and different entities may rely on each other to provide complex functionality.
+
+### Domains
+
+Domains are semantic categories that define what an entity does. Each domain has a fixed set of interfaces all implementations must follow. Domains include:
+
+| Domain      | Purpose                             | Example Methods                                                       |
+| ----------- | ----------------------------------- | --------------------------------------------------------------------- |
+| Vault       | Custody and transfer of assets      | `GetAssets`, `Withdraw`, `GetDepositAddress`                          |
+| Provider    | Blockchain interfacing              | `BlockNumber`, `GetBalance`, `GetBlock`, `Call`, `SendRawTransaction` |
+| Coordinator | Safe on-chain transaction execution | `GetSession` `GetAssets` `Propose`                                    |
+| Page        | UI Rendering                        | `OnLoad` `OnUpdate`                                                   |
+
+Domains are designed to be as generic as possible while providing useful abstractions. A vault may be a simple private key manager on ethereum or a multisig, a hardware wallet, an MPC signer, a privacy pool account, a dapp's internal custodial ledger, or a CEX with an API. So long as it can hold custody of and transfer assets, it can implement the vault domain.
+
 ### Plugins
 
-Plugins are packages of code that implement domains and provide entities. Plugins are implemented as WASM modules (wasm32-wasip1) that the host loads and manages. During execution, plugins are entirely sandboxed and stateless, only able to communicate externally or store data through host calls.
+Plugins are the packages of code that provide entities. Plugins are implemented as WASM modules (wasm32-wasip1) that the host loads and manages. During execution, plugins are entirely sandboxed, only able to communicate externally or store data through host calls.
 
 #### Plugin Lifecycle
 ```mermaid
@@ -51,36 +81,6 @@ sequenceDiagram
     plugin -->> host: `plugin_init`
     host -->> user: Loaded Plugin
 ```
-
-### Domains
-
-Domains are semantic categories that define what an entity does. Each domain has a fixed set of interfaces all implementations must follow. Domains include:
-
-| Domain      | Purpose                             | Example Methods                                                       |
-| ----------- | ----------------------------------- | --------------------------------------------------------------------- |
-| Vault       | Custody and transfer of assets      | `GetAssets`, `Withdraw`, `GetDepositAddress`                          |
-| Provider    | Blockchain interfacing              | `BlockNumber`, `GetBalance`, `GetBlock`, `Call`, `SendRawTransaction` |
-| Coordinator | Safe on-chain transaction execution | `GetSession` `GetAssets` `Propose`                                    |
-| Page        | UI Rendering                        | `OnLoad` `OnUpdate`                                                   |
-
-Domains are designed to be as generic as possible while providing useful abstractions. A vault may be a simple private key manager on ethereum or a multisig, a hardware wallet, an MPC signer, a privacy pool account, a dapp's internal custodial ledger, or a CEX with an API. So long as it can hold custody of and transfer assets, it can implement the vault domain.
-
-### Entities
-
-Entities are implementations of domains provided by plugins.  A single entity implements a single domain.  A single plugin may register multiple entities across multiple domains.
-
-```
-Plugin: eoa-vault
-  Entity: vault:abc123 (Vault domain)
-  Entity: page:def456 (Page domain)
-
-Plugin: eoa-coordinator
-  Entity: coordinator:ghi789 (Coordinator domain)
-  Entity: vault:jkl012 (Vault domain)
-  Entity: page:mno345 (Page domain)
-```
-
-Entities are designed as black boxes. The host and other plugins do not know about their implementation details. They only care what domain they implement. As such, entities communicate securely through their domain-defined interfaces and different entities may rely on each other to provide complex functionality.
 
 ## Host Services
 
@@ -104,11 +104,9 @@ For more details on the runtime environment, see the [wasi-plugin-framework](htt
 The host exposes various services to plugins through host calls. These include:
     - Persistent Storage
     - Network Fetching
+    - Page Management
     - Creating Entities
     - Requesting Entities
-    - Page Management
-    - Calling other Entities
+    - Inter-plugin Communication
 
 For a full list of host calls, see the [tlock-api docs](../crates/tlock-api/src/lib.rs).
-
-

@@ -1,6 +1,6 @@
 # Lodgelock
 
-⚠️ Pre-alpha: Not audited, not production-ready, use at your own risk! ⚠️
+!!! Pre-alpha: Not audited, not production-ready, use at your own risk !!!
 
 Lodgelock is designed as a modular-first wallet framework. It aims to empower users, developers, and the broader web3 ecosystem by providing a secure, extensible, and user-centric wallet platform.
 
@@ -18,13 +18,42 @@ Lodgelock is designed around three core ideals:
 
 ## How it Works
 
-Lodgelock is built around a secure host that loads and manages untrusted arbitrary plugins. The host provides core services like storage, networking, and plugin management. Plugins implement wallet functionality by registering entities with the host. This way, plugins can be installed independently and provide arbitrary features (key management, blockchain providers, DeFi protocols, UI components, etc) without requiring any host updates.
+Nearly everything in Lodgelock is an entity. Entities are the basic building blocks that have state and implement functionality.
 
-Plugins provide features through entities, which come in many flavours including:
- - Vaults: Unified asset custody interface (EOAs, hardware wallets, multisigs, CEXs, custodial dapps, bank accounts, etc)
- - Eth Providers: Standardized access to eth json-rpc methods (json-rpc provider, revm fork, helios lite client, tor proxy, etc)
- - Coordinators: Interact with vaults securely, providing atomic-like interactions
- - Pages: Create pages with react-like components for arbitrary user interaction (vault managers, swapping dapp, staking dapp, settings, etc)
+For example, an entity might represent a "vault." This vault could be a simple EOA private key manager, a multisig wallet, a hardware wallet interface or even a custodial exchange account. The entity abstracts away implementation details and exposes a common interface.
+
+Each entity implements a single domain, which defines its interface and behavior. Domains are designed to be as generic as possible so that entities can implement a wide variety of functionality while adhering to a common interface. As long as entities implement the same domain, they can be used interchangably by other parts of the system.
+
+Entities are created and managed by plugins, which are WebAssembly (WASM) modules that lodgelock loads and runs in a secure environment.
+
+```mermaid
+flowchart TD
+    host --> plugins
+    rpc-provider --> rpc-provider-eth-provider[eth-provider]
+    rpc-provider --> page-rpc-provider[page]
+    eoa-vault --> page-eoa-vault[page]
+    eoa-vault --> vault-eoa-vault[vault]
+    staking --> vault-staking-provider[vault]
+    subgraph plugins[Plugins]
+      eoa-vault
+      rpc-provider
+      staking
+    end
+    subgraph entities[Entities]
+        subgraph Vault Domain
+            vault-eoa-vault
+            vault-staking-provider
+        end
+        subgraph Page Domain
+            page-rpc-provider
+            page-eoa-vault
+        end
+        
+        subgraph Eth-Provider Domain
+            rpc-provider-eth-provider
+        end
+    end
+```
 
 For more information, view the [Architecture Overview](./docs/ARCHITECTURE.md).
 
@@ -65,7 +94,7 @@ This project is currently unlicensed while in pre-alpha development.
 
 ## Open Questions
 
-- State mechanism. Currently implementing the plans outlined in [state.md](./docs/state.md) which is essentially a key-value mutexed storage. This allows plugins to store state and prevents state corruption from concurrent access. However, it also limits concurrent access to state which may be a future bottleneck.
+- State mechanism. Currently implemented the plans outlined in [state.md](./docs/state.md) which is essentially a key-value mutexed storage. This allows plugins to store state and prevents state corruption from concurrent access. However, it also limits concurrent access to state which may be a future bottleneck.
 - Cross-chain abstractions. Using CAIP standards for chain, account, and asset IDs. Chain-specific domains (e.g. eth-provider, coordinator) are currently chain-specific. Should these be abstracted, or is it better to create new domains for different chains (and thus harm the 90/10 rule)?
 - Will plugin management UX be acceptable?
   - Managing plugins requires non-trivial user comprehension of what the plugins are and how they interact. Conceptually this is similar to browser extensions, homeassistant plugins, or desktop environments. However, wallets are security-critical software and users should be less willing to tinker.
