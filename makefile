@@ -48,3 +48,11 @@ wrangler-dev:
 	
 	cd ../cf-pages
 	wrangler pages dev
+
+wrangler-deploy:
+	cd frontend
+	tailwindcss -i ./input.css -o ./assets/tailwind.css
+	dx bundle --web --release
+	
+	cd ../cf-pages
+	wrangler pages deploy
