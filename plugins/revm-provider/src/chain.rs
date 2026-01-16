@@ -151,7 +151,7 @@ impl Chain {
     /// lock it directly.
     fn clone_state(&self) -> Result<ChainState, ChainError> {
         let state_key = get_chain_key(&self.key);
-        let state: ChainState = self.transport.state().try_read_key(&state_key).rpc_err()?;
+        let state: ChainState = self.transport.state().read_key(&state_key).rpc_err()?;
         Ok(state)
     }
 
@@ -528,7 +528,7 @@ fn construct_db<N: Network>(
     let mut layer_db: LayeredDB<_, N> = LayeredDB::new(cache_db);
     for block_number in (fork_block_number + 1)..=latest_block_number {
         let layer_state_key = get_layer_key(&key, block_number);
-        let layer_state: LayerState = transport.state().try_read_key(layer_state_key).rpc_err()?;
+        let layer_state: LayerState = transport.state().read_key(layer_state_key).rpc_err()?;
 
         layer_db.push_layer(layer_state);
     }

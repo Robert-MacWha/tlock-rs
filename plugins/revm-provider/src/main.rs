@@ -56,9 +56,25 @@ struct State {
 
 const RPC_URL: &str = "https://1rpc.io/eth";
 const PROVIDER_KEY: &str = "revm_fork_provider";
+const FORK_RESET_TIMESTAMP_KEY: &str = "revm_fork_provider/last_reset_timestamp";
+
+/// Returns the current Unix timestamp in seconds.
+fn get_current_timestamp() -> u64 {
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("System time is before UNIX_EPOCH")
+        .as_secs()
+}
 
 async fn init(transport: Transport, _params: ()) -> Result<(), RpcError> {
     handle_reset_fork(transport.clone())?;
+
+    // Initialize the last reset timestamp
+    transport
+        .state()
+        .write_key(FORK_RESET_TIMESTAMP_KEY, get_current_timestamp())?;
 
     //? Register the revm entities
     host::RegisterEntity
@@ -104,6 +120,9 @@ async fn on_update(
     match event {
         page::PageEvent::ButtonClicked(button_id) if button_id == "reset_fork" => {
             handle_reset_fork(transport.clone())?;
+            transport
+                .state()
+                .write_key(FORK_RESET_TIMESTAMP_KEY, get_current_timestamp())?;
             notification = Some("Fork reset to chain head".to_string());
         }
         page::PageEvent::ButtonClicked(button_id) if button_id == "mine_fork" => {
@@ -265,6 +284,11 @@ async fn send_raw_transaction(
     let state_key = get_main_key(PROVIDER_KEY);
     let state: State = transport.state().read_key(state_key)?;
 
+    host::Notify.call(
+        transport.clone(),
+        (host::NotifyLevel::Info, "Mined".to_string()),
+    )?;
+
     let provider = load_provider(transport.clone())?;
     let component = build_ui(provider)?;
     host::SetPage
@@ -292,34 +316,32 @@ async fn fee_history(
     Ok(fork.fee_history(block_count, newest_block, reward_percentiles)?)
 }
 
-/// Returns a fork provider based on the saved state.  If the saved fork
-/// is significantly behind the chain head, resets the fork to the latest block.
+/// Returns a fork provider based on the saved state. Resets the fork
+/// if more than 10 minutes have passed since the last reset.
 fn load_provider(transport: Transport) -> Result<Provider, RpcError> {
-    let provider = Provider::load(
-        transport.clone(),
-        PROVIDER_KEY.to_string(),
-        RPC_URL.to_string(),
-    )?;
+    const FORK_RESET_INTERVAL_SECS: u64 = 600; // 10 minutes
 
-    let header = get_latest_block_header(transport.clone(), RPC_URL.to_string())
-        .context("Error getting latest block header")?;
+    let mut last_reset = transport
+        .state()
+        .try_lock_key::<u64>(FORK_RESET_TIMESTAMP_KEY)?;
 
-    info!(
-        "Fork block: {}, Chain head: {}",
-        provider.state.fork_block, header.number
-    );
-    if provider.state.fork_block < header.number - 1000 {
-        warn!("Fork is significantly behind chain head. Resetting the fork.");
+    let current_timestamp = get_current_timestamp();
+    let elapsed = current_timestamp.saturating_sub(*last_reset);
+
+    if elapsed >= FORK_RESET_INTERVAL_SECS {
+        info!(
+            "Fork last reset {} seconds ago, resetting to chain head",
+            elapsed
+        );
         handle_reset_fork(transport.clone())?;
+        *last_reset = current_timestamp;
     }
 
-    let provider = Provider::load(
-        transport.clone(),
+    Ok(Provider::load(
+        transport,
         PROVIDER_KEY.to_string(),
         RPC_URL.to_string(),
-    )?;
-
-    Ok(provider)
+    )?)
 }
 
 fn build_ui(provider: Provider) -> Result<Component, RpcError> {
@@ -419,7 +441,7 @@ fn handle_reset_fork(transport: Transport) -> Result<(), RpcError> {
     let header = get_latest_block_header(transport.clone(), RPC_URL.to_string())
         .context("Error getting block_number")?;
 
-    //? Create a new provide to initialize the fork state
+    //? Create a new provider to initialize the fork state
     let _ = Provider::new(
         transport,
         PROVIDER_KEY.to_string(),
@@ -433,11 +455,6 @@ fn handle_reset_fork(transport: Transport) -> Result<(), RpcError> {
 }
 
 fn handle_mine(transport: Transport) -> Result<(), RpcError> {
-    host::Notify.call(
-        transport.clone(),
-        (host::NotifyLevel::Info, "Mining...".to_string()),
-    )?;
-
     let fork = load_provider(transport.clone())?;
     fork.mine()?;
     Ok(())
