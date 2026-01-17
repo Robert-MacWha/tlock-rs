@@ -1,6 +1,6 @@
 # Security
 
-⚠️ Pre-alpha: Not audited, not production-ready, use at your own risk! ⚠️
+!!! Pre-alpha: use at your own risk !!!
 
 ## Plugin Sandboxing
 

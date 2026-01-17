@@ -25,6 +25,8 @@ struct UiContext {
     show_events_sidebar: Signal<bool>,
     show_plugin_registry_sidebar: Signal<bool>,
     selected_page: Signal<Option<PageId>>,
+
+    new_events: Signal<bool>,
 }
 
 fn main() {
@@ -44,6 +46,7 @@ fn app() -> Element {
         show_events_sidebar: use_signal(|| false),
         show_plugin_registry_sidebar: use_signal(|| false),
         selected_page: use_signal(|| None),
+        new_events: use_signal(|| false),
     };
     use_context_provider(|| ui_signals);
 
@@ -53,7 +56,8 @@ fn app() -> Element {
     rsx! {
         document::Stylesheet { href: asset!("/assets/tailwind.css") }
         //? DaisyUI theme
-        div { "data-theme": "light",
+        //? Either dim, lemonade, or
+        div { "data-theme": "lemonade",
             toast_container {}
             requests_modal {}
             events_modal {}
@@ -104,6 +108,7 @@ fn sidebar_component() -> Element {
     let mut show_events = use_context::<UiContext>().show_events_sidebar;
     let mut selected_page = use_context::<UiContext>().selected_page;
     let mut show_plugin_registry = use_context::<UiContext>().show_plugin_registry_sidebar;
+    let new_events = use_context::<UiContext>().new_events;
 
     let named_pages = use_memo(move || {
         let pages = ctx.page_ids();
@@ -144,7 +149,7 @@ fn sidebar_component() -> Element {
 
     rsx! {
         div { class: "flex flex-col h-full bg-base-200 w-xs menu",
-            h1 { class: "menu-title text-xl text-primary", "Lodgelock" }
+            h1 { class: "menu-title text-xl text-primary", "Lodgelock Demo" }
             states_dropdown {}
             div { class: "divider" }
             h2 { class: "menu-title", "Pages" }
@@ -198,14 +203,22 @@ fn sidebar_component() -> Element {
                         "Requests"
 
                         if !ctx.requests().is_empty() {
-                            span { class: "indicator-item badge badge-secondary mr-4",
+                            span { class: "indicator-item badge badge-secondary badge-xl mr-4",
                                 "{ctx.requests().len()}"
                             }
                         }
                     }
                 }
                 li {
-                    button { onclick: move |_| show_events.set(true), "Events" }
+                    button {
+                        class: "indicator w-full justify-between",
+                        onclick: move |_| show_events.set(true),
+                        "Events"
+
+                        if *new_events.read() {
+                            span { class: "indicator-item status status-lg status-secondary" }
+                        }
+                    }
                 }
                 li {
                     button { onclick: move |_| show_plugin_registry.set(true), "Load Plugin" }
@@ -249,7 +262,16 @@ fn main_component() -> Element {
 
     rsx! {
         if pages.is_empty() {
-            p { "No pages available. Load a Demo or Plugin to get started" }
+            p {
+                "No pages available. Load a Demo or Plugin to get started, or see the "
+                a {
+                    href: "https://github.com/Robert-MacWha/lodgelock",
+                    target: "_blank",
+                    class: "link link-primary",
+                    "Github"
+                }
+                " for more information."
+            }
         }
 
         div { class: if selected_page.read().is_none() { "columns-1 ml:columns-2 2xl:columns-3 gap-4 space-y-4" },
@@ -266,7 +288,7 @@ fn main_component() -> Element {
                             class: "card bg-base-200 shadow-sm relative break-inside-avoid mb-4",
                             div { class: "card-body",
                                 div { class: "absolute top-4 right-4",
-                                    div { class: "badge badge-primary", "{plugin_name} [{page_id}]" }
+                                    div { class: "badge badge-ghost", "{plugin_name} [{page_id}]" }
                                 }
                                 Page { id: page_id }
                             }
@@ -330,8 +352,10 @@ fn requests_modal() -> Element {
 fn events_modal() -> Element {
     let ctx: HostContext = use_context();
     let mut show_events = use_context::<UiContext>().show_events_sidebar;
+    let mut new_events = use_context::<UiContext>().new_events;
 
     let modal_class = if *show_events.read() {
+        new_events.set(false);
         "modal-open"
     } else {
         ""
@@ -511,7 +535,7 @@ fn states_dropdown() -> Element {
                                             async move {
                                                 blur_active_element();
 
-        
+
                                                 let state_path = format!("{}/{}.json", states_folder, state_name);
                                                 if let Err(e) = handle_load_state(&state_path).await {
                                                     error!("Failed to load state {}: {:?}", state_name, e);
@@ -599,6 +623,7 @@ async fn handle_load_plugin(path: String) -> anyhow::Result<()> {
 fn events_toast_handler() -> Element {
     let ctx: HostContext = use_context();
     let toast_ctx: ToastContext = use_context();
+    let mut new_events = use_context::<UiContext>().new_events;
     let mut last_count = use_signal(|| 0usize);
 
     use_effect(move || {
@@ -610,6 +635,7 @@ fn events_toast_handler() -> Element {
             return;
         }
 
+        new_events.set(true);
         for event in events.iter().skip(old_count) {
             match event.level {
                 NotifyLevel::Trace => {}

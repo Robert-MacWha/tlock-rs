@@ -2,7 +2,7 @@
 @source "./src/**/*.{rs,html,css}";
 
 @plugin "./assets/daisyui.js" {
-    themes: light, dark;
+    themes: all;
 }
 
 ;
