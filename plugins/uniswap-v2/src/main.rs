@@ -220,7 +220,9 @@ async fn handle_swap_form_update(
         .next()
         .and_then(|idx_str| idx_str.trim().parse::<usize>().ok());
 
-    if let Some(from_idx) = from_token_idx && let Some(to_idx) = to_token_idx {
+    if let Some(from_idx) = from_token_idx
+        && let Some(to_idx) = to_token_idx
+    {
         let from_decimals = ERC20S[from_idx].decimals;
         let input_amount = to_units(amount_f64, from_decimals);
 
@@ -277,6 +279,13 @@ async fn calculate_quote(transport: &Transport, state: &mut PluginState) -> Resu
     );
 
     if pair_address == Address::ZERO {
+        host::Notify.call(
+            transport.clone(),
+            (
+                host::NotifyLevel::Info,
+                "No liquidity pool for this pair".to_string(),
+            ),
+        )?;
         state.last_message = Some("No liquidity pool for this pair".into());
         return Ok(());
     }
@@ -300,8 +309,21 @@ async fn calculate_quote(transport: &Transport, state: &mut PluginState) -> Resu
     let denominator = reserve_in * U256::from(1000) + amount_in_with_fee;
     let amount_out = numerator / denominator;
 
+    // Check for very low output amounts and warn user
+    if amount_out < U256::from(1000) {
+        host::Notify.call(
+            transport.clone(),
+            (
+                host::NotifyLevel::Error,
+                "Expected output is very low. Swap may fail.".to_string(),
+            ),
+        )?;
+        state.last_message = Some("Warning: Output amount is very low".into());
+    } else {
+        state.last_message = Some("Quote calculated".into());
+    }
+
     quote.expected_output = amount_out;
-    state.last_message = Some("Quote calculated".into());
 
     Ok(())
 }
@@ -505,7 +527,7 @@ fn build_ui(state: &PluginState) -> tlock_pdk::tlock_api::component::Component {
 
 fn to_units(amount: f64, decimals: u8) -> U256 {
     let multiplier = 10f64.powi(decimals as i32);
-    U256::from((amount * multiplier) as u128)
+    U256::try_from(amount * multiplier).expect("Invalid amount")
 }
 
 // ---------- Main Entry Point ----------

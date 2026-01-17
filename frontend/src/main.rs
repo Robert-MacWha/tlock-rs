@@ -198,7 +198,7 @@ fn sidebar_component() -> Element {
                         "Requests"
 
                         if !ctx.requests().is_empty() {
-                            span { class: "indicator-item badge badge-primary mr-4",
+                            span { class: "indicator-item badge badge-secondary mr-4",
                                 "{ctx.requests().len()}"
                             }
                         }
@@ -327,6 +327,7 @@ fn requests_modal() -> Element {
         dialog { class: "modal modal-start {modal_class}",
             div { class: "modal-box bg-base-200 w-md",
                 h3 { class: "font-bold text-lg", "User Requests" }
+                p { "Plugins can request access to different entities and resources." }
                 div { class: "divider" }
                 if ctx.requests().is_empty() {
                     p { "No pending requests" }

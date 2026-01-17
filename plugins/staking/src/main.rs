@@ -49,7 +49,8 @@ async fn init(transport: Transport, _params: ()) -> Result<(), RpcError> {
 
     let provider_id =
         host::RequestEthProvider.call(transport.clone(), ChainId::new_evm(CHAIN_ID))?;
-    host::RegisterEntity.call(transport.clone(), Domain::Vault)?;
+    // TODO: Enable me. Disabled for the demo to simplify things
+    // host::RegisterEntity.call(transport.clone(), Domain::Vault)?;
     host::RegisterEntity.call(transport.clone(), Domain::Page)?;
 
     let signer = PrivateKeySigner::random();
@@ -134,6 +135,7 @@ async fn on_update(
 fn handle_stake(transport: &Transport, form_data: HashMap<String, String>) -> Result<(), RpcError> {
     let amount = form_data.get("amount").context("Missing amount")?;
     let amount: f64 = amount.parse().context("Invalid amount")?;
+    let amount_uint = U256::from(amount * 1e18);
 
     let state: PluginState = transport.state().read()?;
 
@@ -143,7 +145,6 @@ fn handle_stake(transport: &Transport, form_data: HashMap<String, String>) -> Re
 
     let account_id = AccountId::new_evm(CHAIN_ID, state.address);
     let asset_id = AssetId::eth(CHAIN_ID);
-    let amount_uint = U256::from((amount * 1e18) as u64);
 
     vault::Withdraw
         .call(
@@ -173,7 +174,7 @@ async fn handle_unstake(
 
     let amount = form_data.get("amount").context("Missing amount")?;
     let amount: f64 = amount.parse().context("Invalid amount")?;
-    let amount_uint = U256::from((amount * 1e18) as u64);
+    let amount_uint = U256::from(amount * 1e18);
     if amount_uint > state.staked {
         return Err(RpcError::custom("Insufficient staked balance"));
     }
