@@ -8,3 +8,4 @@
 node_modules
 assets/tailwind.css
 **/plugins/*.wasm
+dist/

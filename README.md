@@ -13,8 +13,9 @@ Lodgelock is designed around three core ideals:
 ## Docs
 
 - [Architecture Overview](./docs/ARCHITECTURE.md)
-- [Plugin Development Guide](./docs/PLUGIN_DEVELOPMENT.md)
 - [Security Model](./docs/SECURITY.md)
+- [Plugin Development Guide](./docs/PLUGIN_DEVELOPMENT.md)
+- [Plugins Overview](./docs/PLUGINS.md)
 
 ## Status Quo
 
@@ -73,33 +74,33 @@ For more information, view the [Architecture Overview](./docs/ARCHITECTURE.md).
 
 Lodgelock is currently in early pre-alpha development. To try out a web demo, visit [http://localhost:8788/](http://localhost:8788/).
 
-### Web Demo Instructions 
+For docs on each of the plugins included in the demo, see the [Plugins Overview](./docs/PLUGINS.md).
 
-The web demo is a simple browser-based wallet using Lodgelock. It includes a curated set of plugins and a handful of demo snapshots that can be loaded. All demos are ephemeral and do not store any data permanently. The demos also use revm-providers as the RPC backend, so all actions are simulated locally and certain cheatcodes are available for testing.
-
-The "stake" demo loads in a vault, revm-provider, and staking plugin. The vault was pre-funded with test ETH and WETH. The user can stake and unstake WETH using the staking plugin's interface.  Try staking some ETH, then unstaking back to your eoa-vault!
- - Because the staking plugin lives locally, it's not dependant on any external services. It's a local app, not a webpage that can go down.
- - Additionally, the staking plugin has access to the full capabilities of lodgelock. This means in addition to creating a page for user interactions, it also creates a vault entity which represents the custodially held value and could be used interchangably with any other vault.
-
-The "swap" demo loads in a vault, coordinator, revm-provider, uniswap plugin. The vault was again pre-funded with test ETH and WETH. The user can swap between a few different tokens using the uniswap plugin's interface. Try swapping some WETH for DAI!
-  - Similar to the staking plugin, the uniswap plugin is entirely local.
-  - Rather than directly communicating with the vault, the uniswap plugin instead uses the coordinator, which provides atomic-like interfaces for executing batches of transactions. This ensures that regardless of the swap outcome, all user funds are returned to the vault safely.
+TODO: Add video demo
 
 ### Running Locally
 
-To build from source, Lodgelock uses [Nix](https://nixos.org/) to manage dependencies and build environments. Alternatively, you can manually install the required dependencies listed in `shell.nix`.
+Lodgelock uses [nix-shell](https://nixos.org/guides/nix-pills/10-developing-with-nix-shell.html) for dependency management. You can also manually install the required dependencies listed in `shell.nix`.
 
-(Devcontainer coming soon)
+(Devcontainer coming soon probably)
+
+To run the web demo locally:
 
 ```bash
 git clone git@github.com:Robert-MacWha/lodgelock.git
 cd lodgelock
 nix-shell # Enter nix shell with dependencies. Alternatively, install the listed dependencies manually.
-make plugins # Build all plugins
+make plugins-release # Build all plugins
 cd frontend
 
-# Concurrently run tailwindcss watcher, dioxus dev server, and chrome with various security features to allow SharedArrayBuffer
-dev # Provided by shell.nix
+# Serve the web demo locally
+dx serve --platform web
+
+# Launches chrome with COOP/COEP security disabled. Required for development
+# but highly insecure for everyday browsing.
+# 
+# See the `chromeUnsafe` definition in `shell.nix` for more details.
+chrome-unsafe
 ```
 
 ## Roadmap

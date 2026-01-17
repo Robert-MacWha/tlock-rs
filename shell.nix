@@ -12,26 +12,15 @@ let
     ];
   };
   wasm-bindgen-cli_0_2_106 = pkgs.callPackage ./flakes/wasm-bindgen-cli.nix { };
-  devServer = pkgs.writeShellScriptBin "dev" ''
-    concurrently \
-      --names "chrome,tailwnid,dx" \
-      --prefix-colors "blue,green,magenta" \
-      --kill-others-on-fail \
-      "chrome-unsafe" \
-      "tailwindcss -i ./input.css -o ./assets/tailwind.css --watch" \
-      "dx serve --platform web"
-  '';
-  releaseServer = pkgs.writeShellScriptBin "release" ''
 
-    concurrently \
-      --names "chrome,tailwind,dx" \
-      --prefix-colors "blue,green,magenta" \
-      --kill-others-on-fail \
-      "chrome-unsafe" \
-      "tailwindcss -i ./input.css -o ./assets/tailwind.css --watch" \
-      "dx serve --platform web --release"
-  '';
-  # Unsafe Chrome for testing COOP/COEP locally.
+  # Chrome with web security disabled to allow atomics / bulk-memory operations
+  # on sites without cross-origin headers. `dx serve` doesn't set these headers,
+  # so we need to disable the security features for local development.
+  #
+  # Also creates a seperate user profile and sets a custom window name to avoid
+  # accidental usage. This browser profile should never be used for normal browsing.
+  #
+  # https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/CORS
   unsafeChromium = pkgs.writeShellScriptBin "chrome-unsafe" ''
     PROFILE_DIR="$PWD/.chrome-unsafe-profile"
     mkdir -p "$PROFILE_DIR"
@@ -59,8 +48,6 @@ pkgs.mkShell {
     dioxus-cli
     concurrently
 
-    devServer
-    releaseServer
     unsafeChromium
     tailwindcss_4
     watchman
