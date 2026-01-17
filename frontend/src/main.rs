@@ -211,6 +211,13 @@ fn sidebar_component() -> Element {
                     button { onclick: move |_| show_plugin_registry.set(true), "Load Plugin" }
                 }
                 li {
+                    a {
+                        href: "https://github.com/Robert-MacWha/lodgelock",
+                        target: "_blank",
+                        "Github"
+                    }
+                }
+                li {
                     button {
                         onclick: move |_| {
                             let state = ctx.state();
@@ -223,46 +230,10 @@ fn sidebar_component() -> Element {
                         "Download State"
                     }
                 }
-                        // fieldset { class: "px-3 py-2",
-            //     legend { "Upload State file" }
-            //     input {
-            //         class: "file-input file-input-sm px-0 py-0",
-            //         r#type: "file",
-            //         accept: ".json",
-            //         onchange: move |e| async move {
-            //             let toast_ctx: ToastContext = use_context();
-            //             if let Err(e) = handle_upload_state(e).await {
-            //                 error!("State upload failed: {:?}", e);
-            //                 toast_ctx.push(format!("State upload failed: {:?}", e), ToastKind::Error);
-            //             } else {
-            //                 toast_ctx.push("State uploaded", ToastKind::Info);
-            //             }
-            //         },
-            //     }
-            // }
             }
         }
     }
 }
-
-// async fn handle_upload_state(event: Event<FormData>) -> anyhow::Result<()> {
-//     let files = event.files();
-//     let file = files.get(0).ok_or_else(|| anyhow!("No file selected"))?;
-//     let bytes = file
-//         .read_bytes()
-//         .await
-//         .map_err(|e| anyhow!("Failed to read file bytes: {:?}", e))?;
-
-//     let state: host::host_state::HostState = serde_json::from_slice(&bytes)?;
-//     let host = Host::from_state(state)
-//         .await
-//         .map_err(|e| anyhow!("Failed to create host from state: {:?}", e))?;
-
-//     let mut ctx: HostContext = consume_context();
-//     ctx.set_host(host);
-
-//     Ok(())
-// }
 
 #[component]
 fn main_component() -> Element {
@@ -278,7 +249,7 @@ fn main_component() -> Element {
 
     rsx! {
         if pages.is_empty() {
-            p { "No pages available. Load a plugin to get started." }
+            p { "No pages available. Load a Demo or Plugin to get started" }
         }
 
         div { class: if selected_page.read().is_none() { "columns-1 ml:columns-2 2xl:columns-3 gap-4 space-y-4" },
@@ -540,7 +511,7 @@ fn states_dropdown() -> Element {
                                             async move {
                                                 blur_active_element();
 
-
+        
                                                 let state_path = format!("{}/{}.json", states_folder, state_name);
                                                 if let Err(e) = handle_load_state(&state_path).await {
                                                     error!("Failed to load state {}: {:?}", state_name, e);
