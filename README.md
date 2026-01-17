@@ -79,7 +79,7 @@ The web demo is a simple browser-based wallet using Lodgelock. It includes a cur
 
 The "stake" demo loads in a vault, revm-provider, and staking plugin. The vault was pre-funded with test ETH and WETH. The user can stake and unstake WETH using the staking plugin's interface.  Try staking some ETH, then unstaking back to your eoa-vault!
  - Because the staking plugin lives locally, it's not dependant on any external services. It's a local app, not a webpage that can go down.
- - Additionally, the staking plugin has access to the full capabilities of tlock. This means in addition to creating a page for user interactions, it also creates a vault entity which represents the custodially held value and could be used interchangably with any other vault.
+ - Additionally, the staking plugin has access to the full capabilities of lodgelock. This means in addition to creating a page for user interactions, it also creates a vault entity which represents the custodially held value and could be used interchangably with any other vault.
 
 The "swap" demo loads in a vault, coordinator, revm-provider, uniswap plugin. The vault was again pre-funded with test ETH and WETH. The user can swap between a few different tokens using the uniswap plugin's interface. Try swapping some WETH for DAI!
   - Similar to the staking plugin, the uniswap plugin is entirely local.
@@ -92,8 +92,8 @@ To build from source, Lodgelock uses [Nix](https://nixos.org/) to manage depende
 (Devcontainer coming soon)
 
 ```bash
-git clone git@github.com:Robert-MacWha/tlock-rs.git
-cd tlock-rs
+git clone git@github.com:Robert-MacWha/lodgelock.git
+cd lodgelock
 nix-shell # Enter nix shell with dependencies. Alternatively, install the listed dependencies manually.
 make plugins # Build all plugins
 cd frontend
@@ -104,7 +104,7 @@ dev # Provided by shell.nix
 
 ## Roadmap
 
-See the [project board](https://github.com/Robert-MacWha/tlock-rs/issues) for current tasks and progress.
+See the [project board](https://github.com/Robert-MacWha/lodgelock/issues) for current tasks and progress.
 
 ## License
 

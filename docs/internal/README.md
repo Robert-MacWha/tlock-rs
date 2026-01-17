@@ -1,0 +1,1 @@
+WIP / internal documentation, hodgepodge of research, planning, and notes.

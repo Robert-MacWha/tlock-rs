@@ -1,6 +1,6 @@
 # Resource Management
 
-Tlock is a plugin-first architecture.  I aim to implement everything I can within plugins, and in doing so to give plugins the ability to implement anything they would like, including implementations I did not consider during my design. The goal is to make something simple enough to work with, and flexible enough to build on top of in interesting and unforeseen ways.
+Lodgelock is a plugin-first architecture.  I aim to implement everything I can within plugins, and in doing so to give plugins the ability to implement anything they would like, including implementations I did not consider during my design. The goal is to make something simple enough to work with, and flexible enough to build on top of in interesting and unforeseen ways.
 
 Key resources:
 - Domains

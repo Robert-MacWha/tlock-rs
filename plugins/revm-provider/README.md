@@ -1,4 +1,4 @@
-This plugin provides an revm-based Ethereum provider for Tlock. It allows the user to fork from a specified EVM network at a given block and interact with the forked state, mining new blocks as needed.
+This plugin provides an revm-based Ethereum provider for Lodgelock. It allows the user to fork from a specified EVM network at a given block and interact with the forked state, mining new blocks as needed.
 
 # Architecture
 
