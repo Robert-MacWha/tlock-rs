@@ -1,14 +1,14 @@
 # Lodgelock
 
-!!! Pre-alpha: Not audited, not production-ready, use at your own risk !!!
+!!! Pre-alpha: use at your own risk !!!
 
-Lodgelock is designed as a modular-first wallet framework. It aims to empower users, developers, and the broader web3 ecosystem by providing a secure, extensible, and user-centric wallet platform.
+Lodgelock is designed as a modular-first wallet framework. It aims to empower the web3 ecosystem by providing a user-centric, secure, and extensible wallet platform.
 
 Lodgelock is designed around three core ideals:
 
 1. **Wallets for self-sovereignty**: Wallets are tools for users to manage their money, identity, and data. They should empower users to hold ownership over their digital lives, providing full control and autonomy.
-2. **Wallets for security**: Wallets act as guardians of users' assets and information. They are a critical single point of failure and must prioritize security, ensuring that funds, privacy, and integrity are maintained at all times.
-3. **Wallets for modularity**: Wallets should act as the kernel for web3 applications. They should provide a secure and unopinionated platform that manages security and resources, leaving the 'user-space' features entirely implemented by modular plugins to the user's discretion.
+2. **Wallets for security**: Wallets act as guardians of users' assets and personal information. They are a critical single point of failure and must prioritize security at all times.
+3. **Wallets for modularity**: Wallets should act as the interface for web3 interfactions. They should provide a secure and unbiased platform that manages security and resources, leaving the 'user-space' features to the user's discretion.
 
 ## Docs
 
@@ -16,15 +16,27 @@ Lodgelock is designed around three core ideals:
 - [Plugin Development Guide](./docs/PLUGIN_DEVELOPMENT.md)
 - [Security Model](./docs/SECURITY.md)
 
+## Status Quo
+
+The current wallet landscape is dominated by walled gardens that bundle a fixed set of features. DeFi's origin in websites has been a saving grace, allowing users to access a broader ecosystem of applications. Wallets, however, have not embraced this modularity.
+
+This lack of modularity has created strong **Extractive Incentives** through the **Power of Defaults**. Wallets decree what features are present within their walls, shaping experience for millions. 
+
+For a prime example, compare the exchange rates provided by Metamask's built-in swap versus uniswap or 1inch. Or consider the recent move by many wallets to integrate ~~Gambling~~ predictive markets directly into their apps, often with no warning, age verification, or even an option to disable the feature.
+
+While users should undoubtedly have the freedom to use such dapps, they should not be forced to participate. When the gateway to web3 is a profit-seeking entity, the default becomes a toll-bridge rather than an open road.
+
 ## How it Works
 
-Nearly everything in Lodgelock is an entity. Entities are the basic building blocks that have state and implement functionality.
+Lodgelock is built as an entity-domain-plugin architecture.
 
-For example, an entity might represent a "vault." This vault could be a simple EOA private key manager, a multisig wallet, a hardware wallet interface or even a custodial exchange account. The entity abstracts away implementation details and exposes a common interface.
+Entities are the core building blocks of Lodgelock. They represent the objects users interact with. For example, an entity might represent a "vault." This vault could be an EOA, a multisig wallet, a hardware wallet, a custodial exchange account, or more. 
 
-Each entity implements a single domain, which defines its interface and behavior. Domains are designed to be as generic as possible so that entities can implement a wide variety of functionality while adhering to a common interface. As long as entities implement the same domain, they can be used interchangably by other parts of the system.
+While all of these vaults would have different implementations they all share the same interface, defined by the "vault" domain.
 
-Entities are created and managed by plugins, which are WebAssembly (WASM) modules that lodgelock loads and runs in a secure environment.
+Domains are standard interfaces implemented by entities. They are designed to be as generic as possible so that wide varieties of functionality can share common APIs. Domains include `vault`s, `eth-providers`, `pages`, `coordinators`, and more. Any entities that implement the same domain can be used interchangably.
+
+Plugins are what create and manage Entities. They're written as WebAssembly (WASM) modules and run in a secure environment by Lodgelock. Plugins can create entities, manage their state, and interact with other plugins through well-defined interfaces.
 
 ```mermaid
 flowchart TD
@@ -57,17 +69,23 @@ flowchart TD
 
 For more information, view the [Architecture Overview](./docs/ARCHITECTURE.md).
 
-## Status Quo
-
-The current wallet landscape is dominated by monolithic walled gardens that bundle a fixed set of features and applications. DeFi's origin as websites has been a saving grace, allowing users to access a broader ecosystem of applications. However, wallets have not embraced this modularity, instead opting for closed systems that limit user choice and stifle innovation.
-
-This lack of modularity has created a dangerous example of the **Power of Defaults**. Wallets decree what features and applications are present within their walls, shaping behavior and experience for millions. For a prime example, simply look at the exchange rates provided by Metamask's built-in swap versus uniswap or 1inch. When the gateway to web3 is a profit-seeking entity, the default becomes a toll-bridge rather than an open road.
-
-Wallets also suffer from **Extractive Incentives**. When the wallet controls the default experience, it is incentivised to prioritize features that enrich itself over those that benefit users. Consider Phantom integrating kalshi prediction markets into their app, adding gambling features to the homepage of a financial application without user consent, warning, age verification, or an option to disable it. While users should undoubtedly have the freedom to have such features, they should not be forced upon them.
-
 ## Getting Started
 
-Lodgelock is currently in early pre-alpha development. (Web demo coming soon).
+Lodgelock is currently in early pre-alpha development. To try out a web demo, visit [http://localhost:8788/](http://localhost:8788/).
+
+### Web Demo Instructions 
+
+The web demo is a simple browser-based wallet using Lodgelock. It includes a curated set of plugins and a handful of demo snapshots that can be loaded. All demos are ephemeral and do not store any data permanently. The demos also use revm-providers as the RPC backend, so all actions are simulated locally and certain cheatcodes are available for testing.
+
+The "stake" demo loads in a vault, revm-provider, and staking plugin. The vault was pre-funded with test ETH and WETH. The user can stake and unstake WETH using the staking plugin's interface.  Try staking some ETH, then unstaking back to your eoa-vault!
+ - Because the staking plugin lives locally, it's not dependant on any external services. It's a local app, not a webpage that can go down.
+ - Additionally, the staking plugin has access to the full capabilities of tlock. This means in addition to creating a page for user interactions, it also creates a vault entity which represents the custodially held value and could be used interchangably with any other vault.
+
+The "swap" demo loads in a vault, coordinator, revm-provider, uniswap plugin. The vault was again pre-funded with test ETH and WETH. The user can swap between a few different tokens using the uniswap plugin's interface. Try swapping some WETH for DAI!
+  - Similar to the staking plugin, the uniswap plugin is entirely local.
+  - Rather than directly communicating with the vault, the uniswap plugin instead uses the coordinator, which provides atomic-like interfaces for executing batches of transactions. This ensures that regardless of the swap outcome, all user funds are returned to the vault safely.
+
+### Running Locally
 
 To build from source, Lodgelock uses [Nix](https://nixos.org/) to manage dependencies and build environments. Alternatively, you can manually install the required dependencies listed in `shell.nix`.
 
