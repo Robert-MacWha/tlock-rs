@@ -10,7 +10,6 @@ use frontend::{
         host::HostContext,
         toast::{ToastContext, ToastKind, toast_container},
     },
-    download_util::download_bytes,
     focus_helper::blur_active_element,
 };
 use host::{host::Host, host_state::PluginSource};
@@ -74,6 +73,16 @@ fn app() -> Element {
             name: "keywords",
             content: "cryptocurrency, wallet, wasm, rust, defi, custody",
         }
+        link { rel: "preconnect", href: "https://fonts.googleapis.com" }
+        link {
+            rel: "preconnect",
+            href: "https://fonts.gstatic.com",
+            crossorigin: "anonymous",
+        }
+        link {
+            rel: "stylesheet",
+            href: "https://fonts.googleapis.com/css2?family=Tomorrow:wght@400;500;600;700&display=swap",
+        }
         link { rel: "icon", href: "/favicon.ico" }
         //? DaisyUI theme
         //? Either dim, lemonade, or
@@ -83,13 +92,13 @@ fn app() -> Element {
             events_modal {}
             plugins_modal {}
             events_toast_handler {}
-            div { class: "drawer md:drawer-open",
+            div { class: "drawer md:drawer-open bg-base-300",
                 input {
                     id: "my-drawer",
                     r#type: "checkbox",
                     class: "drawer-toggle",
                 }
-                div { class: "drawer-content flex flex-col",
+                div { class: "drawer-content flex flex-col min-h-screen",
                     label {
                         r#for: "my-drawer",
                         class: "btn btn-square btn-ghost md:hidden",
@@ -106,7 +115,7 @@ fn app() -> Element {
                             }
                         }
                     }
-                    div { class: "w-full min-h-full p-4 bg-base-300", main_component {} }
+                    div { class: "w-full p-4", main_component {} }
                 }
                 div { class: "drawer-side",
                     label {
@@ -175,7 +184,7 @@ fn sidebar_component() -> Element {
                     alt: "Logo",
                     class: "ms-2 my-2 w-12 h-12",
                 }
-                h1 { class: "menu-title text-xl text-primary ps-0", "Lodgelock Demo" }
+                h1 { class: "menu-title text-2xl text-primary ps-0 font-heading", "Lodgelock Demo" }
             }
             states_dropdown {}
             div { class: "divider" }

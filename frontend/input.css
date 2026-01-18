@@ -1,14 +1,13 @@
 @import "tailwindcss";
 @source "./src/**/*.{rs,html,css}";
 
-@plugin "./assets/daisyui.js" {
-    themes: all;
-}
-
-;
-
 @theme {
     --breakpoint-ml: 72rem;
+    --font-heading: 'Tomorrow', sans-serif;
+}
+
+@plugin "./assets/daisyui.js" {
+    themes: all;
 }
 
 .divider {
