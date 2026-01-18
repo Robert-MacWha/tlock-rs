@@ -2,14 +2,6 @@
 
 !!! Pre-alpha: use at your own risk !!!
 
-## Plugin Sandboxing
-
-Plugins are executed in a sandboxed WebAssembly (WASM) environment with no direct access to the network, file system, or user machine. All interactions between plugins and the host are mediated through the JSON-RPC over STDIO interface. This allows the host to:
-    1. Enforce permission controls on what individual plugins can and cannot do.
-    2. Monitor and log all interactions for auditing purposes.
-    3. Isolate plugins from each other.
-    4. Easily terminate or restart misbehaving plugins.
-
 ## Threat Model
 
 Lodgelock assumes that plugins are untrusted and potentially malicious. The host must limit the capabilities of plugins to prevent them from compromising user security or privacy. The primary threats include:
@@ -29,6 +21,14 @@ Malicious plugins CANNOT:
     - Run indefinitely
 
 In order for plugins to carry out these threats, they must be installed by the user. Therefore, user education and trust in plugin sources is also a critical component of the overall security model.
+
+## Plugin Sandboxing
+
+Plugins are executed in a sandboxed WebAssembly (WASM) environment with no direct access to the network, file system, or user machine. All interactions between plugins and the host are mediated through the JSON-RPC over STDIO interface. This allows the host to:
+    1. Enforce permission controls on what individual plugins can and cannot do.
+    2. Monitor and log all interactions for auditing purposes.
+    3. Isolate plugins from each other.
+    4. Easily terminate or restart misbehaving plugins.
 
 ### Permission Model
 

@@ -152,19 +152,10 @@ async fn call_req(
         }
         EthRequest::EthGetBalance(address, block_id) => {
             let block_id = block_id.unwrap_or(BlockId::latest());
-
-            info!(
-                "Fetching ETH balance for address {} at block {:?}",
-                address, block_id
-            );
-
             let resp = eth::GetBalance
                 .call_async(transport.clone(), (provider_id, address, block_id))
                 .await
                 .map_err(|e| TransportErrorKind::custom_str(&e.to_string()))?;
-
-            info!("ETH balance for address {}: {:?}", address, resp);
-
             serde_json::to_value(resp).map_err(TransportError::ser_err)?
         }
         EthRequest::EthGasPrice(_) => {

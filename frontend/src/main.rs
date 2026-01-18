@@ -55,6 +55,26 @@ fn app() -> Element {
 
     rsx! {
         document::Stylesheet { href: asset!("/assets/tailwind.css") }
+        document::Title { "Lodgelock" }
+        document::Meta {
+            name: "description",
+            content: "Open-source wallet framework with WebAssembly plugin isolation. Compose custody solutions, providers, and DeFi protocols without centralized control. Built with Rust.",
+        }
+        document::Meta { name: "author", content: "Robert MacWha" }
+        document::Meta {
+            property: "og:title",
+            content: "Lodgelock - Modular Cryptocurrency Wallet Framework",
+        }
+        document::Meta {
+            property: "og:description",
+            content: "Plugin-first wallet architecture using WebAssembly sandboxing. Built to prioritize security, modularity, and user sovereignty.",
+        }
+        document::Meta { property: "og:type", content: "website" }
+        document::Meta {
+            name: "keywords",
+            content: "cryptocurrency, wallet, wasm, rust, defi, custody",
+        }
+        link { rel: "icon", href: "/favicon.ico" }
         //? DaisyUI theme
         //? Either dim, lemonade, or
         div { "data-theme": "lemonade",
@@ -149,7 +169,14 @@ fn sidebar_component() -> Element {
 
     rsx! {
         div { class: "flex flex-col h-full bg-base-200 w-xs menu",
-            h1 { class: "menu-title text-xl text-primary", "Lodgelock Demo" }
+            div { class: "flex items-center gap-2",
+                img {
+                    src: asset!("/assets/lodge-outlined.webp"),
+                    alt: "Logo",
+                    class: "ms-2 my-2 w-12 h-12",
+                }
+                h1 { class: "menu-title text-xl text-primary ps-0", "Lodgelock Demo" }
+            }
             states_dropdown {}
             div { class: "divider" }
             h2 { class: "menu-title", "Pages" }
@@ -517,7 +544,7 @@ fn states_dropdown() -> Element {
                 div {
                     tabindex: "0",
                     role: "button",
-                    class: "btn btn-primary w-full m-1",
+                    class: "btn btn-primary w-full",
                     "Load Demo"
                 }
                 ul {

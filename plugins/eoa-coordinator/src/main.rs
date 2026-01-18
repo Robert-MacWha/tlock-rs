@@ -236,7 +236,7 @@ async fn on_load(transport: Transport, page_id: PageId) -> Result<(), RpcError> 
 fn build_ui(state: &State) -> Component {
     let sections = vec![
         heading("Vault Coordinator"),
-        text("Orchestrates multi-step transactions between plugins and vaults"),
+        text("Execution engine between plugins and vaults"),
         text("Status: Active"),
         text(format!("Connected Vault: {}", state.vault_id)),
     ];
