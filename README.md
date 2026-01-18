@@ -75,7 +75,7 @@ For more information, view the [Architecture Overview](./docs/ARCHITECTURE.md).
 
 ## Getting Started
 
-Lodgelock is currently in early pre-alpha development. To try out a web demo, visit [http://localhost:8788/](http://localhost:8788/).
+Lodgelock is currently in early pre-alpha development. To try out a web demo, visit [lodgelock.org](https://lodgelock.org/).
 
 For docs on each of the plugins included in the demo, see the [Plugins Overview](./docs/PLUGINS.md).
 
