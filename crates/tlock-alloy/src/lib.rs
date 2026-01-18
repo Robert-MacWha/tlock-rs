@@ -16,7 +16,7 @@ use tlock_pdk::{
     wasmi_plugin_pdk::transport::Transport,
 };
 use tower_service::Service;
-use tracing::{error, info};
+use tracing::error;
 
 use crate::eth_request::EthRequest;
 
