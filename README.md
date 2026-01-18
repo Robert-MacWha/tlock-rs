@@ -13,6 +13,16 @@ Lodgelock is designed around three core ideals:
 2. **Wallets for security**: Wallets act as guardians of users' assets and personal information. They are a critical single point of failure and must prioritize security at all times.
 3. **Wallets for modularity**: Wallets should act as the interface for web3 interfactions. They should provide a secure and unbiased platform that manages security and resources, leaving the 'user-space' features to the user's discretion.
 
+## Getting Started
+
+Lodgelock is currently in early pre-alpha development. To try out a web demo, visit [lodgelock.org](https://lodgelock.org/).
+
+For docs on each of the plugins included in the demo, see the [Plugins Overview](./docs/PLUGINS.md).
+
+https://github.com/user-attachments/assets/ff235300-1843-4737-a4ec-a1cceda49dbb
+
+(For full-res video, see on [youtube](https://youtu.be/OxjImnTXKI0))
+
 ## Docs
 
 - [Architecture Overview](./docs/ARCHITECTURE.md)
@@ -73,14 +83,6 @@ flowchart TD
 
 For more information, view the [Architecture Overview](./docs/ARCHITECTURE.md).
 
-## Getting Started
-
-Lodgelock is currently in early pre-alpha development. To try out a web demo, visit [lodgelock.org](https://lodgelock.org/).
-
-For docs on each of the plugins included in the demo, see the [Plugins Overview](./docs/PLUGINS.md).
-
-![Lodgelock Demo Video](https://youtu.be/OxjImnTXKI0)
-
 ### Running Locally
 
 Lodgelock uses [nix-shell](https://nixos.org/guides/nix-pills/10-developing-with-nix-shell.html) for dependency management. You can also manually install the required dependencies listed in `shell.nix`.
@@ -114,12 +116,3 @@ See the [project board](https://github.com/Robert-MacWha/lodgelock/issues) for c
 
 This project is currently unlicensed while in pre-alpha development.
 
-## Open Questions
-
-- State mechanism. Currently implemented the plans outlined in [state.md](./docs/state.md) which is essentially a key-value mutexed storage. This allows plugins to store state and prevents state corruption from concurrent access. However, it also limits concurrent access to state which may be a future bottleneck.
-- Cross-chain abstractions. Using CAIP standards for chain, account, and asset IDs. Chain-specific domains (e.g. eth-provider, coordinator) are currently chain-specific. Should these be abstracted, or is it better to create new domains for different chains (and thus harm the 90/10 rule)?
-- Will plugin management UX be acceptable?
-  - Managing plugins requires non-trivial user comprehension of what the plugins are and how they interact. Conceptually this is similar to browser extensions, homeassistant plugins, or desktop environments. However, wallets are security-critical software and users should be less willing to tinker.
-  - In actual distributions, the host should ship with a curated set of plugins by default (some enabled, some optional) to provide a good out-of-the-box experience.
-    - Similar to the web browser demo I've built for the alpha.
-  - I'm considering adding more fine-grained domains (e.g. "swap", "stake", "bridge") to allow plugins to be better categorized and for generic UIs to be built around them. This way users could easily find and install plugins for specific features, for example if they notice their swap plugin is missing a certain token they want or they want to try a different staking provider.
