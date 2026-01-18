@@ -1,7 +1,7 @@
-<p align="left">
-  <img src="frontend/assets/lodge-outlined.png" width="48">
-  <span style="font-size: 2em; font-weight: bold;">Lodgelock</span>
-</p>
+<h1>
+  <img src="frontend/assets/lodge-outlined.png" width="48" style="vertical-align: middle;">
+  Lodgelock
+</h1>
 
 !!! Pre-alpha: use at your own risk !!!
 
