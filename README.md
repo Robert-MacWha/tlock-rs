@@ -1,5 +1,5 @@
 <h1>
-  <img src="frontend/assets/lodge-outlined.png" width="48" style="vertical-align: middle;">
+  <img src="/frontend/assets/lodge-outlined.png" alt="Lodgelock" width="36px">
   Lodgelock
 </h1>
 
