@@ -79,7 +79,7 @@ Lodgelock is currently in early pre-alpha development. To try out a web demo, vi
 
 For docs on each of the plugins included in the demo, see the [Plugins Overview](./docs/PLUGINS.md).
 
-TODO: Add video demo
+![Lodgelock Demo Video](https://youtu.be/OxjImnTXKI0)
 
 ### Running Locally
 
