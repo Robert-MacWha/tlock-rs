@@ -257,19 +257,19 @@ fn sidebar_component() -> Element {
                         "Github"
                     }
                 }
-                li {
-                    button {
-                        onclick: move |_| {
-                            let state = ctx.state();
-                            if let Ok(data) = serde_json::to_vec_pretty(&state) {
-                                if let Err(e) = download_bytes(&data, "state.json", "application/json") {
-                                    error!("Failed to download state: {:?}", e);
-                                }
-                            }
-                        },
-                        "Download State"
-                    }
-                }
+                        // li {
+            //     button {
+            //         onclick: move |_| {
+            //             let state = ctx.state();
+            //             if let Ok(data) = serde_json::to_vec_pretty(&state) {
+            //                 if let Err(e) = download_bytes(&data, "state.json", "application/json") {
+            //                     error!("Failed to download state: {:?}", e);
+            //                 }
+            //             }
+            //         },
+            //         "Download State"
+            //     }
+            // }
             }
         }
     }
