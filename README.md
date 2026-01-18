@@ -1,4 +1,5 @@
-<img align="left" src="frontend/assets/lodge-outlined.png">
+<img align="left" src="frontend/assets/lodge-outlined.png" width="48">
+
 # Lodgelock
 
 !!! Pre-alpha: use at your own risk !!!
