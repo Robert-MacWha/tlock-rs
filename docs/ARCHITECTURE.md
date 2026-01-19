@@ -203,7 +203,7 @@ rpc_method!(
 );
 ```
 
-Coordinators abstract transaction execution. They handle the complexity of withdrawing from vaults, executing transactions, and depositing results back while handling faliure cases.
+Similarly to how vaults are abstracted custody, coordinators are abstracted execution. They handle the complexity of withdrawing from vaults, executing transactions, and depositing results back while handling faliure cases.
 
 Without coordinators, plugins executing transactions must:
 1. Create their own EOAs
