@@ -5,7 +5,7 @@
 
 !!! Pre-alpha: use at your own risk !!!
 
-Lodgelock is designed as a modular-first wallet framework. It aims to empower the web3 ecosystem by providing a user-centric, secure, and extensible wallet platform.
+Lodgelock is a radically modular wallet framework. It aims to empower the web3 ecosystem by providing a user-centric, secure, and extensible wallet platform.
 
 Lodgelock is designed around three core ideals:
 
