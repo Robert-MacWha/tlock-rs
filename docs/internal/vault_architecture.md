@@ -145,9 +145,6 @@ sequenceDiagram
 5. Funds in Escrow can always be returned to vaults by the coordinator.
 6. Plugins cannot bypass coordinator validation.
 
-Here’s a clean “Risk Factors” section you can drop into your document.
-It stays structural, avoids plugin-level concerns, and fits the tone of the rest of your architecture.
-
 ### Wishes
 
 - Make it possible to have fully atomic userActions.
@@ -155,7 +152,6 @@ It stays structural, avoids plugin-level concerns, and fits the tone of the rest
   - Steps 2 and 3 can be made atomic via escrows / 4337, but step 1 cannot since it is initiated by the vault.
   - I know this is impossible without placing undue burden on vaults, but it's a nice to have.
   - Technically it's kinda possible if vaults are willing to create temporary accounts, or if coordinators create those temporary accounts.  Would add an intermediary step to the escrow of a new ephemeral account that's created and approves transferFroms.  But that'd be highly situational and complex.
-- 
 
 ###  Risk Factors
 
