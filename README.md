@@ -44,9 +44,7 @@ While users should undoubtedly have the freedom to use such dapps, they should n
 
 Lodgelock is built as an entity-domain-plugin architecture.
 
-Entities are the core building blocks of Lodgelock. They represent the objects users interact with. For example, an entity might represent a "`vault`". This vault could be an EOA, a multisig wallet, a hardware wallet, a custodial exchange account, or more. 
-
-While all of these vaults would have different implementations they all share the same interface, defined by the "`vault`" domain.
+Entities are the core building blocks of Lodgelock. They represent the objects users interact with. For example, an entity might represent a "`vault`". This vault could be an EOA, a multisig wallet, a hardware wallet, a custodial exchange account, or more. While all of these vaults would have different implementations they all share the same interface, defined by the "`vault`" domain.
 
 Domains are standard interfaces implemented by entities. They are designed to be as generic as possible so that wide varieties of functionality can share common APIs. Domains include `vault`, `eth-provider`, `page`, `coordinator`, and more. Any entities that implement the same domain can be used interchangably.
 
