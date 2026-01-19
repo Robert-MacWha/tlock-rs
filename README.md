@@ -15,13 +15,13 @@ Lodgelock is designed around three core ideals:
 
 ## Getting Started
 
-Lodgelock is currently in early pre-alpha development. To try out a web demo, visit [lodgelock.org](https://lodgelock.org/).
-
-For docs on each of the plugins included in the demo, see the [Plugins Overview](./docs/PLUGINS.md).
+Lodgelock is currently in early pre-alpha development. To try out a web demo, visit [lodgelock.org](https://lodgelock.org/), or watch the demo video / guided walkthrough:
 
 https://github.com/user-attachments/assets/ff235300-1843-4737-a4ec-a1cceda49dbb
 
 (For full-res video, see on [youtube](https://youtu.be/OxjImnTXKI0))
+
+For docs on each of the plugins included in the demo, see the [Plugins Overview](./docs/PLUGINS.md).
 
 ## Docs
 
